@@ -5,16 +5,16 @@ import datetime as dt
 import pytest
 from msgspec import Struct
 
-from autocrud import AutoCRUD
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.types import Job
+from specstar import SpecStar
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.types import Job
 
 # Check if celery is available
 try:
     from celery import Celery
 
-    from autocrud.message_queue.celery_queue import CeleryMessageQueueFactory
+    from specstar.message_queue.celery_queue import CeleryMessageQueueFactory
 
     CELERY_AVAILABLE = True
 except ImportError:
@@ -57,7 +57,7 @@ def test_resource_manager_has_message_queue(mq_factory_type):
         app.conf.update(task_always_eager=True, task_eager_propagates=True)
         mq_factory = CeleryMessageQueueFactory(celery_app=app)
 
-    crud = AutoCRUD(
+    spec = SpecStar(
         storage_factory=MemoryStorageFactory(),
         message_queue_factory=mq_factory,  # ty:ignore[invalid-argument-type]
     )
@@ -66,10 +66,10 @@ def test_resource_manager_has_message_queue(mq_factory_type):
         pass
 
     # Add a Job subclass - should have a message queue
-    crud.add_model(EmailJob, name="email-jobs", job_handler=handler)
+    spec.add_model(EmailJob, name="email-jobs", job_handler=handler)
 
     # Get the resource manager
-    rm = crud.get_resource_manager("email-jobs")
+    rm = spec.get_resource_manager("email-jobs")
 
     # Verify it has message queue methods that work
     with rm.meta_provide(user="test", now=dt.datetime.now()):
@@ -79,8 +79,8 @@ def test_resource_manager_has_message_queue(mq_factory_type):
         assert job is not None
 
     # Add a regular model - should raise NotImplementedError
-    crud.add_model(NotAJob, name="regular-model")
-    rm_regular = crud.get_resource_manager("regular-model")
+    spec.add_model(NotAJob, name="regular-model")
+    rm_regular = spec.get_resource_manager("regular-model")
 
     # For regular (non-Job) models, there's no message queue
     assert rm_regular.message_queue is None  # ty:ignore[unresolved-attribute]
@@ -107,13 +107,13 @@ def test_resource_manager_start_consume(mq_factory_type):
         app.conf.update(task_always_eager=True, task_eager_propagates=True)
         mq_factory = CeleryMessageQueueFactory(celery_app=app)
 
-    crud = AutoCRUD(
+    spec = SpecStar(
         storage_factory=MemoryStorageFactory(),
         message_queue_factory=mq_factory,  # ty:ignore[invalid-argument-type]
         default_now=dt.datetime.now,
         default_user="test-user",
     )
-    crud.add_model(
+    spec.add_model(
         EmailJob,
         name="email-jobs",
         indexed_fields=[("status", str)],
@@ -121,7 +121,7 @@ def test_resource_manager_start_consume(mq_factory_type):
     )
 
     # Get the resource manager
-    rm = crud.get_resource_manager("email-jobs")
+    rm = spec.get_resource_manager("email-jobs")
 
     # Create a job
     with rm.meta_provide(user="test-user", now=dt.datetime.now()):
@@ -153,10 +153,10 @@ def test_resource_manager_start_consume(mq_factory_type):
 
 def test_resource_manager_message_queue_none_for_non_job():
     """Test that ResourceManager has no message queue for non-Job types."""
-    crud = AutoCRUD(storage_factory=MemoryStorageFactory())
-    crud.add_model(NotAJob, name="regular-model")
+    spec = SpecStar(storage_factory=MemoryStorageFactory())
+    spec.add_model(NotAJob, name="regular-model")
 
-    rm = crud.get_resource_manager("regular-model")
+    rm = spec.get_resource_manager("regular-model")
 
     # Should have no message queue
     assert rm.message_queue is None  # ty:ignore[unresolved-attribute]
@@ -164,12 +164,12 @@ def test_resource_manager_message_queue_none_for_non_job():
 
 def test_resource_manager_disabled_message_queue():
     """Test ResourceManager when message queue is explicitly disabled."""
-    crud = AutoCRUD(storage_factory=MemoryStorageFactory())
+    spec = SpecStar(storage_factory=MemoryStorageFactory())
 
     # Explicitly disable message queue
-    crud.add_model(EmailJob, name="email-jobs", message_queue_factory=None)
+    spec.add_model(EmailJob, name="email-jobs", message_queue_factory=None)
 
-    rm = crud.get_resource_manager("email-jobs")
+    rm = spec.get_resource_manager("email-jobs")
 
     # Should have no message queue
     assert rm.message_queue is None  # ty:ignore[unresolved-attribute]
@@ -196,20 +196,20 @@ def test_resource_manager_message_queue_workflow(mq_factory_type):
         app.conf.update(task_always_eager=True, task_eager_propagates=True)
         mq_factory = CeleryMessageQueueFactory(celery_app=app)
 
-    crud = AutoCRUD(
+    spec = SpecStar(
         storage_factory=MemoryStorageFactory(),
         message_queue_factory=mq_factory,  # ty:ignore[invalid-argument-type]
         default_now=dt.datetime.now,
         default_user="test-user",
     )
-    crud.add_model(
+    spec.add_model(
         EmailJob,
         name="email-jobs",
         indexed_fields=[("status", str)],
         job_handler=process_job,
     )
 
-    rm = crud.get_resource_manager("email-jobs")
+    rm = spec.get_resource_manager("email-jobs")
 
     # Enqueue multiple jobs
     with rm.meta_provide(user="producer", now=dt.datetime.now()):
@@ -264,7 +264,7 @@ def test_resource_manager_custom_mq_factory(mq_factory_type):
         app.conf.update(task_always_eager=True, task_eager_propagates=True)
         custom_factory = CeleryMessageQueueFactory(celery_app=app)
 
-    crud = AutoCRUD(
+    spec = SpecStar(
         storage_factory=MemoryStorageFactory(),
         message_queue_factory=custom_factory,  # ty:ignore[invalid-argument-type]
     )
@@ -272,9 +272,9 @@ def test_resource_manager_custom_mq_factory(mq_factory_type):
     def handler(job):
         pass
 
-    crud.add_model(EmailJob, name="email-jobs", job_handler=handler)
+    spec.add_model(EmailJob, name="email-jobs", job_handler=handler)
 
-    rm = crud.get_resource_manager("email-jobs")
+    rm = spec.get_resource_manager("email-jobs")
 
     # Should work with custom factory
     with rm.meta_provide(user="test", now=dt.datetime.now()):

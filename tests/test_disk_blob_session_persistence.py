@@ -8,7 +8,7 @@ that shares the same root_path.  This test suite verifies that by creating
 
 import pytest
 
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore
+from specstar.resource_manager.blob_store.simple import DiskBlobStore
 
 SAMPLE_BYTES = b"hpa-session-test-data"
 SAMPLE_CT = "text/plain"

@@ -16,14 +16,14 @@ import warnings
 
 from msgspec import Struct
 
-from autocrud.message_queue.basic import BasicMessageQueue
-from autocrud.message_queue.context import JobContext
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.resource_manager.blob_store.simple import MemoryBlobStore
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.message_queue.basic import BasicMessageQueue
+from specstar.message_queue.context import JobContext
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.resource_manager.blob_store.simple import MemoryBlobStore
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     IndexableField,
     Job,
     Resource,
@@ -373,7 +373,7 @@ class TestJobContextLogging:
         """ctx.log() should also emit to Python's logging module."""
         from uuid import uuid4
 
-        from autocrud.types import (
+        from specstar.types import (
             RevisionInfo,
             RevisionStatus,
         )
@@ -393,7 +393,7 @@ class TestJobContextLogging:
         resource = Resource(info=rev_info, data=job)
         ctx = JobContext(resource)
 
-        with caplog.at_level(logging.DEBUG, logger="autocrud.job"):
+        with caplog.at_level(logging.DEBUG, logger="specstar.job"):
             ctx.info("hello from handler")
             ctx.debug("debug detail")
             ctx.warning("be careful")
@@ -409,7 +409,7 @@ class TestJobContextLogging:
         """Logger output should include the resource_id for traceability."""
         from uuid import uuid4
 
-        from autocrud.types import (
+        from specstar.types import (
             RevisionInfo,
             RevisionStatus,
         )
@@ -429,7 +429,7 @@ class TestJobContextLogging:
         resource = Resource(info=rev_info, data=job)
         ctx = JobContext(resource)
 
-        with caplog.at_level(logging.DEBUG, logger="autocrud.job"):
+        with caplog.at_level(logging.DEBUG, logger="specstar.job"):
             ctx.info("test msg")
 
         assert any("my-job-42" in r.message for r in caplog.records)
@@ -438,7 +438,7 @@ class TestJobContextLogging:
         """Each convenience method maps to the correct Python log level."""
         from uuid import uuid4
 
-        from autocrud.types import (
+        from specstar.types import (
             RevisionInfo,
             RevisionStatus,
         )
@@ -458,7 +458,7 @@ class TestJobContextLogging:
         resource = Resource(info=rev_info, data=job)
         ctx = JobContext(resource)
 
-        with caplog.at_level(logging.DEBUG, logger="autocrud.job"):
+        with caplog.at_level(logging.DEBUG, logger="specstar.job"):
             ctx.info("i")
             ctx.debug("d")
             ctx.warning("w")

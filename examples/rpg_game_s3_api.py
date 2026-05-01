@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""⚔️ RPG 遊戲 API 系統 (S3 Backend) - AutoCRUD + FastAPI + S3 完整示範 🛡️
+"""⚔️ RPG 遊戲 API 系統 (S3 Backend) - SpecStar + FastAPI + S3 完整示範 🛡️
 
 這個範例展示：
-- 完整使用 S3 作為 backend 的 AutoCRUD 系統
+- 完整使用 S3 作為 backend 的 SpecStar 系統
 - S3SqliteMetaStore: SQLite DB 存於 S3
 - S3ResourceStore: 資源數據直接存於 S3
 - S3BlobStore: 二進制數據 (如圖片) 存於 S3
@@ -34,12 +34,12 @@ import uvicorn
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import AutoCRUD
-from autocrud.crud.route_templates.blob import BlobRouteTemplate
-from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
-from autocrud.query import QB
-from autocrud.resource_manager.storage_factory import S3StorageFactory
-from autocrud.types import Binary
+from specstar import SpecStar
+from specstar.crud.route_templates.blob import BlobRouteTemplate
+from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
+from specstar.query import QB
+from specstar.resource_manager.storage_factory import S3StorageFactory
+from specstar.types import Binary
 
 
 class CharacterClass(Enum):
@@ -48,7 +48,7 @@ class CharacterClass(Enum):
     WARRIOR = "⚔️ 戰士"
     MAGE = "🔮 法師"
     ARCHER = "🏹 弓箭手"
-    DATA_KEEPER = "💾 數據守護者"  # AutoCRUD 特色職業
+    DATA_KEEPER = "💾 數據守護者"  # SpecStar 特色職業
 
 
 class ItemRarity(Enum):
@@ -58,7 +58,7 @@ class ItemRarity(Enum):
     RARE = "稀有"
     EPIC = "史詩"
     LEGENDARY = "傳奇"
-    AUTOCRUD = "🚀 AutoCRUD 神器"
+    AUTOCRUD = "🚀 SpecStar 神器"
 
 
 class Character(Struct):
@@ -120,14 +120,14 @@ def get_random_image() -> bytes:
         )
 
 
-def create_sample_data(crud: AutoCRUD):
+def create_sample_data(spec: SpecStar):
     """創建示範數據"""
     print("\n🎮 創建示範遊戲數據...")
 
     # 取得資源管理器
-    guild_manager = crud.resource_managers.get("guild")
-    character_manager = crud.resource_managers.get("character")
-    equipment_manager = crud.resource_managers.get("equipment")
+    guild_manager = spec.resource_managers.get("guild")
+    character_manager = spec.resource_managers.get("character")
+    equipment_manager = spec.resource_managers.get("equipment")
 
     if not all([guild_manager, character_manager, equipment_manager]):
         print("❌ 資源管理器未找到，請確保已註冊模型")
@@ -139,8 +139,8 @@ def create_sample_data(crud: AutoCRUD):
     # 🏰 創建公會
     guilds = [
         Guild(
-            name="AutoCRUD 開發者聯盟",
-            description="致力於推廣 AutoCRUD + S3 技術的頂尖公會",
+            name="SpecStar 開發者聯盟",
+            description="致力於推廣 SpecStar + S3 技術的頂尖公會",
             leader="架構師阿明",
             member_count=50,
             level=10,
@@ -184,7 +184,7 @@ def create_sample_data(crud: AutoCRUD):
             defense=300,
             experience=999999,
             gold=1000000,
-            guild_name="AutoCRUD 開發者聯盟",
+            guild_name="SpecStar 開發者聯盟",
             special_ability="🚀 無限擴展存儲空間",
         ),
         Character(
@@ -287,11 +287,11 @@ def create_sample_data(crud: AutoCRUD):
                 print(f"❌ 裝備創建失敗: {e}")
 
 
-def demonstrate_s3_features(crud: AutoCRUD):
+def demonstrate_s3_features(spec: SpecStar):
     """展示 S3 Backend 特性"""
     print("\n🔍 === S3 Backend 特性展示 ===")
 
-    character_manager = crud.get_resource_manager(Character)
+    character_manager = spec.get_resource_manager(Character)
     if not character_manager:
         print("❌ 角色管理器未找到")
         return
@@ -334,7 +334,7 @@ def demonstrate_s3_features(crud: AutoCRUD):
         print("   ✅ 資料已更新並同步到 S3！")
 
     print("\n📊 3. 二進制數據存儲 (Blob 存於 S3)")
-    equipment_manager = crud.get_resource_manager(Equipment)
+    equipment_manager = spec.get_resource_manager(Equipment)
     if equipment_manager:
         eq_metas = equipment_manager.search_resources(QB["price"].gte(1).limit(1))  # ty:ignore[invalid-argument-type]
         if eq_metas:
@@ -357,7 +357,7 @@ def main():
     if use_aws == "aws":
         print("\n🌐 AWS S3 配置:")
         bucket = (
-            input("  Bucket 名稱 [autocrud-rpg-game]: ").strip() or "autocrud-rpg-game"
+            input("  Bucket 名稱 [specstar-rpg-game]: ").strip() or "specstar-rpg-game"
         )
         access_key_id = input("  Access Key ID: ").strip()
         secret_access_key = input("  Secret Access Key: ").strip()
@@ -378,7 +378,7 @@ def main():
             input("  MinIO Endpoint [http://localhost:9000]: ").strip()
             or "http://localhost:9000"
         )
-        bucket = input("  Bucket 名稱 [test-autocrud]: ").strip() or "test-autocrud"
+        bucket = input("  Bucket 名稱 [test-specstar]: ").strip() or "test-specstar"
         access_key_id = input("  Access Key [minioadmin]: ").strip() or "minioadmin"
         secret_access_key = input("  Secret Key [minioadmin]: ").strip() or "minioadmin"
 
@@ -411,7 +411,7 @@ def main():
           - 📊 元數據: SQLite DB 存於 S3
           - 📦 資源數據: 直接存於 S3
           - 🖼️ 二進制數據: 存於 S3 Blob Store
-        - 🚀 **AutoCRUD 驅動**: 自動生成的完整 CRUD API
+        - 🚀 **SpecStar 驅動**: 自動生成的完整 CRUD API
         - 🔍 **強大搜尋**: QueryBuilder 查詢功能
         - 📖 **版本控制**: 追蹤所有數據變更歷史
         
@@ -426,16 +426,16 @@ def main():
         redoc_url="/redoc",
     )
 
-    # 創建 AutoCRUD 實例 (使用 S3 Backend)
-    crud = AutoCRUD(storage_factory=storage_factory)
+    # 創建 SpecStar 實例 (使用 S3 Backend)
+    spec = SpecStar(storage_factory=storage_factory)
 
     # 加入額外的 route templates
-    crud.add_route_template(GraphQLRouteTemplate())
-    crud.add_route_template(BlobRouteTemplate())
+    spec.add_route_template(GraphQLRouteTemplate())
+    spec.add_route_template(BlobRouteTemplate())
 
     # 註冊模型
     # 注意：indexed_fields 會建立索引以支援高效查詢
-    crud.add_model(
+    spec.add_model(
         Character,
         indexed_fields=[
             ("level", int),
@@ -445,22 +445,22 @@ def main():
             ("character_class", CharacterClass),
         ],  # ty:ignore[invalid-argument-type]
     )
-    crud.add_model(Guild)
-    crud.add_model(Equipment, indexed_fields=[("price", int)])
+    spec.add_model(Guild)
+    spec.add_model(Equipment, indexed_fields=[("price", int)])
 
     # 應用到 FastAPI
-    crud.apply(app)
-    crud.openapi(app)
+    spec.apply(app)
+    spec.openapi(app)
 
     # 創建示範數據
     ans = input("\n需要創建示範數據嗎？[Y/n]: ").strip().lower()
     if ans != "n":
-        create_sample_data(crud)
+        create_sample_data(spec)
 
     # 展示 S3 特性
     ans = input("\n需要展示 S3 Backend 特性嗎？[Y/n]: ").strip().lower()
     if ans != "n":
-        demonstrate_s3_features(crud)
+        demonstrate_s3_features(spec)
 
     print("\n" + "=" * 60)
     print("🚀 === 服務器啟動成功 === 🚀")

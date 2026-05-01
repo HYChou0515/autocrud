@@ -1,5 +1,5 @@
 [project]
-name = "autocrud"
+name = "specstar"
 dynamic = ["version"]
 description = "自動產生 CRUD API 的 Python 函式庫"
 readme = "README.md"
@@ -47,7 +47,7 @@ docs = [
     "mkdocs-literate-nav>=0.6.0",
     "mkdocs-section-index>=0.3.0",
     "mkdocs-static-i18n>=1.2.0",
-    "autocrud[s3]",
+    "specstar[s3]",
 ]
 dev = [
     "coverage>=7.9.2",
@@ -55,7 +55,7 @@ dev = [
     "pytest-rerunfailures>=15.0",
     "ruff>=0.12.4",
     "pytest-asyncio>=1.1.0",
-    "autocrud[all,benchmark,docs]",
+    "specstar[all,benchmark,docs]",
     "pytest-markdown-docs>=0.9.1",
 ]
 s3 = [
@@ -102,13 +102,13 @@ benchmark = [
     "matplotlib>=3.8",
 ]
 all = [
-    "autocrud[s3,magic,mq,graphql,cli,postgresql,redis,sqlalchemy,mysql,oracle,celery]",
+    "specstar[s3,magic,mq,graphql,cli,postgresql,redis,sqlalchemy,mysql,oracle,celery]",
 ]
 [project.urls]
-Homepage = "https://github.com/HYChou0515/autocrud"
-Documentation = "https://HYChou0515.github.io/autocrud/"
-Repository = "https://github.com/HYChou0515/autocrud.git"
-Issues = "https://github.com/HYChou0515/autocrud/issues"
+Homepage = "https://github.com/HYChou0515/specstar"
+Documentation = "https://HYChou0515.github.io/specstar/"
+Repository = "https://github.com/HYChou0515/specstar.git"
+Issues = "https://github.com/HYChou0515/specstar/issues"
 
 [dependency-groups]
 dev = [
@@ -148,15 +148,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "autocrud/__init__.py"
+path = "specstar/__init__.py"
 
 [tool.hatch.build]
 include = [
-    "autocrud/",
+    "specstar/",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["autocrud"]
+packages = ["specstar"]
 
 [tool.coverage.report]
 exclude_also = [
@@ -171,7 +171,7 @@ exclude_also = [
     'class .*\bProtocol\):',
     '@(abc\.)?abstractmethod',
     "except ImportError:",
-    "warnings.warn.*AutoCRUDWarning",
+    "warnings.warn.*SpecStarWarning",
 ]
 [tool.coverage.run]
 omit = [

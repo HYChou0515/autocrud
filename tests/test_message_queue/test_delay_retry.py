@@ -7,13 +7,13 @@ from threading import Thread
 import pytest
 from msgspec import Struct
 
-from autocrud.message_queue.basic import DelayRetry
-from autocrud.message_queue.rabbitmq import RabbitMQMessageQueue
-from autocrud.message_queue.simple import SimpleMessageQueue
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.message_queue.basic import DelayRetry
+from specstar.message_queue.rabbitmq import RabbitMQMessageQueue
+from specstar.message_queue.simple import SimpleMessageQueue
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     IndexableField,
     Job,
     Resource,

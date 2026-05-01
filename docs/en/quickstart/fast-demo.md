@@ -6,7 +6,7 @@ Build a full CRUD app with API, persistence, and UI — from a single schema.
 
 In this quickstart, we will build a small issue tracker from a single schema.
 
-With AutoCRUD, we will:
+With SpecStar, we will:
 
 - define a schema
 - generate persistence
@@ -35,16 +35,16 @@ class Issue(msgspec.Struct):
     resolved_at: datetime | None = None
 ```
 
-This schema is enough for AutoCRUD to understand the resource shape, form fields, and API payloads.
+This schema is enough for SpecStar to understand the resource shape, form fields, and API payloads.
 
-Why `msgspec`? Check [here](/autocrud/concepts/schema).
+Why `msgspec`? Check [here](/specstar/concepts/schema).
 
 ## 2. Create the app
 
 Create a `main.py` and register the schema as a resource.
 
 ```python
-from autocrud import crud, Schema
+from specstar import crud, Schema
 from fastapi import FastAPI
 
 app = FastAPI()
@@ -55,7 +55,7 @@ crud.add_model(Schema(Issue, "v1"))
 crud.apply(app)
 ```
 
-Once registered, AutoCRUD can automatically:
+Once registered, SpecStar can automatically:
 
 - create persistence
 - generate CRUD API endpoints
@@ -168,9 +168,9 @@ Once this demo is working, one natural next step is backend setup. If you want y
 
 Next Steps:
 
-- [Set up your backend properly](/autocrud/guides/backend-setup)
-- [Move from demo to production](/autocrud/guides/from-demo-to-production)
-- [Generate or customize the Web UI](/autocrud/howto/web-ui)
+- [Set up your backend properly](/specstar/guides/backend-setup)
+- [Move from demo to production](/specstar/guides/from-demo-to-production)
+- [Generate or customize the Web UI](/specstar/howto/web-ui)
 
 
 ## Appendix: Full example (main.py)
@@ -184,7 +184,7 @@ from typing import Literal
 import msgspec
 from fastapi import FastAPI
 
-from autocrud import crud, Schema
+from specstar import crud, Schema
 
 
 class Issue(msgspec.Struct):

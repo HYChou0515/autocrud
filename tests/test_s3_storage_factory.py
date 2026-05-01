@@ -6,10 +6,10 @@ from enum import Enum
 import pytest
 from msgspec import Struct
 
-from autocrud import AutoCRUD
-from autocrud.query import QB
-from autocrud.resource_manager.storage_factory import S3StorageFactory
-from autocrud.types import Binary
+from specstar import SpecStar
+from specstar.query import QB
+from specstar.resource_manager.storage_factory import S3StorageFactory
+from specstar.types import Binary
 
 
 class CategoryEnum(Enum):
@@ -32,7 +32,7 @@ def s3_storage_factory(request):
     # 使用測試名稱作為 prefix 避免衝突
     test_name = request.node.name
     return S3StorageFactory(
-        bucket="test-autocrud",
+        bucket="test-specstar",
         endpoint_url="http://localhost:9000",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
@@ -44,9 +44,9 @@ def s3_storage_factory(request):
 
 @pytest.fixture
 def crud_with_s3(s3_storage_factory):
-    """建立使用 S3 backend 的 AutoCRUD"""
-    crud = AutoCRUD(storage_factory=s3_storage_factory)
-    crud.add_model(
+    """建立使用 S3 backend 的 SpecStar"""
+    spec = SpecStar(storage_factory=s3_storage_factory)
+    spec.add_model(
         SampleModel,
         indexed_fields=[
             ("name", str),
@@ -54,7 +54,7 @@ def crud_with_s3(s3_storage_factory):
             ("category", CategoryEnum),
         ],
     )
-    return crud
+    return spec
 
 
 def test_s3_storage_factory_basic(crud_with_s3):
@@ -175,7 +175,7 @@ def test_s3_storage_factory_delete_and_list(crud_with_s3):
         manager.delete(info1.resource_id)
 
     # 驗證已刪除 - 使用 search 查詢已刪除的資源
-    from autocrud.query_types import ResourceMetaSearchQuery
+    from specstar.query_types import ResourceMetaSearchQuery
 
     deleted_query = ResourceMetaSearchQuery(is_deleted=True, limit=100)
     deleted_metas = manager.search_resources(deleted_query)

@@ -1,14 +1,14 @@
 # Errors & troubleshooting
 
-This page summarizes the most common AutoCRUD exceptions and what they usually mean.
+This page summarizes the most common SpecStar exceptions and what they usually mean.
 
 Recommended import style:
 
 ```python
-from autocrud.errors import ValidationError, UniqueConstraintError
+from specstar.errors import ValidationError, UniqueConstraintError
 ```
 
-For a more step-by-step debugging path, see the dedicated [troubleshooting guide](/autocrud/howto/troubleshooting).
+For a more step-by-step debugging path, see the dedicated [troubleshooting guide](/specstar/howto/troubleshooting).
 
 ## Quick map
 
@@ -108,7 +108,7 @@ If you are inside an HTTP request flow, also confirm your dependency wiring is a
 ---
 
 ## Conflict family
-Import these from `autocrud.errors`.
+Import these from `specstar.errors`.
 ### ResourceConflictError (base)
 Base class for “write cannot proceed due to conflict” errors.
 
@@ -173,7 +173,7 @@ was chosen.
 
 ## Validation
 
-### ValidationError (AutoCRUD domain validation)
+### ValidationError (SpecStar domain validation)
 `ValidationError` is raised when your custom validator fails.
 
 Typical sources:

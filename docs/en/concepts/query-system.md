@@ -1,13 +1,13 @@
 # Query System
 
-AutoCRUD provides two ways to express search queries:
+SpecStar provides two ways to express search queries:
 
 - the recommended **Query Builder** expression, passed through the `qb` query parameter or used directly in Python
 - structured JSON query inputs such as `data_conditions`, `conditions`, and `sorts`
 
 For most applications, **QB is the preferred interface** because it is more readable, supports nested logic, and is parsed safely with an AST-based parser instead of `eval`.
 
-If you want the full list of supported helpers, operators, and metadata accessors, use the [Query Builder reference](/autocrud/reference/query-builder) alongside this overview.
+If you want the full list of supported helpers, operators, and metadata accessors, use the [Query Builder reference](/specstar/reference/query-builder) alongside this overview.
 
 ---
 
@@ -26,7 +26,7 @@ qb=QB["age"].gt(18).sort("-created_time").page(2, 20)
 Python example:
 
 ```python
-from autocrud.query import QB
+from specstar.query import QB
 
 query = (
     (QB["age"] > 18)
@@ -98,7 +98,7 @@ QB.rev_created_by().one_of(["alice", "bob"])
 QB.rev_created_time().last_n_days(7)
 ```
 
-> Filtering and built-in metadata sorting both work for all of the accessors above. The `rev_*` accessors target the **current revision** only; they are denormalized mirror fields kept in sync by AutoCRUD, so no extra revision reads are needed.
+> Filtering and built-in metadata sorting both work for all of the accessors above. The `rev_*` accessors target the **current revision** only; they are denormalized mirror fields kept in sync by SpecStar, so no extra revision reads are needed.
 
 ---
 
@@ -234,7 +234,7 @@ When `qb` mode is used, treat the QB expression as the main filter definition. I
 
 # QB vs JSON conditions
 
-AutoCRUD still supports the lower-level JSON query parameters for clients that prefer explicit structured payloads.
+SpecStar still supports the lower-level JSON query parameters for clients that prefer explicit structured payloads.
 
 Use QB when you want:
 
@@ -301,8 +301,8 @@ Key points:
 
 ## Read next
 
-- [Query Builder reference](/autocrud/reference/query-builder)
-- [Search indexing](/autocrud/concepts/search-indexing)
-- [Query Builder](/autocrud/howto/query-builder)
-- [Routes generation](/autocrud/howto/routes)
-- [Troubleshooting](/autocrud/howto/troubleshooting)
+- [Query Builder reference](/specstar/reference/query-builder)
+- [Search indexing](/specstar/concepts/search-indexing)
+- [Query Builder](/specstar/howto/query-builder)
+- [Routes generation](/specstar/howto/routes)
+- [Troubleshooting](/specstar/howto/troubleshooting)

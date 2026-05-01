@@ -17,7 +17,7 @@ describe('mantineVersion', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'autocrud-mantine-test-'));
+    tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'specstar-mantine-test-'));
   });
 
   afterEach(async () => {
@@ -177,7 +177,7 @@ describe('mantineVersion', () => {
   describe('patchSourceFiles', () => {
     it('does nothing for v7', async () => {
       const srcDir = path.join(tmpDir, 'src');
-      const formDir = path.join(srcDir, 'autocrud/lib/components/form');
+      const formDir = path.join(srcDir, 'specstar/lib/components/form');
       await fs.mkdir(formDir, { recursive: true });
       await fs.writeFile(
         path.join(formDir, 'useResourceForm.ts'),
@@ -192,7 +192,7 @@ describe('mantineVersion', () => {
 
     it('does not patch zodResolver import for v8 (mantine-form-zod-resolver works with v8)', async () => {
       const srcDir = path.join(tmpDir, 'src');
-      const formDir = path.join(srcDir, 'autocrud/lib/components/form');
+      const formDir = path.join(srcDir, 'specstar/lib/components/form');
       await fs.mkdir(formDir, { recursive: true });
       await fs.writeFile(
         path.join(formDir, 'useResourceForm.ts'),
@@ -217,7 +217,7 @@ describe('mantineVersion', () => {
 
     it('does nothing to files since no source patches are needed', async () => {
       const srcDir = path.join(tmpDir, 'src');
-      const formDir = path.join(srcDir, 'autocrud/lib/components/form');
+      const formDir = path.join(srcDir, 'specstar/lib/components/form');
       await fs.mkdir(formDir, { recursive: true });
       const original =
         "import { zodResolver } from 'mantine-form-zod-resolver';\nconst v = zodResolver(config.zodSchema);";
@@ -235,17 +235,17 @@ describe('mantineVersion', () => {
   // ---------------------------------------------------------------------------
 
   describe('writeVersionConfig', () => {
-    it('writes .autocrudrc.json with version 7', async () => {
+    it('writes .specstarrc.json with version 7', async () => {
       await writeVersionConfig(tmpDir, '7');
 
-      const content = JSON.parse(await fs.readFile(path.join(tmpDir, '.autocrudrc.json'), 'utf-8'));
+      const content = JSON.parse(await fs.readFile(path.join(tmpDir, '.specstarrc.json'), 'utf-8'));
       expect(content.mantineVersion).toBe('7');
     });
 
-    it('writes .autocrudrc.json with version 8', async () => {
+    it('writes .specstarrc.json with version 8', async () => {
       await writeVersionConfig(tmpDir, '8');
 
-      const content = JSON.parse(await fs.readFile(path.join(tmpDir, '.autocrudrc.json'), 'utf-8'));
+      const content = JSON.parse(await fs.readFile(path.join(tmpDir, '.specstarrc.json'), 'utf-8'));
       expect(content.mantineVersion).toBe('8');
     });
   });
@@ -263,13 +263,13 @@ describe('mantineVersion', () => {
     });
 
     it('returns "7" as default when file is invalid JSON', async () => {
-      await fs.writeFile(path.join(tmpDir, '.autocrudrc.json'), 'not json');
+      await fs.writeFile(path.join(tmpDir, '.specstarrc.json'), 'not json');
       const version = await readVersionConfig(tmpDir);
       expect(version).toBe('7');
     });
 
     it('returns "7" as default when mantineVersion field is unexpected', async () => {
-      await fs.writeFile(path.join(tmpDir, '.autocrudrc.json'), '{"mantineVersion": "6"}');
+      await fs.writeFile(path.join(tmpDir, '.specstarrc.json'), '{"mantineVersion": "6"}');
       const version = await readVersionConfig(tmpDir);
       expect(version).toBe('7');
     });

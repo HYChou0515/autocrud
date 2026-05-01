@@ -13,7 +13,7 @@ export interface InitOptions {
 
 export async function initProject(projectName: string, targetDir: string, options: InitOptions = {}): Promise<void> {
   const mantineVersion = options.mantineVersion ?? '7';
-  console.log(`\n🚀 Initializing AutoCRUD Web project: ${projectName} (Mantine ${mantineVersion})\n`);
+  console.log(`\n🚀 Initializing SpecStar Web project: ${projectName} (Mantine ${mantineVersion})\n`);
 
   const projectPath = path.join(targetDir, projectName);
   const templatePath = path.join(__dirname, '../../templates/base');

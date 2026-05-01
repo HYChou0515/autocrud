@@ -1,17 +1,17 @@
-# AutoCRUD Web — Integration Guide
+# SpecStar Web — Integration Guide
 
-將 AutoCRUD 自動生成的管理介面整合到你既有的 React 專案中。
+將 SpecStar 自動生成的管理介面整合到你既有的 React 專案中。
 
 ## 概覽
 
-`autocrud-web integrate` 命令會將必要的 library 檔案複製到你的專案中，並從你的 AutoCRUD 後端生成 API client 和路由頁面，**不會覆請**你的 `package.json`、`tsconfig.json`、`vite.config.ts` 等頂層設定檔。
+`specstar-web integrate` 命令會將必要的 library 檔案複製到你的專案中，並從你的 SpecStar 後端生成 API client 和路由頁面，**不會覆請**你的 `package.json`、`tsconfig.json`、`vite.config.ts` 等頂層設定檔。
 
 ## 前置條件
 
 - Node.js >= 18
 - pnpm（推薦）或 npm/yarn
 - 既有的 React + Vite 專案
-- 運行中的 AutoCRUD 後端（提供 `/openapi.json`）
+- 運行中的 SpecStar 後端（提供 `/openapi.json`）
 
 ## Step 1：安裝依賴
 
@@ -99,28 +99,28 @@ export default {
 
 ## Step 5：執行 Integrate
 
-確保你的 AutoCRUD 後端正在運行，然後在你的專案根目錄執行：
+確保你的 SpecStar 後端正在運行，然後在你的專案根目錄執行：
 
 ```bash
 # 基本用法（後端在 localhost:8000，spec 在 /openapi.json）
-npx autocrud-web integrate --url http://localhost:8000
+npx specstar-web integrate --url http://localhost:8000
 
 # 如果後端有路徑前綴
-npx autocrud-web integrate --url http://localhost:8000 --base-path /api/v1
+npx specstar-web integrate --url http://localhost:8000 --base-path /api/v1
 
 # 如果 OpenAPI spec 在不同路徑
-npx autocrud-web integrate --url http://localhost:8000 --openapi-path /api/v1/openapi.json
+npx specstar-web integrate --url http://localhost:8000 --openapi-path /api/v1/openapi.json
 
 # 指定不同的 output 目錄
-npx autocrud-web integrate --url http://localhost:8000 --output src
+npx specstar-web integrate --url http://localhost:8000 --output src
 ```
 
 這會：
-1. 複製 `src/autocrud/lib/`（components、hooks、utils、client.ts）
-2. 複製 `src/autocrud/types/`（API type definitions）
-3. 複製 layout route 檔案（`__root.tsx`、`autocrud-admin.tsx`）
-4. 從你的後端生成 `src/autocrud/generated/`（types、API clients）
-5. 生成路由頁面到 `src/routes/autocrud-admin/`
+1. 複製 `src/specstar/lib/`（components、hooks、utils、client.ts）
+2. 複製 `src/specstar/types/`（API type definitions）
+3. 複製 layout route 檔案（`__root.tsx`、`specstar-admin.tsx`）
+4. 從你的後端生成 `src/specstar/generated/`（types、API clients）
+5. 生成路由頁面到 `src/routes/specstar-admin/`
 6. 寫入 `.env` 設定 `VITE_API_URL`
 
 ## Step 6：設定 App 入口
@@ -141,7 +141,7 @@ function App() {
     <MantineProvider>
       <Notifications />
       {/* 你原有的 app 內容 */}
-      {/* AutoCRUD 路由會自動透過 TanStack Router 掛載在 /autocrud-admin 下 */}
+      {/* SpecStar 路由會自動透過 TanStack Router 掛載在 /specstar-admin 下 */}
     </MantineProvider>
   )
 }
@@ -149,14 +149,14 @@ function App() {
 
 ### 如果你使用 TanStack Router
 
-AutoCRUD 生成的路由使用 file-based routing（TanStack Router plugin）。生成的路由結構：
+SpecStar 生成的路由使用 file-based routing（TanStack Router plugin）。生成的路由結構：
 
 ```
 src/routes/
 ├── __root.tsx              ← Layout（含 navbar）
-├── autocrud-admin.tsx      ← Admin layout
+├── specstar-admin.tsx      ← Admin layout
 ├── index.tsx               ← 首頁
-└── autocrud-admin/
+└── specstar-admin/
     ├── index.tsx            ← Dashboard
     ├── {resource}/
     │   ├── index.tsx        ← List page
@@ -169,8 +169,8 @@ src/routes/
 你需要手動把生成的頁面組件整合到你的 router 設定中。生成的頁面組件都可以獨立使用：
 
 ```tsx
-import { ResourceTable } from '@/autocrud/lib/components/ResourceTable'
-import { getResource } from '@/autocrud/lib/resources'
+import { ResourceTable } from '@/specstar/lib/components/ResourceTable'
+import { getResource } from '@/specstar/lib/resources'
 
 // 在你的路由中使用
 function UsersPage() {
@@ -189,13 +189,13 @@ pnpm dev
 
 打開瀏覽器，前往：
 - `http://localhost:5173/` — 首頁
-- `http://localhost:5173/autocrud-admin` — AutoCRUD 管理介面
+- `http://localhost:5173/specstar-admin` — SpecStar 管理介面
 
 ## CLI 參數參考
 
 | 參數 | 說明 | 預設值 |
 |---|---|---|
-| `-u, --url <api-url>` | AutoCRUD 後端 URL | `http://localhost:8000` |
+| `-u, --url <api-url>` | SpecStar 後端 URL | `http://localhost:8000` |
 | `-o, --output <directory>` | 輸出目錄（你的 src/） | `src` |
 | `--openapi-path <path>` | OpenAPI spec 路徑 | `/openapi.json` |
 | `--base-path <path>` | API 路徑前綴（自動偵測若省略） | 自動偵測 |
@@ -206,24 +206,24 @@ pnpm dev
 integrate 命令會建立/複製以下檔案：
 
 ### 自動複製（library）
-- `src/autocrud/lib/client.ts` — Axios HTTP client
-- `src/autocrud/lib/resources.ts` — Resource registry
-- `src/autocrud/lib/resourceCustomization.ts` — Customization utilities
-- `src/autocrud/lib/components/` — 所有 UI 組件
-- `src/autocrud/lib/hooks/` — React hooks
-- `src/autocrud/lib/utils/` — Utility functions
-- `src/autocrud/lib/types/` — Internal types
-- `src/autocrud/types/api.ts` — API type definitions
+- `src/specstar/lib/client.ts` — Axios HTTP client
+- `src/specstar/lib/resources.ts` — Resource registry
+- `src/specstar/lib/resourceCustomization.ts` — Customization utilities
+- `src/specstar/lib/components/` — 所有 UI 組件
+- `src/specstar/lib/hooks/` — React hooks
+- `src/specstar/lib/utils/` — Utility functions
+- `src/specstar/lib/types/` — Internal types
+- `src/specstar/types/api.ts` — API type definitions
 
 ### 自動生成（from OpenAPI）
-- `src/autocrud/generated/types.ts` — TypeScript interfaces
-- `src/autocrud/generated/resources.ts` — Resource metadata
-- `src/autocrud/generated/api/` — API clients (one per resource)
+- `src/specstar/generated/types.ts` — TypeScript interfaces
+- `src/specstar/generated/resources.ts` — Resource metadata
+- `src/specstar/generated/api/` — API clients (one per resource)
 
 ### 自動生成（routes）
 - `src/routes/index.tsx` — Root page
-- `src/routes/autocrud-admin/index.tsx` — Dashboard
-- `src/routes/autocrud-admin/{resource}/` — CRUD pages
+- `src/routes/specstar-admin/index.tsx` — Dashboard
+- `src/routes/specstar-admin/{resource}/` — CRUD pages
 
 ### 不會被覆蓋
 - `package.json`
@@ -240,7 +240,7 @@ integrate 命令會建立/複製以下檔案：
 Generator 會自動偵測路徑前綴。如果自動偵測有問題，可以手動指定：
 
 ```bash
-npx autocrud-web integrate --url http://localhost:8000 --base-path /api/v1
+npx specstar-web integrate --url http://localhost:8000 --base-path /api/v1
 ```
 
 ### Q: 生成後的 API client 打的是什麼 URL？
@@ -254,16 +254,16 @@ integrate/generate 命令會自動寫入 `.env`。
 ### Q: 我可以修改生成的檔案嗎？
 
 可以！生成的路由和 API client 可以自由修改。但注意：
-- `src/autocrud/generated/` 下的檔案會在 re-generate 時被覆蓋
-- `src/routes/autocrud-admin/` 下的路由也會被重新生成
-- `src/autocrud/lib/` 下的 library 檔案不會被 `generate` 覆蓋，只有 `integrate` 會更新
+- `src/specstar/generated/` 下的檔案會在 re-generate 時被覆蓋
+- `src/routes/specstar-admin/` 下的路由也會被重新生成
+- `src/specstar/lib/` 下的 library 檔案不會被 `generate` 覆蓋，只有 `integrate` 會更新
 
 ### Q: 如何更新 library 到新版本？
 
 重新執行 `integrate` 命令會更新 `src/lib/` 和 `src/types/` 目錄：
 
 ```bash
-npx autocrud-web integrate --url http://localhost:8000
+npx specstar-web integrate --url http://localhost:8000
 ```
 
 ### Q: 我的 tsconfig 有自訂設定，會衝突嗎？

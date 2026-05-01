@@ -1,6 +1,6 @@
 # Route Templates
 
-AutoCRUD generates FastAPI endpoints by applying a set of **route templates** to each registered resource.
+SpecStar generates FastAPI endpoints by applying a set of **route templates** to each registered resource.
 
 A **route template** is a small unit of endpoint generation logic:
 
@@ -38,7 +38,7 @@ class IRouteTemplate(ABC):
         ...
 ```
 
-AutoCRUD provides a shared base class `BaseRouteTemplate`:
+SpecStar provides a shared base class `BaseRouteTemplate`:
 
 * Accepts a `DependencyProvider` to inject consistent dependencies (e.g. current user, current time).
 * Implements comparable ordering so templates can be sorted.
@@ -73,7 +73,7 @@ Route templates typically need shared request-scoped inputs like:
 * `current_user`
 * `current_time`
 
-AutoCRUD centralizes those as injectable FastAPI dependencies via `DependencyProvider`.
+SpecStar centralizes those as injectable FastAPI dependencies via `DependencyProvider`.
 
 Default behavior (when not customized):
 
@@ -103,9 +103,9 @@ This makes templates reusable and consistent across apps, while still allowing u
 
 ---
 
-## How AutoCRUD applies route templates
+## How SpecStar applies route templates
 
-AutoCRUD holds:
+SpecStar holds:
 
 * `resource_managers`: `{resource_name -> ResourceManager}`
 * `route_templates`: list of `IRouteTemplate`
@@ -116,7 +116,7 @@ When you call:
 crud.apply(app)
 ```
 
-AutoCRUD will:
+SpecStar will:
 
 1. Validate `Ref` targets (warn on dangling refs)
 2. Install referential integrity handlers
@@ -146,7 +146,7 @@ A failing template will be skipped so that unrelated routes can still be generat
 
 ## Default templates
 
-If you do not pass `route_templates` explicitly, AutoCRUD builds a default list:
+If you do not pass `route_templates` explicitly, SpecStar builds a default list:
 
 ```python
 [
@@ -262,7 +262,7 @@ Export supports the same query parameters as search/list (e.g. `qb`, `is_deleted
 
 ## Custom templates
 
-You can extend AutoCRUD by providing your own `IRouteTemplate` implementation:
+You can extend SpecStar by providing your own `IRouteTemplate` implementation:
 
 * Add completely new endpoints
 * Add “derived views” (e.g. `/search`, `/stats`, `/summary`)
@@ -278,14 +278,14 @@ Recommended pattern:
 
 ## Design rationale (why templates?)
 
-Route templates exist to keep AutoCRUD:
+Route templates exist to keep SpecStar:
 
 * **Composable**: add/remove route families without rewriting everything
 * **Extensible**: users can ship custom endpoints as templates
 * **Testable**: each template can be tested in isolation
 * **Consistent**: shared dependencies and response patterns across endpoints
 
-This architecture is what allows AutoCRUD to grow beyond “CRUD” into:
+This architecture is what allows SpecStar to grow beyond “CRUD” into:
 
 * versioning primitives (switch)
 * job workflows (rerun)

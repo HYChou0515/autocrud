@@ -5,8 +5,8 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
 
 
 class User(msgspec.Struct):
@@ -20,21 +20,21 @@ class Post(msgspec.Struct):
 
 
 @pytest.fixture
-def autocrud():
-    """Create AutoCRUD instance with GraphQL support"""
-    crud = AutoCRUD(model_naming="kebab")
-    crud.add_route_template(GraphQLRouteTemplate())
-    crud.add_model(User, indexed_fields=["name"])
-    crud.add_model(Post, indexed_fields=["title"])
-    return crud
+def specstar():
+    """Create SpecStar instance with GraphQL support"""
+    spec = SpecStar(model_naming="kebab")
+    spec.add_route_template(GraphQLRouteTemplate())
+    spec.add_model(User, indexed_fields=["name"])
+    spec.add_model(Post, indexed_fields=["title"])
+    return spec
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     """Create test client"""
     app = FastAPI()
     router = APIRouter()
-    autocrud.apply(router)
+    specstar.apply(router)
     app.include_router(router)
     return TestClient(app)
 
@@ -73,10 +73,10 @@ def test_unified_schema_structure(client: TestClient):
     assert "post_list" in field_names
 
 
-def test_query_multiple_resources(autocrud, client):
+def test_query_multiple_resources(specstar, client):
     # Inject data manually
-    user_rm = autocrud.get_resource_manager(User)
-    post_rm = autocrud.get_resource_manager(Post)
+    user_rm = specstar.get_resource_manager(User)
+    post_rm = specstar.get_resource_manager(Post)
 
     with user_rm.meta_provide("admin", dt.datetime.now()):
         user_rm.create(User(name="Alice", age=30))

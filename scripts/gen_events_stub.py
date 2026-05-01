@@ -1,8 +1,8 @@
-"""Generate ``autocrud/events.pyi`` from the live runtime defstruct results.
+"""Generate ``specstar/events.pyi`` from the live runtime defstruct results.
 
 Why this exists
 ---------------
-``autocrud/events.py`` builds 64 event-context Struct classes via
+``specstar/events.py`` builds 64 event-context Struct classes via
 ``msgspec.defstruct(...)`` from a handful of composable atom lists
 (``_base_context``, ``_before_context``, ``_create_context``, ...).
 This is great for runtime DRY, but ``defstruct`` returns a bare
@@ -15,7 +15,7 @@ it that spells out every class explicitly. Type checkers prefer the
 ``.pyi`` over the ``.py`` (PEP 484), runtime ignores the stub.
 
 Run with:
-    uv run python scripts/gen_events_stub.py > autocrud/events.pyi
+    uv run python scripts/gen_events_stub.py > specstar/events.pyi
 or:
     make stubs
 """
@@ -31,7 +31,7 @@ from typing import Any, get_args, get_origin
 
 import msgspec
 
-import autocrud.events as ev
+import specstar.events as ev
 
 SENTINEL_DEFAULT = msgspec.NODEFAULT
 
@@ -57,7 +57,7 @@ def _qualname(t: Any) -> str:
         if t.__module__ in ("typing", "collections.abc"):
             # IO, Generator, Sequence, Callable — all imported flat
             return t.__name__
-        if t.__module__.startswith("autocrud."):
+        if t.__module__.startswith("specstar."):
             return t.__name__
         # Fallback: fully qualified
         return f"{t.__module__}.{t.__name__}"
@@ -203,7 +203,7 @@ def main() -> None:
     )
 
     out: list[str] = []
-    out.append('"""Auto-generated stub for autocrud.events."""')
+    out.append('"""Auto-generated stub for specstar.events."""')
     out.append("# THIS FILE IS GENERATED — do not edit by hand.")
     out.append("# Regenerate with: make stubs")
     out.append("")
@@ -222,13 +222,13 @@ def main() -> None:
     # Use explicit ``as`` re-exports so ty/pyright honour PEP 484 stub
     # re-export rules: bare ``from X import Y`` in a .pyi is private.
     out.append(
-        "from autocrud.query_types import ResourceMetaSearchQuery as ResourceMetaSearchQuery"
+        "from specstar.query_types import ResourceMetaSearchQuery as ResourceMetaSearchQuery"
     )
-    out.append("from autocrud.types import Resource as Resource")
-    out.append("from autocrud.types import ResourceAction as ResourceAction")
-    out.append("from autocrud.types import ResourceMeta as ResourceMeta")
-    out.append("from autocrud.types import RevisionInfo as RevisionInfo")
-    out.append("from autocrud.types import RevisionStatus as RevisionStatus")
+    out.append("from specstar.types import Resource as Resource")
+    out.append("from specstar.types import ResourceAction as ResourceAction")
+    out.append("from specstar.types import ResourceMeta as ResourceMeta")
+    out.append("from specstar.types import RevisionInfo as RevisionInfo")
+    out.append("from specstar.types import RevisionStatus as RevisionStatus")
     out.append("")
     out.append('T = TypeVarExt("T", default=None)')
     out.append("")

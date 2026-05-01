@@ -1,6 +1,6 @@
-# AutoCRUD Web Generator
+# SpecStar Web Generator
 
-🚀 Code generator for AutoCRUD frontend applications. Automatically generates a complete React/TypeScript/Mantine web application from your AutoCRUD API's OpenAPI specification.
+🚀 Code generator for SpecStar frontend applications. Automatically generates a complete React/TypeScript/Mantine web application from your SpecStar API's OpenAPI specification.
 
 ## Features
 
@@ -15,9 +15,9 @@
 ## Installation
 
 ```bash
-npm install -g autocrud-web-generator
+npm install -g specstar-web-generator
 # or
-pnpm add -g autocrud-web-generator
+pnpm add -g specstar-web-generator
 ```
 
 ## Usage
@@ -25,14 +25,14 @@ pnpm add -g autocrud-web-generator
 ### Initialize a New Project
 
 ```bash
-autocrud-web init my-app
+specstar-web init my-app
 cd my-app
 pnpm install
 ```
 
 ### Generate Code from API
 
-Make sure your AutoCRUD backend is running, then:
+Make sure your SpecStar backend is running, then:
 
 ```bash
 pnpm generate --url http://localhost:8000
@@ -48,21 +48,21 @@ Visit `http://localhost:5173` to see your generated app.
 
 ## CLI Commands
 
-### `autocrud-web init <project-name>`
+### `specstar-web init <project-name>`
 
-Initialize a new AutoCRUD Web project.
+Initialize a new SpecStar Web project.
 
 Options:
 - `-d, --dir <directory>`: Target directory (default: current directory)
 
 Example:
 ```bash
-autocrud-web init my-game-admin
+specstar-web init my-game-admin
 ```
 
-### `autocrud-web generate`
+### `specstar-web generate`
 
-Generate code from AutoCRUD API OpenAPI spec.
+Generate code from SpecStar API OpenAPI spec.
 
 Options:
 - `-u, --url <api-url>`: Backend API URL — used to fetch the OpenAPI spec and written to `.env` as the Vite dev proxy target (default: `http://localhost:8000`)
@@ -72,9 +72,9 @@ Options:
 
 Example:
 ```bash
-autocrud-web generate --url http://localhost:8000
+specstar-web generate --url http://localhost:8000
 # With non-root API prefix:
-autocrud-web generate --url http://localhost:8000 --base-path /api/v1
+specstar-web generate --url http://localhost:8000 --base-path /api/v1
 ```
 
 After running, `.env` will contain:
@@ -83,14 +83,14 @@ VITE_API_URL=/api
 API_PROXY_TARGET=http://localhost:8000
 ```
 
-### `autocrud-web integrate`
+### `specstar-web integrate`
 
-Integrate AutoCRUD generated code into an **existing** React project without overwriting your `package.json`, `tsconfig`, `vite.config.ts`, etc.
+Integrate SpecStar generated code into an **existing** React project without overwriting your `package.json`, `tsconfig`, `vite.config.ts`, etc.
 
 Options: same as `generate`.
 
 ```bash
-autocrud-web integrate --url http://localhost:8000
+specstar-web integrate --url http://localhost:8000
 ```
 
 See [INTEGRATION.md](INTEGRATION.md) for a detailed step-by-step guide.
@@ -100,7 +100,7 @@ See [INTEGRATION.md](INTEGRATION.md) for a detailed step-by-step guide.
 ```
 my-app/
 ├── src/
-│   ├── autocrud/
+│   ├── specstar/
 │   │   ├── generated/           # Auto-generated (gitignored)
 │   │   │   ├── types.ts         # TypeScript interfaces
 │   │   │   ├── resources.ts     # Resource registry
@@ -119,7 +119,7 @@ my-app/
 │   ├── routes/
 │   │   ├── __root.tsx           # Root layout
 │   │   ├── index.tsx            # Dashboard
-│   │   ├── autocrud-admin/
+│   │   ├── specstar-admin/
 │   │   │   ├── character/
 │   │   │   │   ├── index.tsx    # List page
 │   │   │   │   ├── create.tsx   # Create page
@@ -143,7 +143,7 @@ my-app/
 
 ## Development Workflow
 
-1. **Initialize**: `autocrud-web init my-app`
+1. **Initialize**: `specstar-web init my-app`
 2. **Install dependencies**: `pnpm install`
 3. **Generate code**: `pnpm generate --url http://your-api:8000`
 4. **Start dev server**: `pnpm dev`
@@ -152,7 +152,7 @@ my-app/
 ## Requirements
 
 - Node.js >= 18.0.0
-- AutoCRUD backend with OpenAPI spec at `/openapi.json`
+- SpecStar backend with OpenAPI spec at `/openapi.json`
 
 ## API Proxy & Environment Variables
 
@@ -185,7 +185,7 @@ See `.env.example` for reference.
 No extra config needed — just start the backend and the dev server:
 
 ```bash
-# Terminal 1: Start your AutoCRUD backend
+# Terminal 1: Start your SpecStar backend
 uv run python examples/rpg_game_api.py
 
 # Terminal 2: Start the frontend dev server

@@ -14,22 +14,22 @@ import redis
 from faker import Faker
 from msgspec import UNSET, Struct, UnsetType
 
-from autocrud.query_types import (
+from specstar.query_types import (
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
-from autocrud.resource_manager.core import (
+from specstar.resource_manager.core import (
     IResourceStore,
     ResourceManager,
     SimpleStorage,
 )
-from autocrud.resource_manager.resource_store.simple import (
+from specstar.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
-from autocrud.types import (
+from specstar.types import (
     CannotModifyResourceError,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
@@ -115,7 +115,7 @@ def get_resource_store(
         d.mkdir()
         yield DiskResourceStore(encoding="msgpack", rootdir=d)  # ty:ignore[invalid-argument-type]
     elif store_type == "s3":
-        from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
+        from specstar.resource_manager.resource_store.s3 import S3ResourceStore
 
         s3 = S3ResourceStore(
             encoding="msgpack",  # ty:ignore[invalid-argument-type]
@@ -129,7 +129,7 @@ def get_resource_store(
         except Exception as e:
             print(f"Error cleaning up S3 store: {e}")
     elif store_type == "postgres":
-        from autocrud.resource_manager.resource_store.postgres import (
+        from specstar.resource_manager.resource_store.postgres import (
             PostgresResourceStore,
         )
 

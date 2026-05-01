@@ -5,7 +5,7 @@ Covers:
 - SimpleStorage.save_revisions_bulk
 - SimpleStorage.save_metas_bulk
 - ResourceManager.load_records_bulk
-- AutoCRUD.load uses bulk path
+- SpecStar.load uses bulk path
 - Full roundtrip with bulk load
 - on_duplicate strategies with bulk load
 """
@@ -18,14 +18,14 @@ import io
 import pytest
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.resource_manager.dump_format import (
+from specstar.crud.core import SpecStar
+from specstar.resource_manager.dump_format import (
     BlobRecord,
     DumpStreamReader,
     MetaRecord,
     RevisionRecord,
 )
-from autocrud.types import (
+from specstar.types import (
     Binary,
     DuplicateResourceError,
     OnDuplicate,
@@ -56,15 +56,15 @@ class BlobItem(Struct):
 # ---------------------------------------------------------------------------
 
 
-def _make_crud(*models, indexed_fields=None, **kw) -> AutoCRUD:
-    crud = AutoCRUD(**kw)
+def _make_crud(*models, indexed_fields=None, **kw) -> SpecStar:
+    spec = SpecStar(**kw)
     for m in models:
-        crud.add_model(m, indexed_fields=indexed_fields)
-    return crud
+        spec.add_model(m, indexed_fields=indexed_fields)
+    return spec
 
 
-def _create_items(crud: AutoCRUD, model, items, user="test"):
-    mgr = crud.get_resource_manager(model)
+def _create_items(spec: SpecStar, model, items, user="test"):
+    mgr = spec.get_resource_manager(model)
     ids = []
     with mgr.meta_provide(user, dt.datetime(2025, 1, 1)):
         for item in items:
@@ -73,14 +73,14 @@ def _create_items(crud: AutoCRUD, model, items, user="test"):
     return ids
 
 
-def _dump_to_bytes(crud: AutoCRUD, **kw) -> bytes:
+def _dump_to_bytes(spec: SpecStar, **kw) -> bytes:
     bio = io.BytesIO()
-    crud.dump(bio, **kw)
+    spec.dump(bio, **kw)
     return bio.getvalue()
 
 
-def _load_from_bytes(crud: AutoCRUD, data: bytes, **kw):
-    return crud.load(io.BytesIO(data), **kw)
+def _load_from_bytes(spec: SpecStar, data: bytes, **kw):
+    return spec.load(io.BytesIO(data), **kw)
 
 
 def _get_records_by_type(data: bytes):
@@ -101,12 +101,12 @@ def _get_records_by_type(data: bytes):
 class TestMemoryResourceStoreSaveMany:
     def test_save_many_stores_revisions(self):
         """save_many writes all revisions to the store."""
-        crud = _make_crud(Item)
-        mgr = crud.get_resource_manager(Item)
+        spec = _make_crud(Item)
+        mgr = spec.get_resource_manager(Item)
 
         # Create some items, dump, collect revision data
-        _create_items(crud, Item, [Item("a", 1), Item("b", 2)])
-        data = _dump_to_bytes(crud)
+        _create_items(spec, Item, [Item("a", 1), Item("b", 2)])
+        data = _dump_to_bytes(spec)
         _, revisions, _ = _get_records_by_type(data)
 
         # Decode the revisions
@@ -127,8 +127,8 @@ class TestMemoryResourceStoreSaveMany:
 
     def test_save_many_empty_list(self):
         """save_many with empty list does nothing."""
-        crud = _make_crud(Item)
-        mgr = crud.get_resource_manager(Item)
+        spec = _make_crud(Item)
+        mgr = spec.get_resource_manager(Item)
         store = mgr.storage._resource_store  # ty:ignore[unresolved-attribute]
         store.save_many([])
         assert list(store.list_resources()) == []
@@ -142,12 +142,12 @@ class TestMemoryResourceStoreSaveMany:
 class TestSimpleStorageBulk:
     def test_save_metas_bulk(self):
         """save_metas_bulk writes multiple metas at once."""
-        crud = _make_crud(Item)
-        mgr = crud.get_resource_manager(Item)
+        spec = _make_crud(Item)
+        mgr = spec.get_resource_manager(Item)
 
         # Create and dump
-        _create_items(crud, Item, [Item("a", 1), Item("b", 2), Item("c", 3)])
-        data = _dump_to_bytes(crud)
+        _create_items(spec, Item, [Item("a", 1), Item("b", 2), Item("c", 3)])
+        data = _dump_to_bytes(spec)
         metas, _, _ = _get_records_by_type(data)
 
         # Decode metas
@@ -164,11 +164,11 @@ class TestSimpleStorageBulk:
 
     def test_save_revisions_bulk(self):
         """save_revisions_bulk writes multiple revisions at once."""
-        crud = _make_crud(Item)
-        mgr = crud.get_resource_manager(Item)
+        spec = _make_crud(Item)
+        mgr = spec.get_resource_manager(Item)
 
-        _create_items(crud, Item, [Item("a", 1), Item("b", 2)])
-        data = _dump_to_bytes(crud)
+        _create_items(spec, Item, [Item("a", 1), Item("b", 2)])
+        data = _dump_to_bytes(spec)
         _, revisions, _ = _get_records_by_type(data)
 
         items_to_save = []
@@ -192,9 +192,9 @@ class TestSimpleStorageBulk:
 class TestResourceManagerLoadRecordsBulk:
     def test_load_records_bulk_overwrite(self):
         """load_records_bulk loads all records into storage."""
-        crud = _make_crud(Item)
-        _create_items(crud, Item, [Item("a", 1), Item("b", 2), Item("c", 3)])
-        data = _dump_to_bytes(crud)
+        spec = _make_crud(Item)
+        _create_items(spec, Item, [Item("a", 1), Item("b", 2), Item("c", 3)])
+        data = _dump_to_bytes(spec)
         metas, revisions, _ = _get_records_by_type(data)
 
         crud2 = _make_crud(Item)
@@ -215,9 +215,9 @@ class TestResourceManagerLoadRecordsBulk:
 
     def test_load_records_bulk_skip(self):
         """load_records_bulk with SKIP skips existing resources."""
-        crud = _make_crud(Item)
-        ids = _create_items(crud, Item, [Item("a", 1), Item("b", 2)])
-        data = _dump_to_bytes(crud)
+        spec = _make_crud(Item)
+        ids = _create_items(spec, Item, [Item("a", 1), Item("b", 2)])
+        data = _dump_to_bytes(spec)
         metas, revisions, _ = _get_records_by_type(data)
 
         # Pre-load
@@ -234,9 +234,9 @@ class TestResourceManagerLoadRecordsBulk:
 
     def test_load_records_bulk_raise_error(self):
         """load_records_bulk with RAISE_ERROR raises on duplicate."""
-        crud = _make_crud(Item)
-        _create_items(crud, Item, [Item("a", 1)])
-        data = _dump_to_bytes(crud)
+        spec = _make_crud(Item)
+        _create_items(spec, Item, [Item("a", 1)])
+        data = _dump_to_bytes(spec)
         metas, revisions, _ = _get_records_by_type(data)
 
         # Pre-load
@@ -251,22 +251,22 @@ class TestResourceManagerLoadRecordsBulk:
 
     def test_load_records_bulk_empty(self):
         """load_records_bulk with no records returns zero stats."""
-        crud = _make_crud(Item)
-        mgr = crud.get_resource_manager(Item)
+        spec = _make_crud(Item)
+        mgr = spec.get_resource_manager(Item)
         stats = mgr.load_records_bulk([], [], [], on_duplicate=OnDuplicate.overwrite)
         assert stats.loaded == 0
         assert stats.total == 0
 
     def test_load_records_bulk_with_revisions(self):
         """Resources with multiple revisions load correctly in bulk."""
-        crud = _make_crud(Item)
-        ids = _create_items(crud, Item, [Item("a", 1)])
+        spec = _make_crud(Item)
+        ids = _create_items(spec, Item, [Item("a", 1)])
         rid = ids[0]
-        mgr = crud.get_resource_manager(Item)
+        mgr = spec.get_resource_manager(Item)
         with mgr.meta_provide("user", dt.datetime(2025, 1, 2)):
             mgr.update(rid, Item(name="a_v2", value=100))
 
-        data = _dump_to_bytes(crud)
+        data = _dump_to_bytes(spec)
         metas, revisions, _ = _get_records_by_type(data)
         assert len(revisions) == 2  # two revisions
 
@@ -293,9 +293,9 @@ class TestResourceManagerLoadRecordsBulk:
             def handle_event(self, ctx):
                 events_seen.append(type(ctx).__name__)
 
-        crud = _make_crud(Item, event_handlers=[SpyEventHandler()])
-        _create_items(crud, Item, [Item("a", 1)])
-        data = _dump_to_bytes(crud)
+        spec = _make_crud(Item, event_handlers=[SpyEventHandler()])
+        _create_items(spec, Item, [Item("a", 1)])
+        data = _dump_to_bytes(spec)
         metas, revisions, _ = _get_records_by_type(data)
 
         crud2 = _make_crud(Item, event_handlers=[SpyEventHandler()])
@@ -310,11 +310,11 @@ class TestResourceManagerLoadRecordsBulk:
 
 
 # ============================================================================
-# D. AutoCRUD.load uses bulk path
+# D. SpecStar.load uses bulk path
 # ============================================================================
 
 
-class TestAutoCRUDLoadBulk:
+class TestSpecStarLoadBulk:
     def test_roundtrip_basic(self):
         """Dump → bulk load produces identical data."""
         crud1 = _make_crud(Item, Widget)
@@ -444,7 +444,7 @@ class TestAutoCRUDLoadBulk:
         # Verify data integrity
         mgr_item = crud2.get_resource_manager(Item)
         mgr_widget = crud2.get_resource_manager(Widget)
-        from autocrud.query_types import ResourceMetaSearchQuery
+        from specstar.query_types import ResourceMetaSearchQuery
 
         q = ResourceMetaSearchQuery()
         assert mgr_item.count_resources(q) == 2
@@ -452,7 +452,7 @@ class TestAutoCRUDLoadBulk:
 
     def test_load_with_blobs(self):
         """Bulk load with blob records works correctly."""
-        crud1 = AutoCRUD()
+        crud1 = SpecStar()
         crud1.add_model(BlobItem)
         mgr1 = crud1.get_resource_manager(BlobItem)
         with mgr1.meta_provide("user", dt.datetime(2025, 1, 1)):
@@ -464,14 +464,14 @@ class TestAutoCRUDLoadBulk:
             )
 
         data = _dump_to_bytes(crud1)
-        crud2 = AutoCRUD()
+        crud2 = SpecStar()
         crud2.add_model(BlobItem)
         stats = _load_from_bytes(crud2, data)
         assert stats["blob-item"].loaded == 1
 
         # Verify blob data is accessible
         mgr2 = crud2.get_resource_manager(BlobItem)
-        from autocrud.query_types import ResourceMetaSearchQuery as _Q
+        from specstar.query_types import ResourceMetaSearchQuery as _Q
 
         metas = mgr2.search_resources(_Q())
         item = mgr2.get(metas[0].resource_id)

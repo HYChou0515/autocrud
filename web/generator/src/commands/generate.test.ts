@@ -230,7 +230,7 @@ describe('writeEnvFile', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autocrud-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specstar-test-'));
   });
 
   afterEach(() => {

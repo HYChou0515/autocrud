@@ -1,0 +1,37 @@
+[project]
+name = "autocrud"
+version = "0.10.0"
+description = "Deprecated alias for specstar. See https://github.com/HYChou0515/specstar"
+readme = "README.md"
+license = {file = "../LICENSE"}
+requires-python = ">=3.11"
+authors = [
+    {name = "HYChou0515", email = "hychou.svm@example.com"}
+]
+keywords = ["fastapi", "crud", "api", "automation", "rest", "deprecated", "specstar"]
+classifiers = [
+    "Development Status :: 7 - Inactive",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "specstar==0.10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/HYChou0515/specstar"
+Documentation = "https://github.com/HYChou0515/specstar/blob/master/MIGRATION.md"
+Repository = "https://github.com/HYChou0515/specstar.git"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["autocrud"]

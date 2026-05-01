@@ -1,4 +1,4 @@
-"""Test global crud instance and configure() method."""
+"""Test global spec instance and configure() method."""
 
 import tempfile
 from pathlib import Path
@@ -7,10 +7,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud import AutoCRUD
-from autocrud.permission.simple import AllowAll
-from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.storage_factory import (
+from specstar import SpecStar
+from specstar.permission.simple import AllowAll
+from specstar.resource_manager.basic import Encoding
+from specstar.resource_manager.storage_factory import (
     DiskStorageFactory,
     MemoryStorageFactory,
 )
@@ -31,17 +31,17 @@ class Product(Struct):
 
 
 def test_global_crud_instance_exists():
-    """Test that global crud instance is available."""
-    from autocrud import crud
+    """Test that global spec instance is available."""
+    from specstar import spec
 
-    assert crud is not None
-    assert isinstance(crud, AutoCRUD)
+    assert spec is not None
+    assert isinstance(spec, SpecStar)
 
 
 def test_global_crud_can_add_models():
-    """Test that global crud instance can register models."""
+    """Test that global spec instance can register models."""
     # Create a fresh instance for this test
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
     test_crud.add_model(User)
 
     # Verify model was registered
@@ -52,7 +52,7 @@ def test_global_crud_can_add_models():
 
 def test_configure_storage_factory():
     """Test configuring storage_factory via configure()."""
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     # Initial storage should be MemoryStorageFactory
     assert isinstance(test_crud.storage_factory, MemoryStorageFactory)
@@ -71,7 +71,7 @@ def test_configure_storage_factory_none():
     """Test that configure(storage_factory=None) uses default MemoryStorageFactory."""
     import datetime as dt
 
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     # Configure with None should use MemoryStorageFactory
     test_crud.configure(storage_factory=None)
@@ -90,7 +90,7 @@ def test_configure_storage_factory_none():
 
 def test_configure_model_naming():
     """Test configuring model_naming via configure()."""
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     # Default is "kebab"
     assert test_crud.model_naming == "kebab"
@@ -102,7 +102,7 @@ def test_configure_model_naming():
 
 def test_configure_encoding():
     """Test configuring encoding via configure()."""
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     # Default is json
     assert test_crud.default_encoding == Encoding.json
@@ -114,7 +114,7 @@ def test_configure_encoding():
 
 def test_configure_admin_permission():
     """Test configuring admin with RBAC permission checker."""
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     # Default should be AllowAll
     assert isinstance(test_crud.permission_checker, AllowAll)
@@ -123,7 +123,7 @@ def test_configure_admin_permission():
     test_crud.configure(admin="admin@example.com")
 
     # Should now have RBAC checker
-    from autocrud.permission.rbac import RBACPermissionChecker
+    from specstar.permission.rbac import RBACPermissionChecker
 
     assert isinstance(test_crud.permission_checker, RBACPermissionChecker)
 
@@ -132,7 +132,7 @@ def test_configure_warns_after_models_registered(caplog):
     """Test that configure() warns if called after models are registered."""
     import logging
 
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
     test_crud.add_model(User)
 
     # Should log warning when configuring after registration
@@ -145,7 +145,7 @@ def test_configure_warns_after_models_registered(caplog):
 def test_global_pattern_workflow():
     """Test the complete global instance workflow."""
     # Create a fresh instance to simulate global usage
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     # Configure at startup (before registering models)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -179,7 +179,7 @@ def test_global_pattern_workflow():
 
 def test_configure_custom_naming_function():
     """Test configuring with custom naming function."""
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     def custom_naming(model_type: type) -> str:
         return f"custom_{model_type.__name__.lower()}"
@@ -195,10 +195,10 @@ def test_configure_event_handlers():
     """Test configuring event handlers."""
     from unittest.mock import Mock
 
-    from autocrud.events import do
-    from autocrud.types import ResourceAction
+    from specstar.events import do
+    from specstar.types import ResourceAction
 
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
     mock_handler = Mock()
 
     # Configure with event handler using do() function
@@ -221,7 +221,7 @@ def test_configure_event_handlers():
 
 def test_configure_partial_update():
     """Test that configure() only updates provided parameters."""
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     # Set initial state
     initial_naming = test_crud.model_naming
@@ -238,7 +238,7 @@ def test_configure_partial_update():
 
 def test_configure_multiple_times():
     """Test that configure() can be called multiple times."""
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     # First configuration
     test_crud.configure(model_naming="snake")
@@ -258,9 +258,9 @@ def test_configure_multiple_times():
 def test_documentation_example():
     """Test the example from the feature request documentation."""
     # Simulate the global instance
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
-    # This simulates: from autocrud import crud
+    # This simulates: from specstar import spec
     # (in real usage, this would be the global instance)
 
     # Configure once at startup (from main.py)
@@ -286,9 +286,9 @@ def test_documentation_example():
 
 def test_configure_dependency_provider():
     """Test configuring dependency provider."""
-    from autocrud.crud.route_templates.basic import DependencyProvider
+    from specstar.crud.route_templates.basic import DependencyProvider
 
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     async def custom_get_user():
         return "custom_user"
@@ -304,9 +304,9 @@ def test_configure_dependency_provider():
 
 def test_configure_route_templates_dict():
     """Test configuring route templates with dict."""
-    from autocrud.crud.route_templates.create import CreateRouteTemplate
+    from specstar.crud.route_templates.create import CreateRouteTemplate
 
-    test_crud = AutoCRUD()
+    test_crud = SpecStar()
 
     # Configure with dict to customize templates - use valid parameters
     test_crud.configure(
@@ -328,10 +328,10 @@ def test_configure_route_templates_dict():
 
 def test_global_instance_isolation():
     """Test that the global instance is separate from new instances."""
-    from autocrud import crud as global_crud
+    from specstar import spec as global_crud
 
     # Create a new instance
-    local_crud = AutoCRUD()
+    local_crud = SpecStar()
 
     # Configure local instance
     local_crud.configure(model_naming="snake")
@@ -358,7 +358,7 @@ def test_init_and_configure_consistency():
     """
     # Test 1: Create instance with __init__
     with tempfile.TemporaryDirectory() as tmpdir1:
-        crud1 = AutoCRUD(
+        crud1 = SpecStar(
             model_naming="snake",
             storage_factory=DiskStorageFactory(Path(tmpdir1)),
             encoding=Encoding.msgpack,
@@ -371,7 +371,7 @@ def test_init_and_configure_consistency():
 
     # Test 2: Create instance then configure - should have identical results
     with tempfile.TemporaryDirectory() as tmpdir2:
-        crud2 = AutoCRUD()
+        crud2 = SpecStar()
         crud2.configure(
             model_naming="snake",
             storage_factory=DiskStorageFactory(Path(tmpdir2)),
@@ -388,7 +388,7 @@ def test_shared_configuration_handles_all_parameters():
     """Test that _apply_configuration correctly handles all configuration parameters."""
     import datetime as dt
 
-    crud = AutoCRUD()
+    spec = SpecStar()
 
     # Test that we can configure all parameters via configure()
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -402,7 +402,7 @@ def test_shared_configuration_handles_all_parameters():
         def custom_now():
             return dt.datetime(2024, 1, 1)
 
-        crud.configure(
+        spec.configure(
             model_naming=custom_naming,
             storage_factory=DiskStorageFactory(Path(tmpdir)),
             encoding=Encoding.msgpack,
@@ -412,14 +412,14 @@ def test_shared_configuration_handles_all_parameters():
         )
 
         # Verify all configurations are applied
-        assert callable(crud.model_naming)
-        assert crud.model_naming(User) == "custom_User"
-        assert isinstance(crud.storage_factory, DiskStorageFactory)
-        assert crud.default_encoding == Encoding.msgpack
-        assert callable(crud.default_user)
-        assert crud.default_user() == "custom_user"  # ty:ignore[call-top-callable]
-        assert callable(crud.default_now)
-        assert crud.default_now() == dt.datetime(2024, 1, 1)
+        assert callable(spec.model_naming)
+        assert spec.model_naming(User) == "custom_User"
+        assert isinstance(spec.storage_factory, DiskStorageFactory)
+        assert spec.default_encoding == Encoding.msgpack
+        assert callable(spec.default_user)
+        assert spec.default_user() == "custom_user"  # ty:ignore[call-top-callable]
+        assert callable(spec.default_now)
+        assert spec.default_now() == dt.datetime(2024, 1, 1)
 
 
 def test_init_configure_consistency_validates_dry_principle():
@@ -431,9 +431,9 @@ def test_init_configure_consistency_validates_dry_principle():
     - No risk of __init__ and configure diverging over time
     """
     # Create two instances with identical parameters
-    crud1 = AutoCRUD(model_naming="snake", encoding=Encoding.msgpack)
+    crud1 = SpecStar(model_naming="snake", encoding=Encoding.msgpack)
 
-    crud2 = AutoCRUD()
+    crud2 = SpecStar()
     crud2.configure(model_naming="snake", encoding=Encoding.msgpack)
 
     # Both should have identical configuration

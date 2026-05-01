@@ -1,6 +1,6 @@
 # Search and indexing
 
-AutoCRUD provides query + search without forcing developers to touch a database.
+SpecStar provides query + search without forcing developers to touch a database.
 
 Search is based on a simple model:
 
@@ -42,7 +42,7 @@ Storage backends may impose practical constraints depending on implementation, b
 
 ## Flattened (shallow) keys
 
-AutoCRUD treats indexed fields as **flattened keys**, e.g.:
+SpecStar treats indexed fields as **flattened keys**, e.g.:
 
 * `"user.email"` is stored directly as a key in `indexed_data`
 
@@ -55,7 +55,7 @@ This matches the Query Builder behavior:
 
 * `QB["user.email"]` targets the key `"user.email"` in `indexed_data`
 
-If a configured path is missing or cannot be resolved, AutoCRUD simply skips that value instead of failing the indexing step. In practice, missing-key situations are ignored and the field is left out of `indexed_data`.
+If a configured path is missing or cannot be resolved, SpecStar simply skips that value instead of failing the indexing step. In practice, missing-key situations are ignored and the field is left out of `indexed_data`.
 
 ## What does search query over?
 
@@ -107,7 +107,7 @@ Sorting is supported on:
 
 ## Query Builder (recommended)
 
-AutoCRUD provides a Query Builder (“QB”) that makes filtering readable and safe.
+SpecStar provides a Query Builder (“QB”) that makes filtering readable and safe.
 
 Examples (conceptual):
 
@@ -141,5 +141,5 @@ In HTTP APIs, search/list endpoints generally accept:
 
 See also:
 
-- [Query System](/autocrud/concepts/query-system)
-- [Routes](/autocrud/howto/routes)
+- [Query System](/specstar/concepts/query-system)
+- [Routes](/specstar/howto/routes)

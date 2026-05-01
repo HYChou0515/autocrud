@@ -9,10 +9,10 @@ It is a lookup section, not the best first stop for brand-new users.
 
 ## Reference map
 
-- [Python API](/autocrud/reference/python_api) — public entry points, types, and exported helpers
-- [Backend configuration reference](/autocrud/reference/backend-configuration) — unified backend settings, built-in provider options, and lower-level factory mapping
-- [Query Builder reference](/autocrud/reference/query-builder) — complete QB method catalog, metadata helpers, and pagination behavior
-- [Behavior & initialization](/autocrud/reference/behavior) — startup order, mutation safety, and runtime expectations
+- [Python API](/specstar/reference/python_api) — public entry points, types, and exported helpers
+- [Backend configuration reference](/specstar/reference/backend-configuration) — unified backend settings, built-in provider options, and lower-level factory mapping
+- [Query Builder reference](/specstar/reference/query-builder) — complete QB method catalog, metadata helpers, and pagination behavior
+- [Behavior & initialization](/specstar/reference/behavior) — startup order, mutation safety, and runtime expectations
 
 ---
 
@@ -20,6 +20,6 @@ It is a lookup section, not the best first stop for brand-new users.
 
 Read the reference after one of these pages:
 
-- [Fast Demo](/autocrud/quickstart/fast-demo)
-- [Routes](/autocrud/howto/routes)
-- [Core Concepts](/autocrud/concepts/core-concepts)
+- [Fast Demo](/specstar/quickstart/fast-demo)
+- [Routes](/specstar/howto/routes)
+- [Core Concepts](/specstar/concepts/core-concepts)

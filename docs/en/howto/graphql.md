@@ -1,6 +1,6 @@
 # GraphQL
 
-AutoCRUD can expose a GraphQL query endpoint in addition to the REST API.
+SpecStar can expose a GraphQL query endpoint in addition to the REST API.
 
 This is useful when frontend or integration code wants more control over field selection and nested response shapes.
 
@@ -11,21 +11,21 @@ This is useful when frontend or integration code wants more control over field s
 Install the GraphQL extra first:
 
 ```bash
-pip install 'autocrud[graphql]'
+pip install 'specstar[graphql]'
 ```
 
 ---
 
 ## Enable the GraphQL route
 
-Add the GraphQL route template before applying AutoCRUD to your FastAPI app.
+Add the GraphQL route template before applying SpecStar to your FastAPI app.
 
 ```python
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import crud
-from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
+from specstar import crud
+from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
 
 
 class Character(Struct):
@@ -55,7 +55,7 @@ For a resource named `character`, the common query fields are:
 - `character` for a single resource by ID
 - `character_list` for searching and listing resources
 
-If your resource name contains hyphens, AutoCRUD normalizes it for GraphQL by using underscores.
+If your resource name contains hyphens, SpecStar normalizes it for GraphQL by using underscores.
 
 ---
 
@@ -140,6 +140,6 @@ Use GraphQL when your client benefits from selective response shapes, but keep u
 
 ## Related pages
 
-- [Routes generation](/autocrud/howto/routes)
-- [Query builder](/autocrud/howto/query-builder)
-- [Examples](/autocrud/examples/)
+- [Routes generation](/specstar/howto/routes)
+- [Query builder](/specstar/howto/query-builder)
+- [Examples](/specstar/examples/)

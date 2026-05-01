@@ -5,8 +5,8 @@ Covers:
 - BinaryProcessor.collect_file_ids
 - ResourceManager dump with QB filter
 - ResourceManager load with OnDuplicate strategies
-- AutoCRUD dump with model_queries
-- AutoCRUD load (incremental)
+- SpecStar dump with model_queries
+- SpecStar load (incremental)
 - Full roundtrip with blobs
 """
 
@@ -18,10 +18,10 @@ import io
 import pytest
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD, LoadStats
-from autocrud.query import QB
-from autocrud.resource_manager.binary_processor import BinaryProcessor
-from autocrud.resource_manager.dump_format import (
+from specstar.crud.core import LoadStats, SpecStar
+from specstar.query import QB
+from specstar.resource_manager.binary_processor import BinaryProcessor
+from specstar.resource_manager.dump_format import (
     BlobRecord,
     DumpStreamReader,
     DumpStreamWriter,
@@ -32,7 +32,7 @@ from autocrud.resource_manager.dump_format import (
     ModelStartRecord,
     RevisionRecord,
 )
-from autocrud.types import (
+from specstar.types import (
     Binary,
     DuplicateResourceError,
     OnDuplicate,
@@ -69,15 +69,15 @@ class NestedBlobItem(Struct):
 # ---------------------------------------------------------------------------
 
 
-def _make_crud(*models, indexed_fields=None, **kw) -> AutoCRUD:
-    crud = AutoCRUD(**kw)
+def _make_crud(*models, indexed_fields=None, **kw) -> SpecStar:
+    spec = SpecStar(**kw)
     for m in models:
-        crud.add_model(m, indexed_fields=indexed_fields)
-    return crud
+        spec.add_model(m, indexed_fields=indexed_fields)
+    return spec
 
 
-def _create_items(crud: AutoCRUD, model, items, user="test"):
-    mgr = crud.get_resource_manager(model)
+def _create_items(spec: SpecStar, model, items, user="test"):
+    mgr = spec.get_resource_manager(model)
     ids = []
     with mgr.meta_provide(user, dt.datetime(2025, 1, 1)):
         for item in items:
@@ -86,14 +86,14 @@ def _create_items(crud: AutoCRUD, model, items, user="test"):
     return ids
 
 
-def _dump_to_bytes(crud: AutoCRUD, **kw) -> bytes:
+def _dump_to_bytes(spec: SpecStar, **kw) -> bytes:
     bio = io.BytesIO()
-    crud.dump(bio, **kw)
+    spec.dump(bio, **kw)
     return bio.getvalue()
 
 
-def _load_from_bytes(crud: AutoCRUD, data: bytes, **kw):
-    return crud.load(io.BytesIO(data), **kw)
+def _load_from_bytes(spec: SpecStar, data: bytes, **kw):
+    return spec.load(io.BytesIO(data), **kw)
 
 
 # ============================================================================
@@ -384,14 +384,14 @@ class TestResourceManagerLoadRecord:
 
 
 # ============================================================================
-# E. AutoCRUD dump with model_queries
+# E. SpecStar dump with model_queries
 # ============================================================================
 
 
-class TestAutoCRUDDump:
+class TestSpecStarDump:
     @pytest.fixture(autouse=True)
     def setup(self):
-        self.crud = AutoCRUD()
+        self.crud = SpecStar()
         self.crud.add_model(Item, indexed_fields=[("value", int)])
         self.crud.add_model(Widget)
         _create_items(self.crud, Item, [Item("a", 1), Item("b", 2)])
@@ -402,7 +402,7 @@ class TestAutoCRUDDump:
         data = _dump_to_bytes(self.crud)
         assert len(data) > 0
 
-        # Load into a fresh crud and verify counts
+        # Load into a fresh spec and verify counts
         crud2 = _make_crud(Item, Widget)
         stats = _load_from_bytes(crud2, data)
         assert "item" in stats
@@ -426,7 +426,7 @@ class TestAutoCRUDDump:
             self.crud,
             model_queries={"item": QB["value"] >= 2},
         )
-        crud2 = AutoCRUD()
+        crud2 = SpecStar()
         crud2.add_model(Item, indexed_fields=[("value", int)])
         crud2.add_model(Widget)
         stats = _load_from_bytes(crud2, data)
@@ -448,11 +448,11 @@ class TestAutoCRUDDump:
 
 
 # ============================================================================
-# F. AutoCRUD load incremental
+# F. SpecStar load incremental
 # ============================================================================
 
 
-class TestAutoCRUDLoadIncremental:
+class TestSpecStarLoadIncremental:
     def test_load_overwrite_merges(self):
         """OVERWRITE: load into non-empty storage merges data."""
         crud1 = _make_crud(Item)
@@ -589,9 +589,9 @@ class TestEdgeCases:
         w.write(HeaderRecord(version=999))
         w.write(EofRecord())
 
-        crud = _make_crud(Item)
+        spec = _make_crud(Item)
         with pytest.raises(ValueError, match="Unsupported dump format version"):
-            _load_from_bytes(crud, bio.getvalue())
+            _load_from_bytes(spec, bio.getvalue())
 
     def test_missing_header_raises(self):
         """Archive not starting with HeaderRecord raises ValueError."""
@@ -600,9 +600,9 @@ class TestEdgeCases:
         w.write(ModelStartRecord(model_name="item"))
         w.write(EofRecord())
 
-        crud = _make_crud(Item)
+        spec = _make_crud(Item)
         with pytest.raises(ValueError, match="Expected HeaderRecord"):
-            _load_from_bytes(crud, bio.getvalue())
+            _load_from_bytes(spec, bio.getvalue())
 
     def test_load_stats_repr(self):
         s = LoadStats()
@@ -620,9 +620,9 @@ class TestEdgeCases:
         w.write(MetaRecord(data=b"some_data"))
         w.write(EofRecord())
 
-        crud = _make_crud(Item)
+        spec = _make_crud(Item)
         with pytest.raises(ValueError, match="outside of model section"):
-            _load_from_bytes(crud, bio.getvalue())
+            _load_from_bytes(spec, bio.getvalue())
 
     def test_dump_load_idempotent(self):
         """Dump → load → dump → load produces the same result."""

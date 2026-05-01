@@ -1,14 +1,14 @@
 /**
- * AutoCRUD Web Integrate Command
+ * SpecStar Web Integrate Command
  *
  * Integrates generated code into an existing React project without
  * overwriting top-level config files (package.json, tsconfig, vite.config, etc.).
  *
  * Only copies:
- * - src/autocrud/lib/ (components, hooks, utils, client.ts, resources.ts, etc.)
- * - src/autocrud/types/ (api.ts)
- * - src/routes/__root.tsx, src/routes/autocrud-admin.tsx (layout routes)
- * Then runs generate to produce autocrud/generated/ and route files.
+ * - src/specstar/lib/ (components, hooks, utils, client.ts, resources.ts, etc.)
+ * - src/specstar/types/ (api.ts)
+ * - src/routes/__root.tsx, src/routes/specstar-admin.tsx (layout routes)
+ * Then runs generate to produce specstar/generated/ and route files.
  *
  * When a target file already exists and differs from the template, an
  * interactive prompt lets the user choose: skip, overwrite, or show diff
@@ -39,7 +39,7 @@ export async function integrateProject(
   options: IntegrateOptions = {},
 ): Promise<void> {
   const mantineVersion = options.mantineVersion ?? '7';
-  console.log(`\n🔗 AutoCRUD Web Integration Mode (Mantine ${mantineVersion})\n`);
+  console.log(`\n🔗 SpecStar Web Integration Mode (Mantine ${mantineVersion})\n`);
 
   const ROOT = process.cwd();
   const SRC = path.join(ROOT, outputRoot);
@@ -208,26 +208,26 @@ export async function copyIntegrationFiles(templateSrc: string, SRC: string, opt
   const force = options.force ?? false;
   const baseDir = options.baseDir ?? SRC;
 
-  console.log('📂 Copying AutoCRUD library files...');
+  console.log('📂 Copying SpecStar library files...');
 
-  // 1. Copy src/autocrud/lib/ directory
-  const libSrc = path.join(templateSrc, 'autocrud/lib');
-  const libDest = path.join(SRC, 'autocrud/lib');
+  // 1. Copy src/specstar/lib/ directory
+  const libSrc = path.join(templateSrc, 'specstar/lib');
+  const libDest = path.join(SRC, 'specstar/lib');
   await copyDir(libSrc, libDest, { includeTests: options.includeTests, force, baseDir });
-  console.log('  ✅ autocrud/lib/ (components, hooks, utils, client)');
+  console.log('  ✅ specstar/lib/ (components, hooks, utils, client)');
 
-  // 2. Copy src/autocrud/types/ directory
-  const typesSrc = path.join(templateSrc, 'autocrud/types');
-  const typesDest = path.join(SRC, 'autocrud/types');
+  // 2. Copy src/specstar/types/ directory
+  const typesSrc = path.join(templateSrc, 'specstar/types');
+  const typesDest = path.join(SRC, 'specstar/types');
   await copyDir(typesSrc, typesDest, { includeTests: options.includeTests, force, baseDir });
-  console.log('  ✅ autocrud/types/ (API type definitions)');
+  console.log('  ✅ specstar/types/ (API type definitions)');
 
   // 3. Copy layout route files (with conflict check)
   const routesSrc = path.join(templateSrc, 'routes');
   const routesDest = path.join(SRC, 'routes');
   await fs.mkdir(routesDest, { recursive: true });
 
-  const layoutFiles = ['__root.tsx', 'autocrud-admin.tsx'];
+  const layoutFiles = ['__root.tsx', 'specstar-admin.tsx'];
   for (const file of layoutFiles) {
     const src = path.join(routesSrc, file);
     const dest = path.join(routesDest, file);

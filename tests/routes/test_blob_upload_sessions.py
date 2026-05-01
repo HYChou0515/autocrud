@@ -19,8 +19,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import (
+from specstar.crud.core import SpecStar
+from specstar.types import (
     Binary,
     BlobUploadSession,
 )
@@ -41,16 +41,16 @@ class FileHolder(Struct):
 
 
 @pytest.fixture
-def autocrud():
-    app = AutoCRUD()
+def specstar():
+    app = SpecStar()
     app.add_model(FileHolder)
     return app
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     app = FastAPI()
-    autocrud.apply(app)
+    specstar.apply(app)
     return TestClient(app)
 
 
@@ -417,14 +417,14 @@ class _NativeBlobStore:
 def native_client():
     """Client backed by a blob store with native session support."""
 
-    crud = AutoCRUD()
-    crud.add_model(FileHolder)
+    spec = SpecStar()
+    spec.add_model(FileHolder)
     app = FastAPI()
-    crud.apply(app)
+    spec.apply(app)
 
     # Patch the blob store on the route template after apply
     native_store = _NativeBlobStore()
-    for tmpl in crud.route_templates:
+    for tmpl in spec.route_templates:
         if hasattr(tmpl, "_blob_store") and tmpl._blob_store is not None:
             tmpl._blob_store = native_store  # ty:ignore[invalid-assignment]
             break
@@ -476,15 +476,15 @@ class TestNativeSessionPath:
 @pytest.fixture
 def no_blob_client():
     """Client with a model that has no Binary fields (blob routes not mounted)."""
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
+    from specstar.crud.route_templates.blob import BlobRouteTemplate
 
-    crud = AutoCRUD()
-    crud.add_model(FileHolder)
+    spec = SpecStar()
+    spec.add_model(FileHolder)
     app = FastAPI()
-    crud.apply(app)
+    spec.apply(app)
 
     # Force blob_store to None on the route template to trigger 501
-    for tmpl in crud.route_templates:
+    for tmpl in spec.route_templates:
         if isinstance(tmpl, BlobRouteTemplate) and tmpl.mounted:
             tmpl._blob_store = None
             break
@@ -539,15 +539,15 @@ class _ErrorBlobStore(_NativeBlobStore):
 
 @pytest.fixture
 def error_native_client():
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
+    from specstar.crud.route_templates.blob import BlobRouteTemplate
 
-    crud = AutoCRUD()
-    crud.add_model(FileHolder)
+    spec = SpecStar()
+    spec.add_model(FileHolder)
     app = FastAPI()
-    crud.apply(app)
+    spec.apply(app)
 
     store = _ErrorBlobStore()
-    for tmpl in crud.route_templates:
+    for tmpl in spec.route_templates:
         if isinstance(tmpl, BlobRouteTemplate) and tmpl.mounted:
             tmpl._blob_store = store  # ty:ignore[invalid-assignment]
             break

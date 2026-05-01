@@ -14,10 +14,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.types import (
+from specstar.crud.core import SpecStar
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.types import (
     Job,
     TaskStatus,
 )
@@ -37,24 +37,24 @@ class RegularModel(Struct):
     value: int
 
 
-def make_app(*, consume: bool = False) -> tuple[FastAPI, AutoCRUD, TestClient, list]:
+def make_app(*, consume: bool = False) -> tuple[FastAPI, SpecStar, TestClient, list]:
     """Create a test app with a job model and optionally a regular model."""
     consumed = []
 
     def handler(job):
         consumed.append(job.data.resource_id)
 
-    crud = AutoCRUD(
+    spec = SpecStar(
         storage_factory=MemoryStorageFactory(),
         message_queue_factory=SimpleMessageQueueFactory(),
     )
-    crud.add_model(TaskJob, name="task-job", job_handler=handler)
-    crud.add_model(RegularModel, name="regular")
+    spec.add_model(TaskJob, name="task-job", job_handler=handler)
+    spec.add_model(RegularModel, name="regular")
 
     app = FastAPI()
-    crud.apply(app)
+    spec.apply(app)
     client = TestClient(app)
-    return app, crud, client, consumed
+    return app, spec, client, consumed
 
 
 def create_job(client: TestClient, command: str = "run-tests") -> str:
@@ -67,10 +67,10 @@ def create_job(client: TestClient, command: str = "run-tests") -> str:
 
 
 def set_job_status(
-    crud: AutoCRUD, resource_id: str, status: TaskStatus, errmsg: str | None = None
+    spec: SpecStar, resource_id: str, status: TaskStatus, errmsg: str | None = None
 ):
     """Directly set a job's status via resource manager."""
-    rm = crud.get_resource_manager("task-job")
+    rm = spec.get_resource_manager("task-job")
     resource = rm.get(resource_id)
     job = resource.data
     job.status = status
@@ -85,9 +85,9 @@ class TestRerunRoute:
 
     def test_rerun_failed_job(self):
         """A failed job can be rerun, resetting status/retries/errmsg."""
-        _, crud, client, _ = make_app()
+        _, spec, client, _ = make_app()
         rid = create_job(client)
-        set_job_status(crud, rid, TaskStatus.FAILED, errmsg="something broke")
+        set_job_status(spec, rid, TaskStatus.FAILED, errmsg="something broke")
 
         resp = client.post(f"/task-job/{rid}/rerun")
         assert resp.status_code == 200
@@ -102,9 +102,9 @@ class TestRerunRoute:
 
     def test_rerun_completed_job(self):
         """A completed job can be rerun."""
-        _, crud, client, _ = make_app()
+        _, spec, client, _ = make_app()
         rid = create_job(client)
-        set_job_status(crud, rid, TaskStatus.COMPLETED)
+        set_job_status(spec, rid, TaskStatus.COMPLETED)
 
         resp = client.post(f"/task-job/{rid}/rerun")
         assert resp.status_code == 200
@@ -126,9 +126,9 @@ class TestRerunRoute:
 
     def test_rerun_processing_job_returns_400(self):
         """A processing job cannot be rerun."""
-        _, crud, client, _ = make_app()
+        _, spec, client, _ = make_app()
         rid = create_job(client)
-        set_job_status(crud, rid, TaskStatus.PROCESSING)
+        set_job_status(spec, rid, TaskStatus.PROCESSING)
 
         resp = client.post(f"/task-job/{rid}/rerun")
         assert resp.status_code == 400
@@ -154,9 +154,9 @@ class TestRerunRoute:
 
     def test_rerun_returns_revision_info(self):
         """Rerun response contains resource_id and revision_id."""
-        _, crud, client, _ = make_app()
+        _, spec, client, _ = make_app()
         rid = create_job(client)
-        set_job_status(crud, rid, TaskStatus.FAILED)
+        set_job_status(spec, rid, TaskStatus.FAILED)
 
         resp = client.post(f"/task-job/{rid}/rerun")
         assert resp.status_code == 200

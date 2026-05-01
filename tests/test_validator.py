@@ -5,7 +5,7 @@ Tests cover:
 2. Pydantic model as validator (auto-generates struct, uses Pydantic for validation)
 3. IValidator protocol support
 4. Validation error propagation through create/modify/update
-5. Integration with AutoCRUD.add_model
+5. Integration with SpecStar.add_model
 """
 
 import datetime as dt
@@ -15,13 +15,13 @@ import msgspec
 import pytest
 from msgspec import Struct
 
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.pydantic_converter import (
+from specstar.resource_manager.core import ResourceManager
+from specstar.resource_manager.pydantic_converter import (
     _PYDANTIC_V2,
     pydantic_to_struct,
 )
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.types import ValidationError
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.types import ValidationError
 
 requires_pydantic_v2 = pytest.mark.skipif(
     not _PYDANTIC_V2, reason="Requires Pydantic v2"
@@ -83,7 +83,7 @@ class TestValidatorFunction:
             if data.price < 0:
                 raise ValueError("Price must be non-negative")
 
-        from autocrud.types import RevisionStatus
+        from specstar.types import RevisionStatus
 
         mgr = make_mgr(validator=check_price)
         with mgr.meta_provide("user", dt.datetime.now()):
@@ -194,7 +194,7 @@ class TestPydanticValidator:
         system should auto-generate a struct and use Pydantic for validation."""
         from pydantic import BaseModel, field_validator
 
-        from autocrud import AutoCRUD
+        from specstar import SpecStar
 
         class ProductValidator(BaseModel):
             name: str
@@ -208,7 +208,7 @@ class TestPydanticValidator:
                     raise ValueError("Price must be non-negative")
                 return v
 
-        app_crud = AutoCRUD()
+        app_crud = SpecStar()
         app_crud.configure()
         app_crud.add_model(ProductValidator)
 
@@ -312,7 +312,7 @@ class TestPydanticValidatorCompat:
         """Pydantic model as 'model' to add_model — v1/v2 compatible."""
         from pydantic import BaseModel, validator  # ty:ignore[deprecated]
 
-        from autocrud import AutoCRUD
+        from specstar import SpecStar
 
         class ProductValidator(BaseModel):
             name: str
@@ -326,7 +326,7 @@ class TestPydanticValidatorCompat:
                     raise ValueError("Price must be non-negative")
                 return v
 
-        app_crud = AutoCRUD()
+        app_crud = SpecStar()
         app_crud.configure()
         app_crud.add_model(ProductValidator)
 
@@ -347,7 +347,7 @@ class TestPydanticValidatorCompat:
         """build_validator should accept a Pydantic model class."""
         from pydantic import BaseModel
 
-        from autocrud.resource_manager.pydantic_converter import build_validator
+        from specstar.resource_manager.pydantic_converter import build_validator
 
         class SimpleModel(BaseModel):
             name: str
@@ -361,7 +361,7 @@ class TestPydanticValidatorCompat:
         pytest.importorskip("pydantic")
         from pydantic import BaseModel, validator  # ty:ignore[deprecated]
 
-        from autocrud import AutoCRUD
+        from specstar import SpecStar
 
         class ItemValidator(BaseModel):
             name: str
@@ -376,7 +376,7 @@ class TestPydanticValidatorCompat:
                     raise ValueError("Price must be non-negative")
                 return v
 
-        app_crud = AutoCRUD()
+        app_crud = SpecStar()
         app_crud.configure()
         app_crud.add_model(Item, validator=ItemValidator)
 
@@ -394,7 +394,7 @@ class TestIValidatorProtocol:
 
     def test_ivalidator_instance(self):
         """IValidator instance should work as validator."""
-        from autocrud.types import IValidator
+        from specstar.types import IValidator
 
         class PriceValidator(IValidator):
             def validate(self, data) -> None:
@@ -408,7 +408,7 @@ class TestIValidatorProtocol:
 
     def test_ivalidator_with_context(self):
         """IValidator can hold state/context."""
-        from autocrud.types import IValidator
+        from specstar.types import IValidator
 
         class MaxPriceValidator(IValidator):
             def __init__(self, max_price: int):
@@ -427,20 +427,20 @@ class TestIValidatorProtocol:
                 mgr.create(Item(name="Expensive", price=1000))
 
 
-# ===== 4. Integration with AutoCRUD.add_model =====
+# ===== 4. Integration with SpecStar.add_model =====
 
 
 class TestAddModelValidator:
-    """Test validator parameter in AutoCRUD.add_model."""
+    """Test validator parameter in SpecStar.add_model."""
 
     def test_add_model_with_validator_function(self):
-        from autocrud import AutoCRUD
+        from specstar import SpecStar
 
         def check_price(data: Item) -> None:
             if data.price < 0:
                 raise ValueError("Price must be non-negative")
 
-        app_crud = AutoCRUD()
+        app_crud = SpecStar()
         app_crud.configure()
         app_crud.add_model(Item, validator=check_price)
 
@@ -457,7 +457,7 @@ class TestAddModelValidator:
         pytest.importorskip("pydantic")
         from pydantic import BaseModel, field_validator
 
-        from autocrud import AutoCRUD
+        from specstar import SpecStar
 
         class ItemValidator(BaseModel):
             name: str
@@ -472,7 +472,7 @@ class TestAddModelValidator:
                     raise ValueError("Price must be non-negative")
                 return v
 
-        app_crud = AutoCRUD()
+        app_crud = SpecStar()
         app_crud.configure()
         app_crud.add_model(Item, validator=ItemValidator)
 
@@ -1264,7 +1264,7 @@ class TestPydanticConverterEdgeCases:
         field is not present in the model."""
         from pydantic import BaseModel
 
-        from autocrud.resource_manager.pydantic_converter import (
+        from specstar.resource_manager.pydantic_converter import (
             _pydantic_to_struct_tagged,
         )
 
@@ -1279,7 +1279,7 @@ class TestPydanticConverterEdgeCases:
         field is not a Literal type."""
         from pydantic import BaseModel
 
-        from autocrud.resource_manager.pydantic_converter import (
+        from specstar.resource_manager.pydantic_converter import (
             _pydantic_to_struct_tagged,
         )
 
@@ -1326,7 +1326,7 @@ class TestPydanticConverterEdgeCases:
         # Union[int, str] has no Pydantic models, so all go through _convert_annotation
         from typing import Union
 
-        from autocrud.resource_manager.pydantic_converter import (
+        from specstar.resource_manager.pydantic_converter import (
             _convert_discriminated_union,
         )
 
@@ -1337,7 +1337,7 @@ class TestPydanticConverterEdgeCases:
     def test_discriminated_union_no_args(self):
         """_convert_discriminated_union with a non-union type (no args)
         should fall through to _convert_annotation."""
-        from autocrud.resource_manager.pydantic_converter import (
+        from specstar.resource_manager.pydantic_converter import (
             _convert_discriminated_union,
         )
 
@@ -1347,7 +1347,7 @@ class TestPydanticConverterEdgeCases:
 
     def test_build_validator_non_callable_raises_typeerror(self):
         """build_validator should raise TypeError for non-callable input (L99)."""
-        from autocrud.resource_manager.pydantic_converter import build_validator
+        from specstar.resource_manager.pydantic_converter import build_validator
 
         with pytest.raises(TypeError, match="validator must be a callable"):
             build_validator(

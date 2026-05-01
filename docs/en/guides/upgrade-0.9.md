@@ -8,7 +8,7 @@ code edit required to migrate from 0.8.5.
 ## Quick checklist
 
 - [ ] Replace removed `PostgreSQLStorageFactory` / `PostgreSQLDiskS3StorageFactory`
-- [ ] Remove imports from deleted `autocrud.permission.basic`
+- [ ] Remove imports from deleted `specstar.permission.basic`
 - [ ] Implement `save_many()` / `dump_all_revisions()` on any custom stores
 - [ ] Update code that consumes the `dump()` generator
 - [ ] Implement `load_records_bulk()` on any custom `IResourceManager` subclass
@@ -25,7 +25,7 @@ code edit required to migrate from 0.8.5.
 **Before**
 
 ```python
-from autocrud.resource_manager.storage_factory import (
+from specstar.resource_manager.storage_factory import (
     PostgreSQLStorageFactory,
     PostgreSQLDiskS3StorageFactory,
 )
@@ -39,7 +39,7 @@ from autocrud.resource_manager.storage_factory import (
 | `PostgreSQLDiskS3StorageFactory` | `PostgresDiskS3StorageFactory` |
 
 ```python
-from autocrud.resource_manager.storage_factory import (
+from specstar.resource_manager.storage_factory import (
     PostgreSQLS3StorageFactory,   # or PostgresStorageFactory
     PostgresDiskS3StorageFactory,
 )
@@ -47,16 +47,16 @@ from autocrud.resource_manager.storage_factory import (
 
 ---
 
-## 2. `autocrud.permission.basic` removed
+## 2. `specstar.permission.basic` removed
 
-The module `autocrud.permission.basic` and the class `IPermissionCheckerWithStore`
+The module `specstar.permission.basic` and the class `IPermissionCheckerWithStore`
 it contained have been deleted.  `StoreBackedPermissionChecker` now inherits
 directly from `IPermissionChecker`.
 
 **Before**
 
 ```python
-from autocrud.permission.basic import IPermissionCheckerWithStore
+from specstar.permission.basic import IPermissionCheckerWithStore
 
 class MyChecker(IPermissionCheckerWithStore[MyResource]):
     ...
@@ -68,8 +68,8 @@ Use `StoreBackedPermissionChecker` (if you need the built-in `resource_manager`
 property) or `IPermissionChecker` (if you manage the resource manager yourself).
 
 ```python
-from autocrud.permission.checker import IPermissionChecker
-from autocrud.permission.store_backed import StoreBackedPermissionChecker
+from specstar.permission.checker import IPermissionChecker
+from specstar.permission.store_backed import StoreBackedPermissionChecker
 
 # option A — use the built-in resource_manager integration
 class MyChecker(StoreBackedPermissionChecker[MyResource]):
@@ -80,15 +80,15 @@ class MyChecker(IPermissionChecker):
     ...
 ```
 
-`DEFAULT_ROOT_USER` was also in `autocrud.permission.basic`.  It is now exported
-from `autocrud.permission.checker`.
+`DEFAULT_ROOT_USER` was also in `specstar.permission.basic`.  It is now exported
+from `specstar.permission.checker`.
 
 ```python
 # before
-from autocrud.permission.basic import DEFAULT_ROOT_USER
+from specstar.permission.basic import DEFAULT_ROOT_USER
 
 # after
-from autocrud.permission.checker import DEFAULT_ROOT_USER
+from specstar.permission.checker import DEFAULT_ROOT_USER
 ```
 
 ---
@@ -140,7 +140,7 @@ for name, stream in manager.dump():
 **After**
 
 ```python
-from autocrud.resource_manager.dump_format import (
+from specstar.resource_manager.dump_format import (
     MetaRecord, RevisionRecord, BlobRecord,
     HeaderRecord, ModelStartRecord, ModelEndRecord, EofRecord,
 )
@@ -164,9 +164,9 @@ this internally — no changes needed there.
 If you subclass `IResourceManager` directly, add:
 
 ```python
-from autocrud.crud.core import LoadStats
-from autocrud.resource_manager.dump_format import MetaRecord, RevisionRecord, BlobRecord
-from autocrud.types import OnDuplicate
+from specstar.crud.core import LoadStats
+from specstar.resource_manager.dump_format import MetaRecord, RevisionRecord, BlobRecord
+from specstar.types import OnDuplicate
 
 class MyResourceManager(IResourceManager[T]):
     def load_records_bulk(
@@ -263,7 +263,7 @@ These additions are backwards-compatible and require no migration.
 Filter and sort resources by current-revision attributes without any extra reads:
 
 ```python
-from autocrud.query import QB
+from specstar.query import QB
 from datetime import datetime
 
 # resources whose current revision is draft
@@ -283,7 +283,7 @@ The corresponding `ResourceMetaSearchQuery` fields (`rev_statuses`,
 ### `ResourceMetaSortKey` additions
 
 ```python
-from autocrud.query_types import ResourceMetaSortKey
+from specstar.query_types import ResourceMetaSortKey
 
 # sort by current-revision creation time
 ResourceMetaSortKey.rev_created_time

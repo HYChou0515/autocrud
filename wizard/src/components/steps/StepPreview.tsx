@@ -46,7 +46,7 @@ export function StepPreview({ state }: Props) {
         zip.file(f.filename, f.content);
       }
       const blob = await zip.generateAsync({ type: "blob" });
-      saveAs(blob, `${state.projectName || "autocrud-project"}.zip`);
+      saveAs(blob, `${state.projectName || "specstar-project"}.zip`);
     } finally {
       setDownloading(false);
     }

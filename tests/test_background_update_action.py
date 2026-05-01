@@ -20,8 +20,8 @@ from fastapi import Body, FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import BackgroundTaskAccepted
+from specstar.crud.core import SpecStar
+from specstar.types import BackgroundTaskAccepted
 
 # ---------------------------------------------------------------------------
 # Test Models
@@ -47,17 +47,17 @@ class BoostPayload(Struct):
 # ---------------------------------------------------------------------------
 
 
-def _make_crud(**kwargs) -> AutoCRUD:
-    return AutoCRUD(
+def _make_crud(**kwargs) -> SpecStar:
+    return SpecStar(
         default_user="tester",
         default_now=dt.datetime.now,
         **kwargs,
     )
 
 
-def _build_app(crud: AutoCRUD) -> FastAPI:
+def _build_app(spec: SpecStar) -> FastAPI:
     app = FastAPI()
-    crud.apply(app)
+    spec.apply(app)
     return app
 
 
@@ -77,13 +77,13 @@ def _create_character(client, name="Alice", level=5, hp=100) -> str:
 
 
 class TestBackgroundUpdateActionDecorator:
-    """@crud.update_action(async_mode='background') stores metadata."""
+    """@spec.update_action(async_mode='background') stores metadata."""
 
     def test_async_mode_stored_in_pending_action(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Train BG")
+        @spec.update_action("character", async_mode="background", label="Train BG")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -91,20 +91,20 @@ class TestBackgroundUpdateActionDecorator:
                 hp=existing.hp,
             )
 
-        assert len(crud._pending_update_actions) == 1
-        action = crud._pending_update_actions[0]
+        assert len(spec._pending_update_actions) == 1
+        action = spec._pending_update_actions[0]
         assert action.async_mode == "background"
         assert action.label == "Train BG"
 
     def test_default_async_mode_is_none(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Rename")
+        @spec.update_action("character", label="Rename")
         def rename(existing: Character, name: str) -> Character:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
-        action = crud._pending_update_actions[0]
+        action = spec._pending_update_actions[0]
         assert action.async_mode is None
 
 
@@ -117,10 +117,10 @@ class TestBackgroundUpdateNoJobModel:
     """async_mode='background' does NOT generate a Job model."""
 
     def test_no_job_model_registered(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Train BG")
+        @spec.update_action("character", async_mode="background", label="Train BG")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -128,9 +128,9 @@ class TestBackgroundUpdateNoJobModel:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
+        app = _build_app(spec)
 
-        job_rms = [name for name in crud.resource_managers if "job" in name.lower()]
+        job_rms = [name for name in spec.resource_managers if "job" in name.lower()]
         assert job_rms == [], f"Unexpected Job resources: {job_rms}"
 
 
@@ -143,10 +143,10 @@ class TestBackgroundUpdateActionEndpoint:
     """POST to a background update action returns 202 immediately."""
 
     def test_sync_handler_returns_202(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Train BG")
+        @spec.update_action("character", async_mode="background", label="Train BG")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -154,7 +154,7 @@ class TestBackgroundUpdateActionEndpoint:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Alice", level=5)
@@ -167,10 +167,10 @@ class TestBackgroundUpdateActionEndpoint:
         assert data["message"] == "Task accepted"
 
     def test_async_handler_returns_202(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Async Train")
+        @spec.update_action("character", async_mode="background", label="Async Train")
         async def async_train(
             existing: Character, payload: TrainRequest = Body(...)
         ) -> Character:
@@ -180,7 +180,7 @@ class TestBackgroundUpdateActionEndpoint:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Bob", level=10)
@@ -202,10 +202,10 @@ class TestBackgroundAutoUpdate:
     """Background handler updates target resource after completion."""
 
     def test_sync_handler_updates_resource(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Train BG")
+        @spec.update_action("character", async_mode="background", label="Train BG")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -213,7 +213,7 @@ class TestBackgroundAutoUpdate:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         # TestClient runs background tasks synchronously before returning
         client = TestClient(app)
 
@@ -232,10 +232,10 @@ class TestBackgroundAutoUpdate:
         assert char_data["name"] == "Alice"
 
     def test_async_handler_updates_resource(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Async Train")
+        @spec.update_action("character", async_mode="background", label="Async Train")
         async def async_train(
             existing: Character, payload: TrainRequest = Body(...)
         ) -> Character:
@@ -245,7 +245,7 @@ class TestBackgroundAutoUpdate:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Bob", level=10, hp=50)
@@ -270,16 +270,16 @@ class TestBackgroundUpdateReturnsNone:
     """When the handler returns None, no update is performed."""
 
     def test_sync_handler_returns_none_no_update(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Maybe Update")
+        @spec.update_action("character", async_mode="background", label="Maybe Update")
         def maybe_update(
             existing: Character, payload: TrainRequest = Body(...)
         ) -> None:
             return None
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Carol", level=7)
@@ -294,16 +294,16 @@ class TestBackgroundUpdateReturnsNone:
         assert char_resp.json()["data"]["level"] == 7
 
     def test_async_handler_returns_none_no_update(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Async Maybe")
+        @spec.update_action("character", async_mode="background", label="Async Maybe")
         async def async_maybe(
             existing: Character, payload: TrainRequest = Body(...)
         ) -> None:
             return None
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Dave", level=3)
@@ -326,10 +326,10 @@ class TestBackgroundUpdateOpenAPI:
     """OpenAPI extension metadata for background update actions."""
 
     def test_openapi_has_async_mode_background(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Train BG")
+        @spec.update_action("character", async_mode="background", label="Train BG")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -337,11 +337,11 @@ class TestBackgroundUpdateOpenAPI:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
-        crud.openapi(app)
+        app = _build_app(spec)
+        spec.openapi(app)
         schema = app.openapi()
 
-        actions = schema.get("x-autocrud-custom-update-actions", {})
+        actions = schema.get("x-specstar-custom-update-actions", {})
         assert "character" in actions
         article_actions = actions["character"]
         assert len(article_actions) == 1
@@ -350,11 +350,11 @@ class TestBackgroundUpdateOpenAPI:
         assert "jobResourceName" not in action_info
 
     def test_openapi_no_async_update_jobs_for_background(self):
-        """x-autocrud-async-update-jobs should NOT contain background actions."""
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        """x-specstar-async-update-jobs should NOT contain background actions."""
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Train BG")
+        @spec.update_action("character", async_mode="background", label="Train BG")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -362,11 +362,11 @@ class TestBackgroundUpdateOpenAPI:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
-        crud.openapi(app)
+        app = _build_app(spec)
+        spec.openapi(app)
         schema = app.openapi()
 
-        async_jobs = schema.get("x-autocrud-async-update-jobs", {})
+        async_jobs = schema.get("x-specstar-async-update-jobs", {})
         assert async_jobs == {}
 
 
@@ -379,16 +379,16 @@ class TestBackgroundUpdateErrorHandling:
     """Errors in background tasks are logged, not propagated."""
 
     def test_sync_handler_error_does_not_crash(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Failing")
+        @spec.update_action("character", async_mode="background", label="Failing")
         def failing(
             existing: Character, payload: TrainRequest = Body(...)
         ) -> Character:
             raise ValueError("Something went wrong")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app, raise_server_exceptions=False)
 
         resource_id = _create_character(client, name="Err", level=1)
@@ -403,16 +403,16 @@ class TestBackgroundUpdateErrorHandling:
         assert char_resp.json()["data"]["level"] == 1
 
     def test_async_handler_error_does_not_crash(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Async Failing")
+        @spec.update_action("character", async_mode="background", label="Async Failing")
         async def async_failing(
             existing: Character, payload: TrainRequest = Body(...)
         ) -> Character:
             raise RuntimeError("Async failure")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app, raise_server_exceptions=False)
 
         resource_id = _create_character(client, name="ErrA", level=2)
@@ -435,10 +435,10 @@ class TestBackgroundUpdateMode:
     """Background update with mode='update' creates a new revision."""
 
     def test_update_mode_creates_new_revision(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character",
             async_mode="background",
             label="Boost HP BG",
@@ -452,7 +452,7 @@ class TestBackgroundUpdateMode:
                 hp=existing.hp + payload.amount,
             )
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Mod", level=3, hp=50)
@@ -477,14 +477,14 @@ class TestBackgroundUpdateMixedActions:
     """Background and sync update actions coexist on the same resource."""
 
     def test_background_and_sync_both_work(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Sync Rename")
+        @spec.update_action("character", label="Sync Rename")
         def sync_rename(existing: Character, name: str) -> Character:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
-        @crud.update_action("character", async_mode="background", label="BG Train")
+        @spec.update_action("character", async_mode="background", label="BG Train")
         def bg_train(
             existing: Character, payload: TrainRequest = Body(...)
         ) -> Character:
@@ -494,7 +494,7 @@ class TestBackgroundUpdateMixedActions:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Mix", level=5)
@@ -527,10 +527,10 @@ class TestBackgroundUpdateTaskIsSync:
     """_run_bg must always be a plain sync function."""
 
     def test_async_handler_bg_task_is_not_coroutine(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Async Train")
+        @spec.update_action("character", async_mode="background", label="Async Train")
         async def async_train(
             existing: Character, payload: TrainRequest = Body(...)
         ) -> Character:
@@ -540,7 +540,7 @@ class TestBackgroundUpdateTaskIsSync:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
+        app = _build_app(spec)
 
         captured_tasks: list = []
         from starlette.background import BackgroundTasks
@@ -571,10 +571,10 @@ class TestBackgroundUpdateTaskIsSync:
         )
 
     def test_sync_handler_bg_task_is_not_coroutine(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="background", label="Train BG")
+        @spec.update_action("character", async_mode="background", label="Train BG")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -582,7 +582,7 @@ class TestBackgroundUpdateTaskIsSync:
                 hp=existing.hp,
             )
 
-        app = _build_app(crud)
+        app = _build_app(spec)
 
         captured_tasks: list = []
         from starlette.background import BackgroundTasks

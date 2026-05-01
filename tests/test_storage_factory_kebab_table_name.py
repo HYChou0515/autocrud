@@ -14,9 +14,9 @@ import pytest
 from faker import Faker
 from msgspec import Struct
 
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.storage_factory import (
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.resource_manager.storage_factory import (
     PostgresDiskStorageFactory,
     PostgreSQLS3StorageFactory,
     PostgresStorageFactory,
@@ -60,10 +60,10 @@ def _build_with_mock(factory_type: str, model_name: str, table_prefix: str = "")
     if factory_type == "postgres":
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresResourceStore"
+                "specstar.resource_manager.storage_factory.PostgresResourceStore"
             ) as mock_res,
         ):
             factory = PostgresStorageFactory(
@@ -76,10 +76,10 @@ def _build_with_mock(factory_type: str, model_name: str, table_prefix: str = "")
     if factory_type == "postgres_s3":
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
             patch(
-                "autocrud.resource_manager.storage_factory.S3ResourceStore"
+                "specstar.resource_manager.storage_factory.S3ResourceStore"
             ) as mock_res,
         ):
             factory = PostgreSQLS3StorageFactory(
@@ -93,10 +93,10 @@ def _build_with_mock(factory_type: str, model_name: str, table_prefix: str = "")
     if factory_type == "postgres_disk":
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
             patch(
-                "autocrud.resource_manager.storage_factory.DiskResourceStore"
+                "specstar.resource_manager.storage_factory.DiskResourceStore"
             ) as mock_res,
         ):
             factory = PostgresDiskStorageFactory(
@@ -191,7 +191,7 @@ class TestSafeNamingIntegration:
 
     def test_search(self, meta_store_type, model_name):
         """Search after create — verifies meta store indexing works."""
-        from autocrud.query_types import ResourceMetaSearchQuery
+        from specstar.query_types import ResourceMetaSearchQuery
 
         data = SimpleData(name=f"search-{model_name}", value=99)
         user, now = faker.user_name(), dt.datetime(2025, 6, 1)

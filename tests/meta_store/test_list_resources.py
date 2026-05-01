@@ -9,17 +9,17 @@ import pytest
 from faker import Faker
 from msgspec import UNSET, Struct
 
-from autocrud.query_types import ResourceMetaSearchQuery
-from autocrud.resource_manager.core import (
+from specstar.query_types import ResourceMetaSearchQuery
+from specstar.resource_manager.core import (
     IResourceStore,
     ResourceManager,
     SimpleStorage,
 )
-from autocrud.resource_manager.resource_store.simple import (
+from specstar.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
-from autocrud.types import (
+from specstar.types import (
     ResourceMeta,
     RevisionInfo,
     SearchedResource,
@@ -61,7 +61,7 @@ def get_resource_store(
         d.mkdir()
         yield DiskResourceStore(encoding="msgpack", rootdir=d)  # ty:ignore[invalid-argument-type]
     elif store_type == "postgres":
-        from autocrud.resource_manager.resource_store.postgres import (
+        from specstar.resource_manager.resource_store.postgres import (
             PostgresResourceStore,
         )
 
@@ -434,7 +434,7 @@ class TestListResources:
 
     def test_list_resources_accepts_query_builder(self):
         """list_resources 也接受 Query builder 物件（使用 meta field）"""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         _, _, info, data = self.create()
 

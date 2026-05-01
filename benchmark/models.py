@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from msgspec import Struct
 
-from autocrud.types import Binary
+from specstar.types import Binary
 
 # ---------------------------------------------------------------------------
 # Helper: random string generator

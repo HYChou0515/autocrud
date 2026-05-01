@@ -9,13 +9,13 @@ import { resolveCliVersion } from './cliVersion.js';
 const program = new Command();
 
 program
-  .name('autocrud-web')
-  .description('AutoCRUD Web Code Generator - Generate React frontend from AutoCRUD API')
+  .name('specstar-web')
+  .description('SpecStar Web Code Generator - Generate React frontend from SpecStar API')
   .version(resolveCliVersion());
 
 program
   .command('init')
-  .description('Initialize a new AutoCRUD Web project')
+  .description('Initialize a new SpecStar Web project')
   .argument('<project-name>', 'Project name')
   .option('-d, --dir <directory>', 'Target directory', '.')
   .option('--include-tests', 'Include test files in generated output', false)
@@ -27,7 +27,7 @@ program
 
 program
   .command('generate')
-  .description('Generate code from AutoCRUD API OpenAPI spec')
+  .description('Generate code from SpecStar API OpenAPI spec')
   .option(
     '-u, --url <api-url>',
     'Backend API URL (used to fetch OpenAPI spec and as dev proxy target)',
@@ -49,7 +49,7 @@ program
 
 program
   .command('integrate')
-  .description('Integrate AutoCRUD generated code into an existing React project')
+  .description('Integrate SpecStar generated code into an existing React project')
   .option(
     '-u, --url <api-url>',
     'Backend API URL (used to fetch OpenAPI spec and as dev proxy target)',

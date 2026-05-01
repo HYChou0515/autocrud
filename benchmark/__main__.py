@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> None:
     """Parse CLI arguments and run (or list) benchmark scenarios."""
     parser = argparse.ArgumentParser(
         prog="benchmark",
-        description="AutoCRUD configurable CRUD benchmark suite.",
+        description="SpecStar configurable CRUD benchmark suite.",
     )
     parser.add_argument(
         "--config",

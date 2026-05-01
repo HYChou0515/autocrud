@@ -17,8 +17,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.resource_manager.dump_format import (
+from specstar.crud.core import SpecStar
+from specstar.resource_manager.dump_format import (
     DumpStreamReader,
     DumpStreamWriter,
     EofRecord,
@@ -42,10 +42,10 @@ class Tag(Struct):
 # ── helpers ───────────────────────────────────────────────────────────
 
 
-def _make_app(*models, **kw) -> tuple[AutoCRUD, TestClient]:
-    """Build an AutoCRUD + FastAPI app with *models* registered and
-    return ``(crud, client)``."""
-    crud = AutoCRUD(
+def _make_app(*models, **kw) -> tuple[SpecStar, TestClient]:
+    """Build an SpecStar + FastAPI app with *models* registered and
+    return ``(spec, client)``."""
+    spec = SpecStar(
         default_user="tester",
         default_now=dt.datetime.now,
         **kw,
@@ -53,16 +53,16 @@ def _make_app(*models, **kw) -> tuple[AutoCRUD, TestClient]:
     names = {}
     for m in models:
         name = m.__name__.lower()
-        crud.add_model(m, name=name)
+        spec.add_model(m, name=name)
         names[m] = name
     app = FastAPI()
-    crud.apply(app)
-    return crud, TestClient(app)
+    spec.apply(app)
+    return spec, TestClient(app)
 
 
-def _seed(crud: AutoCRUD, model_name: str, items: list) -> list[str]:
+def _seed(spec: SpecStar, model_name: str, items: list) -> list[str]:
     """Create several resources, return their resource_ids."""
-    rm = crud.resource_managers[model_name]
+    rm = spec.resource_managers[model_name]
     ids = []
     for item in items:
         meta = rm.create(item)
@@ -79,7 +79,7 @@ class TestPerModelExport:
     """``GET /{model}/export``"""
 
     def test_export_empty_model(self):
-        crud, client = _make_app(Item)
+        spec, client = _make_app(Item)
         resp = client.get("/item/export")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/octet-stream"
@@ -96,8 +96,8 @@ class TestPerModelExport:
         ]
 
     def test_export_with_data(self):
-        crud, client = _make_app(Item)
-        _seed(crud, "item", [Item(name="A", price=10), Item(name="B", price=20)])
+        spec, client = _make_app(Item)
+        _seed(spec, "item", [Item(name="A", price=10), Item(name="B", price=20)])
 
         resp = client.get("/item/export")
         assert resp.status_code == 200
@@ -108,18 +108,18 @@ class TestPerModelExport:
         assert meta_count == 2
 
     def test_export_filename(self):
-        crud, client = _make_app(Item)
+        spec, client = _make_app(Item)
         resp = client.get("/item/export")
         assert "item.acbak" in resp.headers.get("content-disposition", "")
 
     def test_export_with_qb_filter(self):
-        crud, client = _make_app(
+        spec, client = _make_app(
             Item,
         )
-        crud.add_model(Item, name="item2", indexed_fields=[("price", int)])
+        spec.add_model(Item, name="item2", indexed_fields=[("price", int)])
         app2 = FastAPI()
         # Rebuild with indexed fields
-        crud2 = AutoCRUD(default_user="t", default_now=dt.datetime.now)
+        crud2 = SpecStar(default_user="t", default_now=dt.datetime.now)
         crud2.add_model(Item, name="item", indexed_fields=[("price", int)])
         app2 = FastAPI()
         crud2.apply(app2)
@@ -149,18 +149,18 @@ class TestPerModelImport:
     def crud_client(self):
         return _make_app(Item)
 
-    def _make_archive(self, crud: AutoCRUD, model_name: str) -> bytes:
+    def _make_archive(self, spec: SpecStar, model_name: str) -> bytes:
         """Export model to bytes via Python API."""
         buf = io.BytesIO()
-        crud.dump(buf, model_queries={model_name: None})
+        spec.dump(buf, model_queries={model_name: None})
         return buf.getvalue()
 
     # --- happy path ---
 
     def test_import_new_data(self, crud_client):
-        crud, client = crud_client
-        _seed(crud, "item", [Item(name="X", price=5)])
-        archive = self._make_archive(crud, "item")
+        spec, client = crud_client
+        _seed(spec, "item", [Item(name="X", price=5)])
+        archive = self._make_archive(spec, "item")
 
         # Create a fresh instance to import into
         crud2, client2 = _make_app(Item)
@@ -175,12 +175,12 @@ class TestPerModelImport:
         assert data["total"] == 1
 
     def test_import_overwrite(self, crud_client):
-        crud, client = crud_client
-        ids = _seed(crud, "item", [Item(name="Original", price=1)])
-        archive = self._make_archive(crud, "item")
+        spec, client = crud_client
+        ids = _seed(spec, "item", [Item(name="Original", price=1)])
+        archive = self._make_archive(spec, "item")
 
         # Modify the resource
-        rm = crud.resource_managers["item"]
+        rm = spec.resource_managers["item"]
         rm.update(ids[0], Item(name="Modified", price=999))
 
         # Import with overwrite (default)
@@ -193,9 +193,9 @@ class TestPerModelImport:
         assert data["loaded"] == 1
 
     def test_import_skip(self, crud_client):
-        crud, client = crud_client
-        _seed(crud, "item", [Item(name="Existing", price=1)])
-        archive = self._make_archive(crud, "item")
+        spec, client = crud_client
+        _seed(spec, "item", [Item(name="Existing", price=1)])
+        archive = self._make_archive(spec, "item")
 
         # Import with skip
         resp = client.post(
@@ -209,9 +209,9 @@ class TestPerModelImport:
         assert data["skipped"] == 1
 
     def test_import_raise_error(self, crud_client):
-        crud, client = crud_client
-        _seed(crud, "item", [Item(name="Existing", price=1)])
-        archive = self._make_archive(crud, "item")
+        spec, client = crud_client
+        _seed(spec, "item", [Item(name="Existing", price=1)])
+        archive = self._make_archive(spec, "item")
 
         resp = client.post(
             "/item/import",
@@ -262,9 +262,9 @@ class TestPerModelImport:
 
     def test_import_wrong_model_skipped(self, crud_client):
         """Archive with a different model section is ignored."""
-        crud, client = crud_client
+        spec, client = crud_client
         # Build archive for model "other" (no such section for "item")
-        crud_other = AutoCRUD(default_user="t", default_now=dt.datetime.now)
+        crud_other = SpecStar(default_user="t", default_now=dt.datetime.now)
         crud_other.add_model(Tag, name="tag")
         rm = crud_other.resource_managers["tag"]
         rm.create(Tag(label="test"))
@@ -290,9 +290,9 @@ class TestGlobalExport:
     """``GET /_backup/export``"""
 
     def test_export_all_models(self):
-        crud, client = _make_app(Item, Tag)
-        _seed(crud, "item", [Item(name="A", price=1)])
-        _seed(crud, "tag", [Tag(label="x")])
+        spec, client = _make_app(Item, Tag)
+        _seed(spec, "item", [Item(name="A", price=1)])
+        _seed(spec, "tag", [Tag(label="x")])
 
         resp = client.get("/_backup/export")
         assert resp.status_code == 200
@@ -306,9 +306,9 @@ class TestGlobalExport:
         assert "tag" in model_starts
 
     def test_export_selected_models(self):
-        crud, client = _make_app(Item, Tag)
-        _seed(crud, "item", [Item(name="A", price=1)])
-        _seed(crud, "tag", [Tag(label="x")])
+        spec, client = _make_app(Item, Tag)
+        _seed(spec, "item", [Item(name="A", price=1)])
+        _seed(spec, "tag", [Tag(label="x")])
 
         resp = client.get("/_backup/export", params={"models": ["item"]})
         assert resp.status_code == 200
@@ -341,12 +341,12 @@ class TestGlobalImport:
     """``POST /_backup/import``"""
 
     def test_import_all_models(self):
-        crud, client = _make_app(Item, Tag)
-        _seed(crud, "item", [Item(name="A", price=1), Item(name="B", price=2)])
-        _seed(crud, "tag", [Tag(label="x")])
+        spec, client = _make_app(Item, Tag)
+        _seed(spec, "item", [Item(name="A", price=1), Item(name="B", price=2)])
+        _seed(spec, "tag", [Tag(label="x")])
 
         buf = io.BytesIO()
-        crud.dump(buf)
+        spec.dump(buf)
         archive = buf.getvalue()
 
         # Fresh instance
@@ -361,10 +361,10 @@ class TestGlobalImport:
         assert data["tag"]["loaded"] == 1
 
     def test_import_skip_strategy(self):
-        crud, client = _make_app(Item)
-        ids = _seed(crud, "item", [Item(name="A", price=1)])
+        spec, client = _make_app(Item)
+        ids = _seed(spec, "item", [Item(name="A", price=1)])
         buf = io.BytesIO()
-        crud.dump(buf)
+        spec.dump(buf)
         archive = buf.getvalue()
 
         resp = client.post(
@@ -482,7 +482,7 @@ class TestOpenAPISchemaGeneration:
 
     def test_openapi_schema_generation_succeeds(self):
         """GET /openapi.json must succeed when backup routes are enabled."""
-        crud, client = _make_app(Item)
+        spec, client = _make_app(Item)
         resp = client.get("/openapi.json")
         assert resp.status_code == 200
         schema = resp.json()

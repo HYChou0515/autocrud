@@ -1,4 +1,4 @@
-"""Tests for @crud.update_action() decorator.
+"""Tests for @spec.update_action() decorator.
 
 Covers:
 - Decorator stores pending action metadata
@@ -10,7 +10,7 @@ Covers:
 - mode='update' vs mode='modify'
 - existing_param custom name
 - Multiple actions on same resource
-- OpenAPI schema includes x-autocrud-update-action extension
+- OpenAPI schema includes x-specstar-update-action extension
 - Import order: decorator before add_model works
 - Unknown resource_name logs warning and is skipped
 - Sync handler support
@@ -25,8 +25,8 @@ from fastapi import Body, FastAPI, Query
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import (
+from specstar.crud.core import SpecStar
+from specstar.types import (
     ResourceMeta,
     RevisionInfo,
 )
@@ -60,13 +60,13 @@ class AddGoldInput(Struct):
 
 
 class TestUpdateActionDecorator:
-    """@crud.update_action() stores metadata without registering routes."""
+    """@spec.update_action() stores metadata without registering routes."""
 
     def test_decorator_stores_pending_action(self):
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Level Up")
+        @spec.update_action("character", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(
                 name=existing.name,
@@ -74,8 +74,8 @@ class TestUpdateActionDecorator:
                 gold=existing.gold,
             )
 
-        assert len(crud._pending_update_actions) == 1
-        action = crud._pending_update_actions[0]
+        assert len(spec._pending_update_actions) == 1
+        action = spec._pending_update_actions[0]
         assert action.resource_name == "character"
         assert action.label == "Level Up"
         assert action.handler is level_up
@@ -85,85 +85,85 @@ class TestUpdateActionDecorator:
         assert action.meta_param == "meta"
 
     def test_decorator_returns_original_function(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.update_action("character", label="Level Up")
+        @spec.update_action("character", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(name=existing.name, level=existing.level + body.levels)
 
         assert level_up.__name__ == "level_up"
 
     def test_path_inferred_from_function_name(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.update_action("character", label="Level Up")
+        @spec.update_action("character", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(name=existing.name, level=existing.level + body.levels)
 
-        action = crud._pending_update_actions[0]
+        action = spec._pending_update_actions[0]
         assert action.path == "level-up"
 
     def test_path_explicit_override(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.update_action("character", path="custom-level", label="Level Up")
+        @spec.update_action("character", path="custom-level", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(name=existing.name, level=existing.level + body.levels)
 
-        action = crud._pending_update_actions[0]
+        action = spec._pending_update_actions[0]
         assert action.path == "custom-level"
 
     def test_label_inferred_from_path(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.update_action("character")
+        @spec.update_action("character")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(name=existing.name, level=existing.level + body.levels)
 
-        action = crud._pending_update_actions[0]
+        action = spec._pending_update_actions[0]
         assert action.label == "Level Up"
 
     def test_mode_modify(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.update_action("character", mode="modify")
+        @spec.update_action("character", mode="modify")
         def quick_fix(existing: Character, body: LevelUpInput = Body(...)):
             return Character(name=existing.name, level=existing.level + body.levels)
 
-        action = crud._pending_update_actions[0]
+        action = spec._pending_update_actions[0]
         assert action.mode == "modify"
 
     def test_existing_param_custom(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.update_action("character", existing_param="current")
+        @spec.update_action("character", existing_param="current")
         def level_up(current: Character, body: LevelUpInput = Body(...)):
             return Character(name=current.name, level=current.level + body.levels)
 
-        action = crud._pending_update_actions[0]
+        action = spec._pending_update_actions[0]
         assert action.existing_param == "current"
 
     def test_multiple_actions_on_same_resource(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.update_action("character", label="Level Up")
+        @spec.update_action("character", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(name=existing.name, level=existing.level + body.levels)
 
-        @crud.update_action("character", label="Rename")
+        @spec.update_action("character", label="Rename")
         def rename(existing: Character, body: RenameInput = Body(...)):
             return Character(name=body.new_name, level=existing.level)
 
-        assert len(crud._pending_update_actions) == 2
+        assert len(spec._pending_update_actions) == 2
 
     def test_decorator_before_add_model(self):
         """Decorator can be used before add_model — lazy registration."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
 
-        @crud.update_action("character", label="Level Up")
+        @spec.update_action("character", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(
                 name=existing.name,
@@ -172,10 +172,10 @@ class TestUpdateActionDecorator:
             )
 
         # add_model comes AFTER the decorator
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         # First create a character
@@ -198,13 +198,13 @@ class TestUpdateActionRouteRegistration:
 
     @pytest.fixture
     def crud_and_client(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Level Up")
+        @spec.update_action("character", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(
                 name=existing.name,
@@ -213,12 +213,12 @@ class TestUpdateActionRouteRegistration:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
-        return crud, client
+        return spec, client
 
     def test_post_custom_action_updates_resource(self, crud_and_client):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
 
         # Create a character first
         resp = client.post("/character", json={"name": "Alice", "level": 1})
@@ -234,14 +234,14 @@ class TestUpdateActionRouteRegistration:
         assert data["resource_id"] == resource_id
 
         # Verify the resource was actually updated
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == "Alice"
         assert resource.data.level == 6  # 1 + 5
 
     def test_existing_object_is_injected(self, crud_and_client):
         """Handler receives the actual current resource data."""
-        crud, client = crud_and_client
+        spec, client = crud_and_client
 
         # Create with specific values
         resp = client.post("/character", json={"name": "Bob", "level": 10, "gold": 500})
@@ -251,19 +251,19 @@ class TestUpdateActionRouteRegistration:
         resp = client.post(f"/character/{resource_id}/level-up", json={"levels": 3})
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.level == 13  # 10 + 3
         assert resource.data.gold == 500  # preserved from existing
 
     def test_handler_return_none_skips_update(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Conditional Update")
+        @spec.update_action("character", label="Conditional Update")
         def conditional_update(existing: Character, body: LevelUpInput = Body(...)):
             # Return None → no update
             if existing.level >= 100:
@@ -275,7 +275,7 @@ class TestUpdateActionRouteRegistration:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         # Create a max-level character
@@ -292,24 +292,24 @@ class TestUpdateActionRouteRegistration:
         assert resp.json() is None
 
         # Verify level unchanged
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.level == 100
 
     def test_resource_id_not_found_returns_error(self, crud_and_client):
         """POST with invalid resource_id should return an error."""
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resp = client.post("/character/nonexistent-id/level-up", json={"levels": 1})
         assert resp.status_code >= 400
 
     def test_handler_with_query_params(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Level Up With Bonus")
+        @spec.update_action("character", label="Level Up With Bonus")
         def level_up_with_bonus(
             existing: Character,
             body: LevelUpInput = Body(...),
@@ -322,7 +322,7 @@ class TestUpdateActionRouteRegistration:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Eve", "level": 5})
@@ -333,13 +333,13 @@ class TestUpdateActionRouteRegistration:
             json={"levels": 2},
         )
         assert resp.status_code == 200
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.level == 17  # 5 + 2 + 10
 
     def test_standard_update_still_works(self, crud_and_client):
         """Standard PUT /character/{id} should still work."""
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resp = client.post("/character", json={"name": "Std", "level": 1})
         resource_id = resp.json()["resource_id"]
 
@@ -350,15 +350,15 @@ class TestUpdateActionRouteRegistration:
         assert resp.status_code == 200
 
     def test_unknown_resource_name_logs_warning(self, caplog):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.update_action("nonexistent", label="Test")
+        @spec.update_action("nonexistent", label="Test")
         def test_action(existing: Character, body: LevelUpInput = Body(...)):
             return Character(name=existing.name, level=existing.level + body.levels)
 
         app = FastAPI()
-        crud.apply(app)
-        assert "nonexistent" in caplog.text or len(crud._pending_update_actions) == 1
+        spec.apply(app)
+        assert "nonexistent" in caplog.text or len(spec._pending_update_actions) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -370,13 +370,13 @@ class TestUpdateActionMode:
     """Test mode='update' (new revision) vs mode='modify' (in-place)."""
 
     def test_mode_update_creates_new_revision(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", mode="update", label="Level Up")
+        @spec.update_action("character", mode="update", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(
                 name=existing.name,
@@ -385,7 +385,7 @@ class TestUpdateActionMode:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Alice", "level": 1})
@@ -401,21 +401,21 @@ class TestUpdateActionMode:
 
     def test_mode_modify_edits_in_place(self):
         """mode='modify' should edit the draft in place (no new revision)."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
         # Use draft as default status so modify works
-        crud.add_model(Character, name="character", default_status="draft")  # ty:ignore[invalid-argument-type]
+        spec.add_model(Character, name="character", default_status="draft")  # ty:ignore[invalid-argument-type]
 
-        @crud.update_action("character", mode="modify", label="Quick Fix")
+        @spec.update_action("character", mode="modify", label="Quick Fix")
         def quick_fix(existing: Character, body: RenameInput = Body(...)):
             return Character(
                 name=body.new_name, level=existing.level, gold=existing.gold
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Draft", "level": 1})
@@ -431,7 +431,7 @@ class TestUpdateActionMode:
         # Modify returns same revision_id (in-place update)
         assert data["revision_id"] == first_revision_id
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == "Fixed"
 
@@ -445,13 +445,13 @@ class TestExistingParamCustomization:
     """existing_param changes the injected parameter name."""
 
     def test_custom_existing_param_name(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Rename", existing_param="current")
+        @spec.update_action("character", label="Rename", existing_param="current")
         def rename(current: Character, body: RenameInput = Body(...)):
             return Character(
                 name=body.new_name,
@@ -460,7 +460,7 @@ class TestExistingParamCustomization:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -474,7 +474,7 @@ class TestExistingParamCustomization:
         )
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == "NewName"
         assert resource.data.level == 10
@@ -490,13 +490,13 @@ class TestUpdateActionAsyncHandler:
     """Async (coroutine) handler should work."""
 
     def test_async_handler(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Async Level Up")
+        @spec.update_action("character", label="Async Level Up")
         async def async_level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(
                 name=existing.name,
@@ -505,7 +505,7 @@ class TestUpdateActionAsyncHandler:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Async", "level": 5})
@@ -516,7 +516,7 @@ class TestUpdateActionAsyncHandler:
         )
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.level == 12  # 5 + 7
 
@@ -530,13 +530,13 @@ class TestUpdateActionNoBody:
     """Handler with no body params — just transforms existing."""
 
     def test_no_body_handler(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Double Gold")
+        @spec.update_action("character", label="Double Gold")
         def double_gold(existing: Character):
             return Character(
                 name=existing.name,
@@ -545,7 +545,7 @@ class TestUpdateActionNoBody:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Rich", "level": 1, "gold": 100})
@@ -554,7 +554,7 @@ class TestUpdateActionNoBody:
         resp = client.post(f"/character/{resource_id}/double-gold")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.gold == 200
 
@@ -568,10 +568,10 @@ class TestUpdateActionOpenAPI:
     """OpenAPI schema should include update action extensions."""
 
     def _build_app(self):
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Level Up")
+        @spec.update_action("character", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(
                 name=existing.name,
@@ -579,7 +579,7 @@ class TestUpdateActionOpenAPI:
                 gold=existing.gold,
             )
 
-        @crud.update_action("character", label="Rename")
+        @spec.update_action("character", label="Rename")
         def rename(existing: Character, body: RenameInput = Body(...)):
             return Character(
                 name=body.new_name,
@@ -588,29 +588,29 @@ class TestUpdateActionOpenAPI:
             )
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
-    def test_operation_has_x_autocrud_update_action(self):
-        """Each custom POST operation should have x-autocrud-update-action."""
+    def test_operation_has_x_specstar_update_action(self):
+        """Each custom POST operation should have x-specstar-update-action."""
         app = self._build_app()
         schema = app.openapi_schema
         paths = schema["paths"]
 
         op = paths["/character/{resource_id}/level-up"]["post"]
-        assert "x-autocrud-update-action" in op
-        assert op["x-autocrud-update-action"]["resource"] == "character"
-        assert op["x-autocrud-update-action"]["label"] == "Level Up"
-        assert op["x-autocrud-update-action"]["mode"] == "update"
+        assert "x-specstar-update-action" in op
+        assert op["x-specstar-update-action"]["resource"] == "character"
+        assert op["x-specstar-update-action"]["label"] == "Level Up"
+        assert op["x-specstar-update-action"]["mode"] == "update"
 
     def test_top_level_custom_update_actions(self):
-        """OpenAPI schema should have x-autocrud-custom-update-actions."""
+        """OpenAPI schema should have x-specstar-custom-update-actions."""
         app = self._build_app()
         schema = app.openapi_schema
 
-        assert "x-autocrud-custom-update-actions" in schema
-        actions = schema["x-autocrud-custom-update-actions"]
+        assert "x-specstar-custom-update-actions" in schema
+        actions = schema["x-specstar-custom-update-actions"]
         assert "character" in actions
         assert len(actions["character"]) == 2
         labels = {a["label"] for a in actions["character"]}
@@ -621,7 +621,7 @@ class TestUpdateActionOpenAPI:
         """Each action should include path with {resource_id}."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-update-actions"]["character"]
+        actions = schema["x-specstar-custom-update-actions"]["character"]
         paths = {a["path"] for a in actions}
         assert "/character/{resource_id}/level-up" in paths
         assert "/character/{resource_id}/rename" in paths
@@ -630,7 +630,7 @@ class TestUpdateActionOpenAPI:
         """Each action should include bodySchema for generator discovery."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-update-actions"]["character"]
+        actions = schema["x-specstar-custom-update-actions"]["character"]
         schemas = {a["bodySchema"] for a in actions}
         assert "LevelUpInput" in schemas
         assert "RenameInput" in schemas
@@ -639,7 +639,7 @@ class TestUpdateActionOpenAPI:
         """Each action should include mode."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-update-actions"]["character"]
+        actions = schema["x-specstar-custom-update-actions"]["character"]
         for a in actions:
             assert "mode" in a
             assert a["mode"] in ("update", "modify")
@@ -654,10 +654,10 @@ class TestUpdateActionOpenAPI:
 
     def test_query_params_in_extension(self):
         """Query params should appear in the extension."""
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Level Up With Bonus")
+        @spec.update_action("character", label="Level Up With Bonus")
         def level_up_with_bonus(
             existing: Character,
             body: LevelUpInput = Body(...),
@@ -669,11 +669,11 @@ class TestUpdateActionOpenAPI:
             )
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi_schema
 
-        actions = schema["x-autocrud-custom-update-actions"]["character"]  # ty:ignore[not-subscriptable]
+        actions = schema["x-specstar-custom-update-actions"]["character"]  # ty:ignore[not-subscriptable]
         action = actions[0]
         assert "queryParams" in action
         qp_names = {p["name"] for p in action["queryParams"]}
@@ -681,10 +681,10 @@ class TestUpdateActionOpenAPI:
 
     def test_info_meta_not_in_openapi_spec(self):
         """RevisionInfo/ResourceMeta params should NOT appear as update action body."""
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Stamp")
+        @spec.update_action("character", label="Stamp")
         def stamp(existing: Character, info: RevisionInfo, meta: ResourceMeta):
             return Character(
                 name=f"{info.revision_id}-{meta.total_revision_count}",
@@ -692,12 +692,12 @@ class TestUpdateActionOpenAPI:
             )
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi_schema
 
         # No body schema should be extracted (RevisionInfo/ResourceMeta are skipped)
-        actions = schema["x-autocrud-custom-update-actions"]["character"]  # ty:ignore[not-subscriptable]
+        actions = schema["x-specstar-custom-update-actions"]["character"]  # ty:ignore[not-subscriptable]
         action = actions[0]
         assert "bodySchema" not in action
 
@@ -722,18 +722,18 @@ class TestUpdateActionNoExistingParam:
 
     def test_no_existing_param_async(self):
         """Async handler with zero params (no existing, no body)."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Reset Name")
+        @spec.update_action("character", label="Reset Name")
         async def reset_name():
             return Character(name="reset", level=1, gold=0)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Alice", "level": 10})
@@ -742,24 +742,24 @@ class TestUpdateActionNoExistingParam:
         resp = client.post(f"/character/{resource_id}/reset-name")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == "reset"
 
     def test_no_existing_param_sync(self):
         """Sync handler with zero params."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Reset Name Sync")
+        @spec.update_action("character", label="Reset Name Sync")
         def reset_name_sync():
             return Character(name="reset-sync", level=1, gold=0)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Bob", "level": 5})
@@ -768,24 +768,24 @@ class TestUpdateActionNoExistingParam:
         resp = client.post(f"/character/{resource_id}/reset-name-sync")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == "reset-sync"
 
     def test_body_only_no_existing(self):
         """Handler with Body param but no existing param."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Force Name")
+        @spec.update_action("character", label="Force Name")
         def force_name(body: RenameInput = Body(...)):
             return Character(name=body.new_name, level=99, gold=0)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Eve", "level": 1})
@@ -797,7 +797,7 @@ class TestUpdateActionNoExistingParam:
         )
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == "Forced"
         assert resource.data.level == 99
@@ -812,17 +812,17 @@ class TestUpdateAndCreateActionsCoexist:
     """update_action and create_action work together."""
 
     def test_both_actions_registered(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="Quick Create")
+        @spec.create_action("character", label="Quick Create")
         def quick_create():
             return Character(name="Quick", level=1)
 
-        @crud.update_action("character", label="Level Up")
+        @spec.update_action("character", label="Level Up")
         def level_up(existing: Character, body: LevelUpInput = Body(...)):
             return Character(
                 name=existing.name,
@@ -831,7 +831,7 @@ class TestUpdateAndCreateActionsCoexist:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         # Create via custom create action
@@ -843,7 +843,7 @@ class TestUpdateAndCreateActionsCoexist:
         resp = client.post(f"/character/{resource_id}/level-up", json={"levels": 5})
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.level == 6  # 1 + 5
 
@@ -858,13 +858,13 @@ class TestUpdateActionInfoMetaInjection:
 
     def test_info_injected_by_type_annotation(self):
         """Handler with RevisionInfo param gets the existing resource's info."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Stamp Info")
+        @spec.update_action("character", label="Stamp Info")
         async def stamp_info(existing: Character, info: RevisionInfo):
             return Character(
                 name=f"{existing.name}-rev:{info.revision_id}",
@@ -873,7 +873,7 @@ class TestUpdateActionInfoMetaInjection:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Alice", "level": 1})
@@ -883,19 +883,19 @@ class TestUpdateActionInfoMetaInjection:
         resp = client.post(f"/character/{resource_id}/stamp-info")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == f"Alice-rev:{revision_id}"
 
     def test_meta_injected_by_type_annotation(self):
         """Handler with ResourceMeta param gets the resource meta."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Stamp Meta")
+        @spec.update_action("character", label="Stamp Meta")
         async def stamp_meta(existing: Character, meta: ResourceMeta):
             return Character(
                 name=f"{existing.name}-count:{meta.total_revision_count}",
@@ -904,7 +904,7 @@ class TestUpdateActionInfoMetaInjection:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Bob", "level": 5})
@@ -913,19 +913,19 @@ class TestUpdateActionInfoMetaInjection:
         resp = client.post(f"/character/{resource_id}/stamp-meta")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == "Bob-count:1"
 
     def test_info_and_meta_together(self):
         """Handler with both RevisionInfo and ResourceMeta params."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Full Info")
+        @spec.update_action("character", label="Full Info")
         async def full_info(
             existing: Character, info: RevisionInfo, meta: ResourceMeta
         ):
@@ -936,7 +936,7 @@ class TestUpdateActionInfoMetaInjection:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Eve", "level": 1})
@@ -946,19 +946,19 @@ class TestUpdateActionInfoMetaInjection:
         resp = client.post(f"/character/{resource_id}/full-info")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == f"{revision_id}-1"
 
     def test_info_and_meta_sync_handler(self):
         """Sync handler with RevisionInfo and ResourceMeta works too."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Sync Full")
+        @spec.update_action("character", label="Sync Full")
         def sync_full(existing: Character, info: RevisionInfo, meta: ResourceMeta):
             return Character(
                 name=f"sync-{info.revision_id}-{meta.total_revision_count}",
@@ -967,7 +967,7 @@ class TestUpdateActionInfoMetaInjection:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Dan", "level": 3})
@@ -977,19 +977,19 @@ class TestUpdateActionInfoMetaInjection:
         resp = client.post(f"/character/{resource_id}/sync-full")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == f"sync-{revision_id}-1"
 
     def test_meta_only_no_existing(self):
         """Handler with only meta param, no existing."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Meta Only")
+        @spec.update_action("character", label="Meta Only")
         def meta_only(meta: ResourceMeta):
             return Character(
                 name=f"meta-{meta.total_revision_count}",
@@ -998,7 +998,7 @@ class TestUpdateActionInfoMetaInjection:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Foo", "level": 1})
@@ -1007,19 +1007,19 @@ class TestUpdateActionInfoMetaInjection:
         resp = client.post(f"/character/{resource_id}/meta-only")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == "meta-1"
 
     def test_info_only_no_existing(self):
         """Handler with only info param, no existing."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Info Only")
+        @spec.update_action("character", label="Info Only")
         async def info_only(info: RevisionInfo):
             return Character(
                 name=f"info-{info.revision_id}",
@@ -1028,7 +1028,7 @@ class TestUpdateActionInfoMetaInjection:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Bar", "level": 2})
@@ -1038,19 +1038,19 @@ class TestUpdateActionInfoMetaInjection:
         resp = client.post(f"/character/{resource_id}/info-only")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == f"info-{revision_id}"
 
     def test_custom_param_names(self):
         """info/meta injection works with custom parameter names via decorator kwargs."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character",
             label="Custom Names",
             info_param="my_revision",
@@ -1068,7 +1068,7 @@ class TestUpdateActionInfoMetaInjection:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/character", json={"name": "Zoe", "level": 7})
@@ -1078,7 +1078,7 @@ class TestUpdateActionInfoMetaInjection:
         resp = client.post(f"/character/{resource_id}/custom-names")
         assert resp.status_code == 200
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == f"{revision_id}-1"
 
@@ -1101,23 +1101,23 @@ class TestUpdateActionStructBodyNoDuplicate:
             new_name: str
             suffix: str = ""
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Rename")
+        @spec.update_action("character", label="Rename")
         def rename(existing: Character, body: RenameInput = Body(...)):
             return Character(name=body.new_name + body.suffix, level=existing.level)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_no_inline_body_params_when_body_is_struct(self):
         """Struct-as-body must NOT produce inlineBodyParams for update actions."""
         app = self._build_app()
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-update-actions"]["character"][0]
+        action = schema["x-specstar-custom-update-actions"]["character"][0]
         assert "bodySchema" in action
         assert "inlineBodyParams" not in action, (
             f"inlineBodyParams must be absent when body is a pure struct; "

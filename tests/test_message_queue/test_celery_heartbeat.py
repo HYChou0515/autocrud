@@ -17,13 +17,13 @@ import time
 import pytest
 from msgspec import Struct
 
-from autocrud.message_queue.celery_queue import (
+from specstar.message_queue.celery_queue import (
     CeleryMessageQueue,
 )
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     Job,
     Resource,
     RevisionStatus,
@@ -154,7 +154,7 @@ class TestCeleryHeartbeat:
 
         orig_hb_init = None
         try:
-            from autocrud.message_queue.heartbeat import HeartbeatThread
+            from specstar.message_queue.heartbeat import HeartbeatThread
 
             orig_start = HeartbeatThread.start
 

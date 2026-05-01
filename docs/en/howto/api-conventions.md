@@ -1,6 +1,6 @@
 # API conventions
 
-This document describes AutoCRUD’s **HTTP API conventions** — especially the parts that are *not* obvious from plain REST CRUD:
+This document describes SpecStar’s **HTTP API conventions** — especially the parts that are *not* obvious from plain REST CRUD:
 
 - `returns=` (select response sections)
 - `partial=` (field-level projection across `data` / `meta` / `revision_info`)
@@ -16,7 +16,7 @@ This document describes AutoCRUD’s **HTTP API conventions** — especially the
 ## Canonical read API: `GET /{model}/{resource_id}`
 
 ### Response shape (section-based)
-AutoCRUD returns a unified response envelope:
+SpecStar returns a unified response envelope:
 
 ```json
 {
@@ -66,7 +66,7 @@ Examples:
 
 ## Field projection: `partial` / `partial[]`
 
-AutoCRUD supports field-level projection through `partial` (or `partial[]` for axios / repeated-query compatibility).
+SpecStar supports field-level projection through `partial` (or `partial[]` for axios / repeated-query compatibility).
 
 ### The `partial` path format
 
@@ -74,7 +74,7 @@ AutoCRUD supports field-level projection through `partial` (or `partial[]` for a
 
   * `/field`
   * `/nested/field`
-* If the user passes `field` (no leading slash), AutoCRUD normalizes it to `/field`.
+* If the user passes `field` (no leading slash), SpecStar normalizes it to `/field`.
 
 > `partial` is treated as a structural selector (similar to JSON Pointer style paths), and is passed into `filter_struct_partial()` / `get_partial()`.
 
@@ -151,7 +151,7 @@ Route templates typically call `get_meta(...)` first, so `include_deleted` is a 
 
 ## Revisions and mutability
 
-AutoCRUD has two update modes with different revision semantics:
+SpecStar has two update modes with different revision semantics:
 
 ### `update` (default): append a new revision (immutable history)
 
@@ -186,7 +186,7 @@ AutoCRUD has two update modes with different revision semantics:
 
 ## Blob conventions (`Binary`)
 
-AutoCRUD supports a first-class blob type:
+SpecStar supports a first-class blob type:
 
 ```python
 class Binary(Struct):
@@ -200,7 +200,7 @@ class Binary(Struct):
 
 When writing a resource that contains `Binary(data=...)`:
 
-* AutoCRUD extracts the bytes
+* SpecStar extracts the bytes
 * Stores them into the configured `IBlobStore`
 * Populates:
 
@@ -224,7 +224,7 @@ Blob bytes are retrieved via the dedicated endpoint:
 
 ### Upload sessions
 
-In addition to the one-shot `POST /blobs/upload`, AutoCRUD provides a
+In addition to the one-shot `POST /blobs/upload`, SpecStar provides a
 two-step **upload-session** flow for larger files or when pre-signed URLs
 are needed:
 
@@ -264,7 +264,7 @@ This makes the upload-session API available with any blob store backend.
 
 ## Query / search conventions (recommended: `qb`)
 
-For list/search endpoints, AutoCRUD supports multiple query styles, but **recommends `qb`**.
+For list/search endpoints, SpecStar supports multiple query styles, but **recommends `qb`**.
 
 ### `qb` (recommended)
 
@@ -380,7 +380,7 @@ This includes (but is not limited to):
 * **422 Unprocessable Entity**
 
   * `msgspec.ValidationError` (type-level validation during decoding)
-  * `autocrud.types.ValidationError` (domain/business validation)
+  * `specstar.types.ValidationError` (domain/business validation)
 
 * **409 Conflict**
 
@@ -402,7 +402,7 @@ This includes (but is not limited to):
 * **422 Unprocessable Entity**
 
   * `msgspec.ValidationError`
-  * `autocrud.types.ValidationError`
+  * `specstar.types.ValidationError`
 
 * **409 Conflict**
 
@@ -428,7 +428,7 @@ This includes (but is not limited to):
 * **422 Unprocessable Entity**
 
   * `msgspec.ValidationError`
-  * `autocrud.types.ValidationError`
+  * `specstar.types.ValidationError`
 
 **Note**
 

@@ -16,14 +16,14 @@ class TestGetConnConnectionLeak:
     def _make_store_with_mock_pool(self, pool_mock):
         """建立 PostgresMetaStore，注入 mock connection pool。"""
         with patch(
-            "autocrud.resource_manager.meta_store.postgres.psycopg2.pool.SimpleConnectionPool",
+            "specstar.resource_manager.meta_store.postgres.psycopg2.pool.SimpleConnectionPool",
             return_value=pool_mock,
         ):
             # 也 mock 掉 _init_postgres_table 以避免真實 DB 呼叫
             with patch(
-                "autocrud.resource_manager.meta_store.postgres.PostgresMetaStore._init_postgres_table"
+                "specstar.resource_manager.meta_store.postgres.PostgresMetaStore._init_postgres_table"
             ):
-                from autocrud.resource_manager.meta_store.postgres import (
+                from specstar.resource_manager.meta_store.postgres import (
                     PostgresMetaStore,
                 )
 
@@ -121,7 +121,7 @@ class TestGetConnConnectionLeak:
 
         store = self._make_store_with_mock_pool(pool_mock)
 
-        with patch("autocrud.resource_manager.meta_store.postgres.time.sleep"):
+        with patch("specstar.resource_manager.meta_store.postgres.time.sleep"):
             conn = store.get_conn()
 
         assert conn is good_conn
@@ -139,6 +139,6 @@ class TestGetConnConnectionLeak:
 
         store = self._make_store_with_mock_pool(pool_mock)
 
-        with patch("autocrud.resource_manager.meta_store.postgres.time.sleep"):
+        with patch("specstar.resource_manager.meta_store.postgres.time.sleep"):
             with pytest.raises((psycopg2.pool.PoolError, ConnectionError)):
                 store.get_conn()

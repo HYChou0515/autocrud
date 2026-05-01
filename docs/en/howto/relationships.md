@@ -1,6 +1,6 @@
 # Relationships & referential actions
 
-This page explains how AutoCRUD uses `Ref(...)` metadata to:
+This page explains how SpecStar uses `Ref(...)` metadata to:
 - validate relationship declarations
 - install referential integrity behaviors (`on_delete`)
 - support relationship discovery (ref routes / referrers)
@@ -11,7 +11,7 @@ This page explains how AutoCRUD uses `Ref(...)` metadata to:
 ```python
 from typing import Annotated
 from msgspec import Struct
-from autocrud.types import Ref, OnDelete, RefType
+from specstar.types import Ref, OnDelete, RefType
 
 class Zone(Struct):
     name: str
@@ -50,7 +50,7 @@ guild_id: Annotated[str, Ref("guild", on_delete=OnDelete.set_null)]
 
 ### revision refs must be dangling
 
-If `ref_type != RefType.resource_id`, AutoCRUD requires:
+If `ref_type != RefType.resource_id`, SpecStar requires:
 
 * `on_delete = OnDelete.dangling`
 
@@ -64,7 +64,7 @@ Ref("zone", ref_type=RefType.revision_id, on_delete=OnDelete.cascade)  # invalid
 
 ### When you call `apply(router)`
 
-AutoCRUD:
+SpecStar:
 
 * collects ref metadata while registering models
 * validates that ref targets exist (warns if dangling targets)
@@ -85,7 +85,7 @@ Behavior depends on `on_delete`:
 
 For `RefType.resource_id`:
 
-* AutoCRUD may auto-index ref fields to make relationship queries and filtering efficient.
+* SpecStar may auto-index ref fields to make relationship queries and filtering efficient.
 
 For `RefType.revision_id`:
 

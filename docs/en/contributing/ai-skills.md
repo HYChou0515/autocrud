@@ -1,6 +1,6 @@
 # AI skills guide for contributors
 
-This page is for **humans who want to create or maintain AI skills for AutoCRUD**.
+This page is for **humans who want to create or maintain AI skills for SpecStar**.
 
 It is **not** itself a triggerable skill file. If you want to build a real skill, start from the skill folders under `skills/` and then install or mirror them into the AI tool's expected location.
 
@@ -8,11 +8,11 @@ It is **not** itself a triggerable skill file. If you want to build a real skill
 
 The canonical examples for this repository live under `skills/`:
 
-- `skills/autocrud-backend/`
-- `skills/autocrud-frontend/`
+- `skills/specstar-backend/`
+- `skills/specstar-frontend/`
 - `skills/README.md`
 
-If you want to understand what a good AutoCRUD skill looks like, read those folders first.
+If you want to understand what a good SpecStar skill looks like, read those folders first.
 
 ## What goes where
 
@@ -91,7 +91,7 @@ If the skill needs lots of background material, put it under `references/` inste
 
 ### 4. Reuse real project conventions
 
-A good AutoCRUD skill should reflect the real repo workflow, such as:
+A good SpecStar skill should reflect the real repo workflow, such as:
 
 - use `uv run` for Python commands;
 - follow TDD for bug fixes;
@@ -107,15 +107,15 @@ Before considering the skill finished, try it against a few realistic prompts an
 - follows the correct project conventions,
 - suggests or runs the right verification steps.
 
-## Existing AutoCRUD skill map
+## Existing SpecStar skill map
 
 ### Backend examples
 
-- `skills/autocrud-backend/SKILL.md`
+- `skills/specstar-backend/SKILL.md`
 
 ### Frontend examples
 
-- `skills/autocrud-frontend/SKILL.md`
+- `skills/specstar-frontend/SKILL.md`
 
 ### Repo-installed skills for Copilot
 

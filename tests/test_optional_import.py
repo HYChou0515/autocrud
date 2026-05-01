@@ -1,4 +1,4 @@
-"""Test that importing autocrud does not require optional dependencies.
+"""Test that importing specstar does not require optional dependencies.
 
 Optional dependencies like psycopg2 (postgresql) and boto3 (s3) should only
 be required when the user actually uses storage factories that need them.
@@ -27,10 +27,10 @@ def _make_import_blocker(*blocked_modules: str):
 
 
 class TestOptionalImportPsycopg2:
-    """psycopg2 should NOT be required by `import autocrud`."""
+    """psycopg2 should NOT be required by `import specstar`."""
 
-    def test_import_autocrud_without_psycopg2(self):
-        """Importing autocrud must succeed even when psycopg2 is absent."""
+    def test_import_specstar_without_psycopg2(self):
+        """Importing specstar must succeed even when psycopg2 is absent."""
         # Remove any cached psycopg2-related modules
         saved = {}
         to_remove = [
@@ -39,19 +39,19 @@ class TestOptionalImportPsycopg2:
         for k in to_remove:
             saved[k] = sys.modules.pop(k)
 
-        # Also remove cached autocrud modules that may have already imported psycopg2
-        autocrud_keys = [k for k in sys.modules if k.startswith("autocrud")]
-        for k in autocrud_keys:
+        # Also remove cached specstar modules that may have already imported psycopg2
+        specstar_keys = [k for k in sys.modules if k.startswith("specstar")]
+        for k in specstar_keys:
             saved[k] = sys.modules.pop(k)
 
         blocker = _make_import_blocker("psycopg2")
 
         try:
             with patch("builtins.__import__", side_effect=blocker):
-                mod = importlib.import_module("autocrud")
+                mod = importlib.import_module("specstar")
                 # Basic sanity: the public API should be available
-                assert hasattr(mod, "AutoCRUD")
-                assert hasattr(mod, "crud")
+                assert hasattr(mod, "SpecStar")
+                assert hasattr(mod, "spec")
                 assert hasattr(mod, "Schema")
         finally:
             # Restore original modules
@@ -68,8 +68,8 @@ class TestOptionalImportPsycopg2:
         for k in to_remove:
             saved[k] = sys.modules.pop(k)
 
-        autocrud_keys = [k for k in sys.modules if k.startswith("autocrud")]
-        for k in autocrud_keys:
+        specstar_keys = [k for k in sys.modules if k.startswith("specstar")]
+        for k in specstar_keys:
             saved[k] = sys.modules.pop(k)
 
         blocker = _make_import_blocker("psycopg2")
@@ -77,7 +77,7 @@ class TestOptionalImportPsycopg2:
         try:
             with patch("builtins.__import__", side_effect=blocker):
                 mod = importlib.import_module(
-                    "autocrud.resource_manager.storage_factory"
+                    "specstar.resource_manager.storage_factory"
                 )
                 assert hasattr(mod, "IStorageFactory")
                 assert hasattr(mod, "MemoryStorageFactory")
@@ -87,10 +87,10 @@ class TestOptionalImportPsycopg2:
 
 
 class TestOptionalImportBoto3:
-    """boto3 should NOT be required by `import autocrud`."""
+    """boto3 should NOT be required by `import specstar`."""
 
-    def test_import_autocrud_without_boto3(self):
-        """Importing autocrud must succeed even when boto3 is absent."""
+    def test_import_specstar_without_boto3(self):
+        """Importing specstar must succeed even when boto3 is absent."""
         saved = {}
         to_remove = [
             k
@@ -100,17 +100,17 @@ class TestOptionalImportBoto3:
         for k in to_remove:
             saved[k] = sys.modules.pop(k)
 
-        autocrud_keys = [k for k in sys.modules if k.startswith("autocrud")]
-        for k in autocrud_keys:
+        specstar_keys = [k for k in sys.modules if k.startswith("specstar")]
+        for k in specstar_keys:
             saved[k] = sys.modules.pop(k)
 
         blocker = _make_import_blocker("boto3", "botocore")
 
         try:
             with patch("builtins.__import__", side_effect=blocker):
-                mod = importlib.import_module("autocrud")
-                assert hasattr(mod, "AutoCRUD")
-                assert hasattr(mod, "crud")
+                mod = importlib.import_module("specstar")
+                assert hasattr(mod, "SpecStar")
+                assert hasattr(mod, "spec")
         finally:
             for k, v in saved.items():
                 sys.modules[k] = v

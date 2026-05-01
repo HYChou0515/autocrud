@@ -233,8 +233,8 @@ export interface BuiltinTypeInfo {
 // ─── Defaults ──────────────────────────────────────────────────
 
 export const DEFAULT_WIZARD_STATE: WizardState = {
-  projectName: "my-autocrud-app",
-  fastapiTitle: "My AutoCRUD API",
+  projectName: "my-specstar-app",
+  fastapiTitle: "My SpecStar API",
   pythonVersion: "3.12",
   port: 8000,
   enableCORS: true,
@@ -392,8 +392,8 @@ export const BUILTIN_TYPES: BuiltinTypeInfo[] = [
     icon: "⭐",
     description: "標記此欄位為 resource 的顯示名稱",
     detailedDescription:
-      "標記哪個 str 欄位作為 resource 的顯示名稱。AutoCRUD 會在 OpenAPI schema 注入 x-display-name-field，讓前端可以顯示友善名稱而非 resource ID。",
-    importStatement: "from autocrud import DisplayName",
+      "標記哪個 str 欄位作為 resource 的顯示名稱。SpecStar 會在 OpenAPI schema 注入 x-display-name-field，讓前端可以顯示友善名稱而非 resource ID。",
+    importStatement: "from specstar import DisplayName",
     codeSnippet: "name: Annotated[str, DisplayName()]",
     formFieldType: "str",
   },
@@ -403,7 +403,7 @@ export const BUILTIN_TYPES: BuiltinTypeInfo[] = [
     description: "建立到其他 resource 的外鍵關聯",
     detailedDescription:
       "宣告一個欄位參照到另一個 resource 的 resource_id，建立 1:N 或 N:N 關係。Ref 欄位會自動建立索引。支援三種刪除策略：dangling（預設）、set_null（需 Optional）、cascade。",
-    importStatement: "from autocrud import Ref, OnDelete",
+    importStatement: "from specstar import Ref, OnDelete",
     codeSnippet:
       'guild_id: Annotated[str | None, Ref("guild", on_delete=OnDelete.set_null)] = None',
     formFieldType: "Ref",
@@ -415,7 +415,7 @@ export const BUILTIN_TYPES: BuiltinTypeInfo[] = [
     detailedDescription:
       "⚠️ 已棄用，請改用 Ref(resource, ref_type=RefType.revision_id)。\n" +
       "宣告一個欄位參照到另一個 resource 的 revision_id 或 resource_id（代表 latest）。適用於需要追蹤特定版本的場景。",
-    importStatement: "from autocrud.types import RefRevision",
+    importStatement: "from specstar.types import RefRevision",
     codeSnippet:
       'character_id: Annotated[Optional[str], RefRevision("character")]',
     formFieldType: "RefRevision",
@@ -426,7 +426,7 @@ export const BUILTIN_TYPES: BuiltinTypeInfo[] = [
     description: "二進制檔案欄位，自動存入 blob store",
     detailedDescription:
       "包裝二進制資料（檔案、圖片等）。建立 resource 時填入 data 欄位，系統自動將內容提取到 blob store，用 content hash 作為 file_id（去重），並填入 size。",
-    importStatement: "from autocrud.types import Binary",
+    importStatement: "from specstar.types import Binary",
     codeSnippet: "icon: Optional[Binary] = None",
     formFieldType: "Binary",
   },
@@ -436,7 +436,7 @@ export const BUILTIN_TYPES: BuiltinTypeInfo[] = [
     description: "背景任務 wrapper，自動支援 MQ 處理",
     detailedDescription:
       "泛型 Struct，用於 message queue 系統。繼承 Job[PayloadStruct] 讓 model 自動支援 MQ 處理、重試、狀態追蹤。需搭配 job_handler 使用。在 Wizard 中，可於「儲存 & 設定」步驟啟用 MQ 後端，然後在 Model 層級開啟 isJob toggle，系統會自動生成 Payload Struct 與 Job wrapper。",
-    importStatement: "from autocrud.types import Job",
+    importStatement: "from specstar.types import Job",
     codeSnippet: `class MyPayload(Struct):
     event_type: str
     description: str = ""

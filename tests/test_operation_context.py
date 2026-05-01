@@ -7,10 +7,10 @@ import warnings
 import pytest
 from msgspec import UNSET, Struct
 
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import MissingOperationContextError
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import MissingOperationContextError
 
 # ── Test model ──────────────────────────────────────────────────────
 
@@ -120,7 +120,7 @@ class TestUsingBasic:
     def test_using_as_operator(self):
         rm = make_rm()
         with rm.using(user="alice", now=NOW) as op:
-            from autocrud.resource_manager.core import ResourceOps
+            from specstar.resource_manager.core import ResourceOps
 
             assert isinstance(op, ResourceOps)
             info = op.create(Item(name="c"))
@@ -201,7 +201,7 @@ class TestExplicitKwargs:
         assert info2.updated_by == "carol"
 
     def test_modify_with_explicit_user_now(self):
-        from autocrud.types import RevisionStatus
+        from specstar.types import RevisionStatus
 
         rm = make_rm()
         info = rm.create(
@@ -396,7 +396,7 @@ class TestReadMethodsNoContext:
         assert resource.data.name == "a"
 
     def test_search_without_context(self):
-        from autocrud.query_types import ResourceMetaSearchQuery
+        from specstar.query_types import ResourceMetaSearchQuery
 
         rm = make_rm()
         rm.create(Item(name="a"), user="bob", now=NOW)
@@ -410,72 +410,72 @@ class TestReadMethodsNoContext:
         assert rm.exists("nonexistent") is False
 
     def test_count_without_context(self):
-        from autocrud.query_types import ResourceMetaSearchQuery
+        from specstar.query_types import ResourceMetaSearchQuery
 
         rm = make_rm()
         rm.create(Item(name="a"), user="bob", now=NOW)
         assert rm.count_resources(ResourceMetaSearchQuery()) >= 1
 
 
-# ── AutoCRUD-level strict_operation_context ─────────────────────────
+# ── SpecStar-level strict_operation_context ─────────────────────────
 
 
-class TestAutoCRUDStrictOperationContext:
-    """strict_operation_context should be set at AutoCRUD level and
+class TestSpecStarStrictOperationContext:
+    """strict_operation_context should be set at SpecStar level and
     propagated to all ResourceManagers created via add_model()."""
 
     def test_configure_strict_propagates_to_rm(self):
-        from autocrud import AutoCRUD
+        from specstar import SpecStar
 
-        crud = AutoCRUD(
+        spec = SpecStar(
             strict_operation_context=True,
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Item)
-        rm = crud.get_resource_manager(Item)
+        spec.add_model(Item)
+        rm = spec.get_resource_manager(Item)
         assert rm.strict_operation_context is True  # ty:ignore[unresolved-attribute]
 
     def test_default_is_not_strict(self):
-        from autocrud import AutoCRUD
+        from specstar import SpecStar
 
-        crud = AutoCRUD(default_user="admin", default_now=dt.datetime.now)
-        crud.add_model(Item)
-        rm = crud.get_resource_manager(Item)
+        spec = SpecStar(default_user="admin", default_now=dt.datetime.now)
+        spec.add_model(Item)
+        rm = spec.get_resource_manager(Item)
         assert rm.strict_operation_context is False  # ty:ignore[unresolved-attribute]
 
     def test_configure_after_init(self):
-        from autocrud import AutoCRUD
+        from specstar import SpecStar
 
-        crud = AutoCRUD()
-        crud.configure(
+        spec = SpecStar()
+        spec.configure(
             strict_operation_context=True,
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Item)
-        rm = crud.get_resource_manager(Item)
+        spec.add_model(Item)
+        rm = spec.get_resource_manager(Item)
         assert rm.strict_operation_context is True  # ty:ignore[unresolved-attribute]
 
-    def test_strict_autocrud_create_without_context_raises(self):
-        from autocrud import AutoCRUD
+    def test_strict_specstar_create_without_context_raises(self):
+        from specstar import SpecStar
 
-        crud = AutoCRUD(strict_operation_context=True)
-        crud.add_model(Item)
-        rm = crud.get_resource_manager(Item)
+        spec = SpecStar(strict_operation_context=True)
+        spec.add_model(Item)
+        rm = spec.get_resource_manager(Item)
         with pytest.raises(MissingOperationContextError):
             rm.create(Item(name="a"))
 
-    def test_strict_autocrud_create_with_defaults_passes(self):
-        from autocrud import AutoCRUD
+    def test_strict_specstar_create_with_defaults_passes(self):
+        from specstar import SpecStar
 
-        crud = AutoCRUD(
+        spec = SpecStar(
             strict_operation_context=True,
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Item)
-        rm = crud.get_resource_manager(Item)
+        spec.add_model(Item)
+        rm = spec.get_resource_manager(Item)
         info = rm.create(Item(name="a"))
         assert info.resource_id is not None
 
@@ -593,7 +593,7 @@ class TestRouteTemplatesUseUsing:
     def test_create_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.create import CreateRouteTemplate
+        from specstar.crud.route_templates.create import CreateRouteTemplate
 
         src = inspect.getsource(CreateRouteTemplate)
         assert "meta_provide" not in src
@@ -602,7 +602,7 @@ class TestRouteTemplatesUseUsing:
     def test_delete_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.delete import (
+        from specstar.crud.route_templates.delete import (
             BatchDeleteRouteTemplate,
             BatchRestoreRouteTemplate,
             DeleteRouteTemplate,
@@ -623,7 +623,7 @@ class TestRouteTemplatesUseUsing:
     def test_update_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.update import UpdateRouteTemplate
+        from specstar.crud.route_templates.update import UpdateRouteTemplate
 
         src = inspect.getsource(UpdateRouteTemplate)
         assert "meta_provide" not in src
@@ -631,7 +631,7 @@ class TestRouteTemplatesUseUsing:
     def test_get_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.get import ReadRouteTemplate
+        from specstar.crud.route_templates.get import ReadRouteTemplate
 
         src = inspect.getsource(ReadRouteTemplate)
         assert "meta_provide" not in src
@@ -639,7 +639,7 @@ class TestRouteTemplatesUseUsing:
     def test_patch_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.patch import PatchRouteTemplate
+        from specstar.crud.route_templates.patch import PatchRouteTemplate
 
         src = inspect.getsource(PatchRouteTemplate)
         assert "meta_provide" not in src
@@ -647,7 +647,7 @@ class TestRouteTemplatesUseUsing:
     def test_switch_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.switch import SwitchRevisionRouteTemplate
+        from specstar.crud.route_templates.switch import SwitchRevisionRouteTemplate
 
         src = inspect.getsource(SwitchRevisionRouteTemplate)
         assert "meta_provide" not in src
@@ -655,7 +655,7 @@ class TestRouteTemplatesUseUsing:
     def test_migrate_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
+        from specstar.crud.route_templates.migrate import MigrateRouteTemplate
 
         src = inspect.getsource(MigrateRouteTemplate)
         assert "meta_provide" not in src
@@ -663,7 +663,7 @@ class TestRouteTemplatesUseUsing:
     def test_rerun_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.rerun import RerunRouteTemplate
+        from specstar.crud.route_templates.rerun import RerunRouteTemplate
 
         src = inspect.getsource(RerunRouteTemplate)
         assert "meta_provide" not in src
@@ -671,7 +671,7 @@ class TestRouteTemplatesUseUsing:
     def test_job_logs_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.job_logs import JobLogsRouteTemplate
+        from specstar.crud.route_templates.job_logs import JobLogsRouteTemplate
 
         src = inspect.getsource(JobLogsRouteTemplate)
         assert "meta_provide" not in src
@@ -679,7 +679,7 @@ class TestRouteTemplatesUseUsing:
     def test_graphql_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
+        from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
 
         src = inspect.getsource(GraphQLRouteTemplate)
         assert "meta_provide" not in src
@@ -687,7 +687,7 @@ class TestRouteTemplatesUseUsing:
     def test_search_route_uses_using(self):
         import inspect
 
-        from autocrud.crud.route_templates.search import ListRouteTemplate
+        from specstar.crud.route_templates.search import ListRouteTemplate
 
         src = inspect.getsource(ListRouteTemplate)
         assert "meta_provide" not in src
@@ -704,7 +704,7 @@ class TestMessageQueueUsesUsing:
     def test_rm_using_helper_uses_using(self):
         import inspect
 
-        from autocrud.message_queue.basic import BasicMessageQueue
+        from specstar.message_queue.basic import BasicMessageQueue
 
         src = inspect.getsource(BasicMessageQueue._rm_using)
         assert "meta_provide" not in src
@@ -722,7 +722,7 @@ class TestPermissionUsesUsing:
     def test_acl_uses_using(self):
         import inspect
 
-        from autocrud.permission.acl import ACLPermissionChecker
+        from specstar.permission.acl import ACLPermissionChecker
 
         src = inspect.getsource(ACLPermissionChecker)
         assert "meta_provide" not in src
@@ -730,7 +730,7 @@ class TestPermissionUsesUsing:
     def test_rbac_uses_using(self):
         import inspect
 
-        from autocrud.permission.rbac import RBACPermissionChecker
+        from specstar.permission.rbac import RBACPermissionChecker
 
         src = inspect.getsource(RBACPermissionChecker)
         assert "meta_provide" not in src

@@ -13,28 +13,28 @@ from dataclasses import dataclass
 
 import pytest
 
-from autocrud.events import (
+from specstar.events import (
     BeforeCreate,
     BeforeDelete,
     BeforeGet,
     BeforeUpdate,
 )
-from autocrud.permission.acl import ACLPermission, ACLPermissionChecker
-from autocrud.permission.action import ActionBasedPermissionChecker
-from autocrud.permission.checker import (
+from specstar.permission.acl import ACLPermission, ACLPermissionChecker
+from specstar.permission.action import ActionBasedPermissionChecker
+from specstar.permission.checker import (
     PermissionContext,
     PermissionResult,
 )
-from autocrud.permission.composite import (
+from specstar.permission.composite import (
     CompositePermissionChecker,
     ConditionalPermissionChecker,
 )
-from autocrud.permission.data_based import FieldLevelPermissionChecker
-from autocrud.permission.meta_based import ResourceOwnershipChecker
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import ResourceAction
+from specstar.permission.data_based import FieldLevelPermissionChecker
+from specstar.permission.meta_based import ResourceOwnershipChecker
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import ResourceAction
 
 
 @dataclass

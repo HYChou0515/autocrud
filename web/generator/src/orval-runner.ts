@@ -15,7 +15,7 @@ import path from 'node:path';
 export interface OrvalOptions {
   /** Path to saved OpenAPI spec JSON file */
   specPath: string;
-  /** Output directory for generated files (e.g., src/autocrud/generated) */
+  /** Output directory for generated files (e.g., src/specstar/generated) */
   outputDir: string;
 }
 

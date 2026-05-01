@@ -2,7 +2,7 @@
 Tests for the generic ConstraintEventHandler and IConstraintChecker abstraction.
 
 Verifies:
-- Custom IConstraintChecker plugging via ResourceManager and AutoCRUD.add_model()
+- Custom IConstraintChecker plugging via ResourceManager and SpecStar.add_model()
 - Multi-checker composition (multiple checkers enforced together)
 - Compensation (rollback) on post-check failure
 - data_relevant_changed optimisation (skip when unchanged)
@@ -19,16 +19,16 @@ import pytest
 from jsonpatch import JsonPatch
 from msgspec import Struct
 
-from autocrud.resource_manager.constraint_handler import (
+from specstar.resource_manager.constraint_handler import (
     ConstraintEventHandler,
     _PhaseState,
 )
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.resource_manager.unique_handler import (
+from specstar.resource_manager.core import ResourceManager
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.resource_manager.unique_handler import (
     UniqueConstraintChecker,
 )
-from autocrud.types import (
+from specstar.types import (
     IConstraintChecker,
     RevisionStatus,
     Unique,
@@ -115,10 +115,10 @@ def make_rm_with_unique(constraint_checkers=None):
 
 
 def make_ac():
-    """Create a configured AutoCRUD instance."""
-    from autocrud import AutoCRUD
+    """Create a configured SpecStar instance."""
+    from specstar import SpecStar
 
-    ac = AutoCRUD()
+    ac = SpecStar()
     ac.configure(
         storage_factory=MemoryStorageFactory(),
         default_user="system",
@@ -412,7 +412,7 @@ class TestCompensation:
             rm.create(ItemNoUnique(name="item"))
 
         # Resource should be purged or marked deleted (not findable)
-        from autocrud.query_types import ResourceMetaSearchQuery
+        from specstar.query_types import ResourceMetaSearchQuery
 
         results = rm.storage.search(
             ResourceMetaSearchQuery(is_deleted=False, limit=100)
@@ -489,11 +489,11 @@ class TestCompensation:
 
 
 # ---------------------------------------------------------------------------
-# 6. AutoCRUD.add_model() with constraint_checkers
+# 6. SpecStar.add_model() with constraint_checkers
 # ---------------------------------------------------------------------------
 
 
-class TestAutoCRUDAddModel:
+class TestSpecStarAddModel:
     """constraint_checkers param flows through add_model to ResourceManager."""
 
     def test_add_model_with_constraint_checkers(self):

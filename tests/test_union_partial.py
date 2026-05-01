@@ -4,8 +4,8 @@ from typing import Union
 import pytest
 from msgspec import Struct
 
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.resource_manager.core import ResourceManager
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
 
 
 class TypeA(Struct, tag="a"):

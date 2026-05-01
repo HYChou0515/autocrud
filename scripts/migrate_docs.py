@@ -110,12 +110,12 @@ def process_file(filepath):
     )
 
     # Autoclass link
-    # .. autoclass:: autocrud.types.ResourceMeta
-    # -> [ResourceMeta](../reference/types.md#autocrud.types.ResourceMeta)
-    # We can try to be generic: .. autoclass:: autocrud.path.ClassName
+    # .. autoclass:: specstar.types.ResourceMeta
+    # -> [ResourceMeta](../reference/types.md#specstar.types.ResourceMeta)
+    # We can try to be generic: .. autoclass:: specstar.path.ClassName
     # We need to guess the reference file.
-    # Logic: autocrud.types -> reference/types.md
-    # autocrud.resource_manager.core -> reference/resource_manager/core.md
+    # Logic: specstar.types -> reference/types.md
+    # specstar.resource_manager.core -> reference/resource_manager/core.md
 
     def repl_autoclass(match):
         full_name = match.group(1)
@@ -123,15 +123,15 @@ def process_file(filepath):
         parts = full_name.split(".")
         class_name = parts[-1]
 
-        # remove autocrud prefix if present
-        if parts[0] == "autocrud":
+        # remove specstar prefix if present
+        if parts[0] == "specstar":
             path_parts = parts[1:-1]  # types or resource_manager, core
         else:
             path_parts = parts[:-1]
 
         # Construct path
-        # If autocrud.types -> reference/types.md
-        # If autocrud.resource_manager.core -> reference/resource_manager/core.md
+        # If specstar.types -> reference/types.md
+        # If specstar.resource_manager.core -> reference/resource_manager/core.md
 
         md_path = "/".join(path_parts) + ".md"
 

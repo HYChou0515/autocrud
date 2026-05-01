@@ -1,4 +1,4 @@
-"""Tests for @crud.create_action() decorator.
+"""Tests for @spec.create_action() decorator.
 
 Covers:
 - Decorator stores pending action metadata
@@ -7,7 +7,7 @@ Covers:
 - Handler return None → no auto create
 - Handler supports Body(), Path(), Query(), Depends() via standard FastAPI
 - Multiple actions on same resource
-- OpenAPI schema includes x-autocrud-create-action extension
+- OpenAPI schema includes x-specstar-create-action extension
 - Import order: decorator before add_model works
 - Unknown resource_name logs warning and is skipped
 - Pydantic model as Body type
@@ -22,9 +22,9 @@ from fastapi import Body, FastAPI, Query, UploadFile
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud import struct_to_pydantic
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import (
+from specstar import struct_to_pydantic
+from specstar.crud.core import SpecStar
+from specstar.types import (
     OnDelete,
     Ref,
     RefType,
@@ -54,26 +54,26 @@ class ImportFromMultiple(Struct):
 
 
 class TestCreateActionDecorator:
-    """@crud.create_action() stores metadata without registering routes."""
+    """@spec.create_action() stores metadata without registering routes."""
 
     def test_decorator_stores_pending_action(self):
-        crud = AutoCRUD()
-        crud.add_model(Article, name="article")
+        spec = SpecStar()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Import from URL")
+        @spec.create_action("article", label="Import from URL")
         async def import_from_url(body: ImportFromUrl = Body(...)):
             return Article(content=body.url)
 
-        assert len(crud._pending_create_actions) == 1
-        action = crud._pending_create_actions[0]
+        assert len(spec._pending_create_actions) == 1
+        action = spec._pending_create_actions[0]
         assert action.resource_name == "article"
         assert action.label == "Import from URL"
         assert action.handler is import_from_url
 
     def test_decorator_returns_original_function(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.create_action("article", label="Import")
+        @spec.create_action("article", label="Import")
         async def import_from_url(body: ImportFromUrl = Body(...)):
             return Article(content=body.url)
 
@@ -81,63 +81,63 @@ class TestCreateActionDecorator:
         assert import_from_url.__name__ == "import_from_url"
 
     def test_path_inferred_from_function_name(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.create_action("article", label="Import from URL")
+        @spec.create_action("article", label="Import from URL")
         async def import_from_url(body: ImportFromUrl = Body(...)):
             return Article(content=body.url)
 
-        action = crud._pending_create_actions[0]
+        action = spec._pending_create_actions[0]
         assert action.path == "import-from-url"
 
     def test_path_explicit_override(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.create_action("article", path="custom-import", label="Import")
+        @spec.create_action("article", path="custom-import", label="Import")
         async def import_from_url(body: ImportFromUrl = Body(...)):
             return Article(content=body.url)
 
-        action = crud._pending_create_actions[0]
+        action = spec._pending_create_actions[0]
         assert action.path == "custom-import"
 
     def test_label_inferred_from_path(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.create_action("article")
+        @spec.create_action("article")
         async def import_from_url(body: ImportFromUrl = Body(...)):
             return Article(content=body.url)
 
-        action = crud._pending_create_actions[0]
+        action = spec._pending_create_actions[0]
         # Should have some sensible label derived from function name or path
         assert action.label is not None
         assert len(action.label) > 0
 
     def test_multiple_actions_on_same_resource(self):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.create_action("article", label="Import from URL")
+        @spec.create_action("article", label="Import from URL")
         async def import_from_url(body: ImportFromUrl = Body(...)):
             return Article(content=body.url)
 
-        @crud.create_action("article", label="Import from Multiple URLs")
+        @spec.create_action("article", label="Import from Multiple URLs")
         async def import_from_multiple(body: ImportFromMultiple = Body(...)):
             return Article(content=body.separator.join(body.urls))
 
-        assert len(crud._pending_create_actions) == 2
+        assert len(spec._pending_create_actions) == 2
 
     def test_decorator_before_add_model(self):
         """Decorator can be used before add_model — lazy registration."""
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.create_action("article", label="Import from URL")
+        @spec.create_action("article", label="Import from URL")
         async def import_from_url(body: ImportFromUrl = Body(...)):
             return Article(content=body.url)
 
         # add_model comes AFTER the decorator
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -156,23 +156,23 @@ class TestCreateActionRouteRegistration:
 
     @pytest.fixture
     def crud_and_client(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Import from URL")
+        @spec.create_action("article", label="Import from URL")
         async def import_from_url(body: ImportFromUrl = Body(...)):
             return Article(content=f"imported:{body.url}")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
-        return crud, client
+        return spec, client
 
     def test_post_custom_action_creates_resource(self, crud_and_client):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resp = client.post(
             "/article/import-from-url", json={"url": "https://example.com"}
         )
@@ -183,24 +183,24 @@ class TestCreateActionRouteRegistration:
         assert "revision_id" in data
 
         # Verify the resource was actually created
-        rm = crud.resource_managers["article"]
+        rm = spec.resource_managers["article"]
         resource = rm.get(data["resource_id"])
         assert resource.data.content == "imported:https://example.com"
 
     def test_handler_return_none_skips_create(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Dry run import")
+        @spec.create_action("article", label="Dry run import")
         async def dry_run_import(body: ImportFromUrl = Body(...)):
             # Return None → no auto create
             return None
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -211,13 +211,13 @@ class TestCreateActionRouteRegistration:
         assert resp.json() is None
 
     def test_handler_with_query_params(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Import with prefix")
+        @spec.create_action("article", label="Import with prefix")
         async def import_with_prefix(
             body: ImportFromUrl = Body(...),
             prefix: str = Query("default"),
@@ -225,7 +225,7 @@ class TestCreateActionRouteRegistration:
             return Article(content=f"{prefix}:{body.url}")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -234,32 +234,32 @@ class TestCreateActionRouteRegistration:
         )
         assert resp.status_code == 200
         data = resp.json()
-        rm = crud.resource_managers["article"]
+        rm = spec.resource_managers["article"]
         resource = rm.get(data["resource_id"])
         assert resource.data.content == "custom:https://example.com"
 
     def test_standard_create_still_works(self, crud_and_client):
-        """Standard POST /article (autocrud create) should still work."""
-        crud, client = crud_and_client
+        """Standard POST /article (specstar create) should still work."""
+        spec, client = crud_and_client
         resp = client.post("/article", json={"content": "hello"})
         assert resp.status_code == 200
         data = resp.json()
         assert "resource_id" in data
 
     def test_unknown_resource_name_logs_warning(self, caplog):
-        crud = AutoCRUD()
+        spec = SpecStar()
 
-        @crud.create_action("nonexistent", label="Test")
+        @spec.create_action("nonexistent", label="Test")
         async def test_action(body: ImportFromUrl = Body(...)):
             return Article(content=body.url)
 
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
         app = FastAPI()
 
         import logging
 
         with caplog.at_level(logging.WARNING):
-            crud.apply(app)
+            spec.apply(app)
 
         assert any("nonexistent" in record.message for record in caplog.records)
 
@@ -270,43 +270,43 @@ class TestCreateActionRouteRegistration:
 
 
 class TestCreateActionOpenAPI:
-    """OpenAPI schema includes x-autocrud-create-action extension."""
+    """OpenAPI schema includes x-specstar-create-action extension."""
 
     def _build_app(self):
-        crud = AutoCRUD()
-        crud.add_model(Article, name="article")
+        spec = SpecStar()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Import from URL")
+        @spec.create_action("article", label="Import from URL")
         async def import_from_url(body: ImportFromUrl = Body(...)):
             return Article(content=body.url)
 
-        @crud.create_action("article", label="Import from Multiple")
+        @spec.create_action("article", label="Import from Multiple")
         async def import_from_multiple(body: ImportFromMultiple = Body(...)):
             return Article(content=",".join(body.urls))
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
-    def test_operation_has_x_autocrud_create_action(self):
-        """Each custom POST operation should have x-autocrud-create-action."""
+    def test_operation_has_x_specstar_create_action(self):
+        """Each custom POST operation should have x-specstar-create-action."""
         app = self._build_app()
         schema = app.openapi_schema
         paths = schema["paths"]
 
         op = paths["/article/import-from-url"]["post"]
-        assert "x-autocrud-create-action" in op
-        assert op["x-autocrud-create-action"]["resource"] == "article"
-        assert op["x-autocrud-create-action"]["label"] == "Import from URL"
+        assert "x-specstar-create-action" in op
+        assert op["x-specstar-create-action"]["resource"] == "article"
+        assert op["x-specstar-create-action"]["label"] == "Import from URL"
 
     def test_top_level_custom_create_actions(self):
-        """OpenAPI schema should have x-autocrud-custom-create-actions."""
+        """OpenAPI schema should have x-specstar-custom-create-actions."""
         app = self._build_app()
         schema = app.openapi_schema
 
-        assert "x-autocrud-custom-create-actions" in schema
-        actions = schema["x-autocrud-custom-create-actions"]
+        assert "x-specstar-custom-create-actions" in schema
+        actions = schema["x-specstar-custom-create-actions"]
         assert "article" in actions
         assert len(actions["article"]) == 2
         labels = {a["label"] for a in actions["article"]}
@@ -322,10 +322,10 @@ class TestCreateActionOpenAPI:
         assert "ImportFromMultiple" in components
 
     def test_action_path_in_top_level_extension(self):
-        """Each action in x-autocrud-custom-create-actions should include path."""
+        """Each action in x-specstar-custom-create-actions should include path."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["article"]
+        actions = schema["x-specstar-custom-create-actions"]["article"]
         paths = {a["path"] for a in actions}
         assert "/article/import-from-url" in paths
         assert "/article/import-from-multiple" in paths
@@ -334,7 +334,7 @@ class TestCreateActionOpenAPI:
         """Each action should include bodySchema for generator discovery."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["article"]
+        actions = schema["x-specstar-custom-create-actions"]["article"]
         schemas = {a["bodySchema"] for a in actions}
         assert "ImportFromUrl" in schemas
         assert "ImportFromMultiple" in schemas
@@ -358,18 +358,18 @@ class TestCreateActionPydantic:
             url: str
             timeout: int = 30
 
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Pydantic Import")
+        @spec.create_action("article", label="Pydantic Import")
         async def pydantic_import(body: PydanticImport = Body(...)):
             return Article(content=f"{body.url}:{body.timeout}")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -378,7 +378,7 @@ class TestCreateActionPydantic:
         )
         assert resp.status_code == 200
         data = resp.json()
-        rm = crud.resource_managers["article"]
+        rm = spec.resource_managers["article"]
         resource = rm.get(data["resource_id"])
         assert resource.data.content == "https://example.com:60"
 
@@ -403,20 +403,20 @@ class TestCreateActionScalarParams:
             name: str
             level: int = 1
 
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character")
+        @spec.create_action("character", label="New Character")
         async def create_new_character(
             name: str,
         ):
             return Character(name=name, level=1)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         # name is a query parameter — send via URL query string
@@ -428,7 +428,7 @@ class TestCreateActionScalarParams:
         data = resp.json()
         assert "resource_id" in data
 
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(data["resource_id"])
         assert resource.data.name == "Hero"
 
@@ -439,21 +439,21 @@ class TestCreateActionScalarParams:
             name: str
             level: int = 1
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character")
+        @spec.create_action("character", label="New Character")
         async def create_new_character(
             name: str,
         ):
             return Character(name=name, level=1)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
 
         schema = app.openapi_schema
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})  # ty:ignore[unresolved-attribute]
+        custom_actions = schema.get("x-specstar-custom-create-actions", {})  # ty:ignore[unresolved-attribute]
         assert "character" in custom_actions
         actions = custom_actions["character"]
         assert len(actions) == 1
@@ -476,19 +476,19 @@ class TestCreateActionScalarParams:
             name: str
             level: int = 1
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character")
+        @spec.create_action("character", label="New Character")
         async def create_new_character(name: str, level: int = 1):
             return Character(name=name, level=level)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
 
         schema = app.openapi_schema
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})  # ty:ignore[unresolved-attribute]
+        custom_actions = schema.get("x-specstar-custom-create-actions", {})  # ty:ignore[unresolved-attribute]
         qp = custom_actions["character"][0]["queryParams"]
         qp_by_name = {p["name"]: p for p in qp}
         assert qp_by_name["name"]["required"] is True
@@ -505,45 +505,45 @@ class TestCreateActionPathParams:
             name: str
             level: int = 1
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character", path="/{name}/new")
+        @spec.create_action("character", label="New Character", path="/{name}/new")
         async def create_new_character(name: str):
             return Character(name=name, level=1)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         # name is a path param — pass it in the URL
         resp = client.post("/character/Hero/new")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(data["resource_id"])
         assert resource.data.name == "Hero"
 
     def test_path_params_openapi_extension_has_path_params(self):
-        """pathParams should be injected into x-autocrud-custom-create-actions."""
+        """pathParams should be injected into x-specstar-custom-create-actions."""
 
         class Character(Struct):
             name: str
             level: int = 1
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character", path="/{name}/new")
+        @spec.create_action("character", label="New Character", path="/{name}/new")
         async def create_new_character(name: str):
             return Character(name=name, level=1)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
 
         schema = app.openapi_schema
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})  # ty:ignore[unresolved-attribute]
+        custom_actions = schema.get("x-specstar-custom-create-actions", {})  # ty:ignore[unresolved-attribute]
         assert "character" in custom_actions
         action = custom_actions["character"][0]
         assert "pathParams" in action, (
@@ -562,29 +562,29 @@ class TestCreateActionPathParams:
             name: str
             level: int = 1
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character", path="/{name}/new")
+        @spec.create_action("character", label="New Character", path="/{name}/new")
         async def create_new_character(name: str, level: int = 1):
             return Character(name=name, level=level)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         client = TestClient(app)
 
         # name in path, level as query param
         resp = client.post("/character/Hero/new", params={"level": 5})
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(data["resource_id"])
         assert resource.data.name == "Hero"
         assert resource.data.level == 5
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
+        action = schema["x-specstar-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "pathParams" in action
         assert action["pathParams"][0]["name"] == "name"
         assert "queryParams" in action
@@ -601,10 +601,10 @@ class TestCreateActionInlineBodyParams:
             name: str
             level: int = 1
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character3")
+        @spec.create_action("character", label="New Character3")
         async def create_new_character3(
             name: Annotated[str, Body(embed=True)],
             name1: Annotated[str, Body(embed=True)],
@@ -613,7 +613,7 @@ class TestCreateActionInlineBodyParams:
             return Character(name=name + name1 + name2)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -622,21 +622,21 @@ class TestCreateActionInlineBodyParams:
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(data["resource_id"])
         assert resource.data.name == "ABC"
 
     def test_inline_body_params_openapi_extension(self):
-        """inlineBodyParams should be injected into x-autocrud-custom-create-actions."""
+        """inlineBodyParams should be injected into x-specstar-custom-create-actions."""
 
         class Character(Struct):
             name: str
             level: int = 1
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character3")
+        @spec.create_action("character", label="New Character3")
         async def create_new_character3(
             name: Annotated[str, Body(embed=True)],
             name1: Annotated[str, Body(embed=True)],
@@ -645,11 +645,11 @@ class TestCreateActionInlineBodyParams:
             return Character(name=name + name1 + name2)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
+        action = schema["x-specstar-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "inlineBodyParams" in action, (
             "inlineBodyParams must be injected for Body(embed=True) params"
         )
@@ -669,10 +669,10 @@ class TestCreateActionInlineBodyParams:
             name: str
             level: int = 1
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="Test")
+        @spec.create_action("character", label="Test")
         async def test_action(
             name: Annotated[str, Body(embed=True)],
             level: Annotated[int, Body(embed=True)] = 1,
@@ -680,11 +680,11 @@ class TestCreateActionInlineBodyParams:
             return Character(name=name, level=level)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
+        action = schema["x-specstar-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         ibp_by_name = {p["name"]: p for p in action["inlineBodyParams"]}
         assert ibp_by_name["name"]["required"] is True
         assert ibp_by_name["level"]["required"] is False
@@ -694,31 +694,31 @@ class TestCreateActionDuplicateLabel:
     """Two create_actions with the same label on the same resource."""
 
     def _make_app(self):
-        crud = AutoCRUD(default_user="tester", default_now=dt.datetime.now)
-        crud.add_model(Article, name="article")
+        spec = SpecStar(default_user="tester", default_now=dt.datetime.now)
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Import")
+        @spec.create_action("article", label="Import")
         async def import_a(body: ImportFromUrl = Body(...)):
             return Article(content=f"a:{body.url}")
 
-        @crud.create_action("article", label="Import")  # duplicate label
+        @spec.create_action("article", label="Import")  # duplicate label
         async def import_b(body: ImportFromUrl = Body(...)):
             return Article(content=f"b:{body.url}")
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
-        return app, crud
+        spec.apply(app)
+        spec.openapi(app)
+        return app, spec
 
     def test_duplicate_label_warns(self):
         with pytest.warns(UserWarning, match="already has a create action with label"):
             app, _ = self._make_app()
-        actions = app.openapi_schema["x-autocrud-custom-create-actions"]["article"]
+        actions = app.openapi_schema["x-specstar-custom-create-actions"]["article"]
         assert len(actions) == 2
 
     def test_both_actions_still_registered(self):
         app, _ = self._make_app()
-        actions = app.openapi_schema["x-autocrud-custom-create-actions"]["article"]
+        actions = app.openapi_schema["x-specstar-custom-create-actions"]["article"]
         op_ids = {a["operationId"] for a in actions}
         assert "import_a" in op_ids
         assert "import_b" in op_ids
@@ -740,18 +740,18 @@ class TestCreateActionSyncHandler:
     """Custom create action handler that is synchronous (not async)."""
 
     def test_sync_handler(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="tester",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Sync Import")
+        @spec.create_action("article", label="Sync Import")
         def sync_import(body: ImportFromUrl = Body(...)):
             return Article(content=f"sync:{body.url}")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -760,7 +760,7 @@ class TestCreateActionSyncHandler:
         )
         assert resp.status_code == 200
         data = resp.json()
-        rm = crud.resource_managers["article"]
+        rm = spec.resource_managers["article"]
         resource = rm.get(data["resource_id"])
         assert resource.data.content == "sync:https://example.com"
 
@@ -774,23 +774,23 @@ class TestCreateActionFileParams:
     """UploadFile params are extracted as fileParams in the OpenAPI extension."""
 
     def _make_crud_with_file_only(self):
-        crud = AutoCRUD(default_user="tester", default_now=dt.datetime.now)
-        crud.add_model(Article, name="article")
+        spec = SpecStar(default_user="tester", default_now=dt.datetime.now)
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Upload File")
+        @spec.create_action("article", label="Upload File")
         async def upload_file(z: UploadFile):
             content = await z.read()
             return Article(content=f"file:{z.filename}:{len(content)}")
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
-        return app, crud
+        spec.apply(app)
+        spec.openapi(app)
+        return app, spec
 
     def test_file_param_openapi_extension(self):
-        """UploadFile param produces fileParams in x-autocrud-custom-create-actions."""
+        """UploadFile param produces fileParams in x-specstar-custom-create-actions."""
         app, _ = self._make_crud_with_file_only()
-        actions = app.openapi_schema["x-autocrud-custom-create-actions"]["article"]
+        actions = app.openapi_schema["x-specstar-custom-create-actions"]["article"]
         assert len(actions) == 1
         action = actions[0]
         assert "fileParams" in action
@@ -805,7 +805,7 @@ class TestCreateActionFileParams:
 
     def test_file_param_endpoint_works(self):
         """Multipart file upload via custom create action endpoint works."""
-        app, crud = self._make_crud_with_file_only()
+        app, spec = self._make_crud_with_file_only()
         client = TestClient(app)
         resp = client.post(
             "/article/upload-file",
@@ -813,7 +813,7 @@ class TestCreateActionFileParams:
         )
         assert resp.status_code == 200
         data = resp.json()
-        rm = crud.resource_managers["article"]
+        rm = spec.resource_managers["article"]
         resource = rm.get(data["resource_id"])
         assert resource.data.content == "file:hello.txt:11"
 
@@ -822,10 +822,10 @@ class TestCreateActionMixedFileParams:
     """Mixed query + inline body + UploadFile params all coexist."""
 
     def _make_crud_mixed(self):
-        crud = AutoCRUD(default_user="tester", default_now=dt.datetime.now)
-        crud.add_model(Article, name="article")
+        spec = SpecStar(default_user="tester", default_now=dt.datetime.now)
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Mixed Upload")
+        @spec.create_action("article", label="Mixed Upload")
         async def mixed_upload(
             x: int,
             name: Annotated[str, Body(embed=True)],
@@ -837,14 +837,14 @@ class TestCreateActionMixedFileParams:
             )
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
-        return app, crud
+        spec.apply(app)
+        spec.openapi(app)
+        return app, spec
 
     def test_mixed_openapi_extension(self):
         """Mixed params are categorised into queryParams, inlineBodyParams, fileParams."""
         app, _ = self._make_crud_mixed()
-        actions = app.openapi_schema["x-autocrud-custom-create-actions"]["article"]
+        actions = app.openapi_schema["x-specstar-custom-create-actions"]["article"]
         assert len(actions) == 1
         action = actions[0]
 
@@ -865,7 +865,7 @@ class TestCreateActionMixedFileParams:
 
     def test_mixed_endpoint_works(self):
         """Mixed query + body + file endpoint returns the expected resource."""
-        app, crud = self._make_crud_mixed()
+        app, spec = self._make_crud_mixed()
         client = TestClient(app)
         resp = client.post(
             "/article/mixed-upload",
@@ -875,7 +875,7 @@ class TestCreateActionMixedFileParams:
         )
         assert resp.status_code == 200
         data = resp.json()
-        rm = crud.resource_managers["article"]
+        rm = spec.resource_managers["article"]
         resource = rm.get(data["resource_id"])
         assert resource.data.content == "Alice x=42 file=doc.pdf:11"
 
@@ -895,10 +895,10 @@ class TestCreateActionEnumParams:
             name: str
             role: str = "warrior"
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character")
+        @spec.create_action("character", label="New Character")
         async def create_character(
             name: str,
             role: Literal["warrior", "mage", "archer"] = "warrior",
@@ -906,11 +906,11 @@ class TestCreateActionEnumParams:
             return Character(name=name, role=role)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
+        action = schema["x-specstar-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "queryParams" in action
         qp_by_name = {p["name"]: p for p in action["queryParams"]}
         assert "role" in qp_by_name
@@ -925,10 +925,10 @@ class TestCreateActionEnumParams:
             name: str
             role: str = "warrior"
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character")
+        @spec.create_action("character", label="New Character")
         async def create_character(
             name: Annotated[str, Body(embed=True)],
             role: Annotated[
@@ -938,11 +938,11 @@ class TestCreateActionEnumParams:
             return Character(name=name, role=role)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
+        action = schema["x-specstar-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "inlineBodyParams" in action
         ibp_by_name = {p["name"]: p for p in action["inlineBodyParams"]}
         assert "role" in ibp_by_name
@@ -959,10 +959,10 @@ class TestCreateActionEnumParams:
             name: str
             role: str = "warrior"
 
-        crud = AutoCRUD(default_user="tester", default_now=dt.datetime.now)
-        crud.add_model(Character, name="character")
+        spec = SpecStar(default_user="tester", default_now=dt.datetime.now)
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Character")
+        @spec.create_action("character", label="New Character")
         async def create_character(
             name: str,
             role: Literal["warrior", "mage", "archer"] = "warrior",
@@ -970,7 +970,7 @@ class TestCreateActionEnumParams:
             return Character(name=name, role=role)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -979,7 +979,7 @@ class TestCreateActionEnumParams:
         )
         assert resp.status_code == 200
         data = resp.json()
-        rm = crud.resource_managers["character"]
+        rm = spec.resource_managers["character"]
         resource = rm.get(data["resource_id"])
         assert resource.data.role == "mage"
 
@@ -1016,12 +1016,12 @@ class TestCreateActionRefMetadata:
     """x-ref-* metadata should be injected into custom action body schemas."""
 
     def _build_app(self):
-        crud = AutoCRUD()
-        crud.add_model(_RefZone, name="zone")
-        crud.add_model(_RefGuild, name="guild")
-        crud.add_model(_RefMonster, name="monster")
+        spec = SpecStar()
+        spec.add_model(_RefZone, name="zone")
+        spec.add_model(_RefGuild, name="guild")
+        spec.add_model(_RefMonster, name="monster")
 
-        @crud.create_action("monster", label="Import Monster")
+        @spec.create_action("monster", label="Import Monster")
         async def import_monster(body: _RefImportMonster = Body(...)):
             return _RefMonster(
                 name="imported",
@@ -1030,8 +1030,8 @@ class TestCreateActionRefMetadata:
             )
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_action_body_schema_has_x_ref_resource(self):
@@ -1068,10 +1068,10 @@ class TestCreateActionRefMetadata:
         assert "x-ref-on-delete" not in props["zone_revision_id"]
 
     def test_action_body_refs_included_in_relationships(self):
-        """Refs from action body schemas should appear in x-autocrud-relationships."""
+        """Refs from action body schemas should appear in x-specstar-relationships."""
         app = self._build_app()
         schema = app.openapi_schema
-        rels = schema.get("x-autocrud-relationships", [])
+        rels = schema.get("x-specstar-relationships", [])
 
         # Find refs from action body (source = "monster" since action belongs to monster)
         action_ref_fields = {r["sourceField"] for r in rels if r["source"] == "monster"}
@@ -1101,26 +1101,26 @@ class TestCreateActionParamRefMetadata:
     """x-ref-* should be injected into path/query/inline-body param schemas."""
 
     def _build_app_path_param(self):
-        crud = AutoCRUD()
-        crud.add_model(_PEquipment, name="pequipment")
-        crud.add_model(_PCharacter, name="pcharacter")
+        spec = SpecStar()
+        spec.add_model(_PEquipment, name="pequipment")
+        spec.add_model(_PCharacter, name="pcharacter")
 
-        @crud.create_action("pcharacter", label="Quick Create", path="/{eq_id}/quick")
+        @spec.create_action("pcharacter", label="Quick Create", path="/{eq_id}/quick")
         async def quick_create(
             eq_id: Annotated[str, Ref("pequipment")],
         ):
             return _PCharacter(name="test", equipment_id=eq_id)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_path_param_has_x_ref(self):
         """Path param with Ref annotation should have x-ref-* in its schema."""
         app = self._build_app_path_param()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["pcharacter"]
+        actions = schema["x-specstar-custom-create-actions"]["pcharacter"]
         action = actions[0]
         pp = action["pathParams"]
         eq_param = next(p for p in pp if p["name"] == "eq_id")
@@ -1129,11 +1129,11 @@ class TestCreateActionParamRefMetadata:
         assert eq_param["schema"]["x-ref-on-delete"] == "dangling"
 
     def _build_app_query_param(self):
-        crud = AutoCRUD()
-        crud.add_model(_PEquipment, name="pequipment")
-        crud.add_model(_PCharacter, name="pcharacter")
+        spec = SpecStar()
+        spec.add_model(_PEquipment, name="pequipment")
+        spec.add_model(_PCharacter, name="pcharacter")
 
-        @crud.create_action("pcharacter", label="Query Create")
+        @spec.create_action("pcharacter", label="Query Create")
         async def query_create(
             name: str,
             eq_id: Annotated[str, Ref("pequipment", ref_type=RefType.revision_id)],
@@ -1141,15 +1141,15 @@ class TestCreateActionParamRefMetadata:
             return _PCharacter(name=name, equipment_id=eq_id)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_query_param_has_x_ref(self):
         """Query param with Ref annotation should have x-ref-* in its schema."""
         app = self._build_app_query_param()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["pcharacter"]
+        actions = schema["x-specstar-custom-create-actions"]["pcharacter"]
         action = actions[0]
         qp = action["queryParams"]
         eq_param = next(p for p in qp if p["name"] == "eq_id")
@@ -1159,11 +1159,11 @@ class TestCreateActionParamRefMetadata:
         assert "x-ref-on-delete" not in eq_param["schema"]
 
     def _build_app_inline_body_param(self):
-        crud = AutoCRUD()
-        crud.add_model(_PEquipment, name="pequipment")
-        crud.add_model(_PCharacter, name="pcharacter")
+        spec = SpecStar()
+        spec.add_model(_PEquipment, name="pequipment")
+        spec.add_model(_PCharacter, name="pcharacter")
 
-        @crud.create_action("pcharacter", label="Inline Create")
+        @spec.create_action("pcharacter", label="Inline Create")
         async def inline_create(
             name: Annotated[str, Body(embed=True)],
             eq_id: Annotated[str, Ref("pequipment"), Body(embed=True)],
@@ -1171,15 +1171,15 @@ class TestCreateActionParamRefMetadata:
             return _PCharacter(name=name, equipment_id=eq_id)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_inline_body_param_has_x_ref(self):
         """Inline body param with Ref annotation should have x-ref-* in its schema."""
         app = self._build_app_inline_body_param()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["pcharacter"]
+        actions = schema["x-specstar-custom-create-actions"]["pcharacter"]
         action = actions[0]
         ibp = action["inlineBodyParams"]
         eq_param = next(p for p in ibp if p["name"] == "eq_id")
@@ -1207,13 +1207,13 @@ class TestCreateActionMixedParams:
     all param types should be extracted into the action extension."""
 
     def _build_app(self):
-        crud = AutoCRUD()
-        crud.add_model(_PEquipment, name="pequipment")
-        crud.add_model(_MixedResource, name="mresource")
+        spec = SpecStar()
+        spec.add_model(_PEquipment, name="pequipment")
+        spec.add_model(_MixedResource, name="mresource")
 
         _MixedItemPydantic = struct_to_pydantic(_MixedItem)
 
-        @crud.create_action("mresource", label="Mixed Action")
+        @spec.create_action("mresource", label="Mixed Action")
         async def mixed_action(
             q: str,
             name: Annotated[str, Body(embed=True), Ref("pequipment")],
@@ -1223,15 +1223,15 @@ class TestCreateActionMixedParams:
             return _MixedResource(name=name)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_body_schema_present(self):
         """bodySchema should be detected for the Pydantic model param."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        actions = schema["x-specstar-custom-create-actions"]["mresource"]
         action = actions[0]
         assert "bodySchema" in action
 
@@ -1239,7 +1239,7 @@ class TestCreateActionMixedParams:
         """Inline body params should still be extracted even when bodySchema exists."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        actions = schema["x-specstar-custom-create-actions"]["mresource"]
         action = actions[0]
         assert "inlineBodyParams" in action
         ibp_names = {p["name"] for p in action["inlineBodyParams"]}
@@ -1249,7 +1249,7 @@ class TestCreateActionMixedParams:
         """File params should still be extracted even when bodySchema exists."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        actions = schema["x-specstar-custom-create-actions"]["mresource"]
         action = actions[0]
         assert "fileParams" in action
         fp_names = {p["name"] for p in action["fileParams"]}
@@ -1259,7 +1259,7 @@ class TestCreateActionMixedParams:
         """Inline body param Ref should work even when bodySchema coexists."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        actions = schema["x-specstar-custom-create-actions"]["mresource"]
         action = actions[0]
         name_param = next(p for p in action["inlineBodyParams"] if p["name"] == "name")
         assert name_param["schema"]["x-ref-resource"] == "pequipment"
@@ -1269,7 +1269,7 @@ class TestCreateActionMixedParams:
         """Query params should still work alongside bodySchema."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        actions = schema["x-specstar-custom-create-actions"]["mresource"]
         action = actions[0]
         assert "queryParams" in action
         qp_names = {p["name"] for p in action["queryParams"]}
@@ -1279,7 +1279,7 @@ class TestCreateActionMixedParams:
         """The Pydantic model field should NOT appear in inlineBodyParams (avoid duplication)."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        actions = schema["x-specstar-custom-create-actions"]["mresource"]
         action = actions[0]
         ibp_names = {p["name"] for p in action.get("inlineBodyParams", [])}
         assert "item" not in ibp_names
@@ -1288,7 +1288,7 @@ class TestCreateActionMixedParams:
         """bodySchemaParamName should record the handler parameter name (not schema name)."""
         app = self._build_app()
         schema = app.openapi_schema
-        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        actions = schema["x-specstar-custom-create-actions"]["mresource"]
         action = actions[0]
         # The handler parameter for the Pydantic model is called 'item'
         assert action.get("bodySchemaParamName") == "item"
@@ -1302,13 +1302,13 @@ class TestCreateActionMixedParams:
         """
         import json
 
-        crud = AutoCRUD()
-        crud.add_model(_PEquipment, name="pequipment")
-        crud.add_model(_MixedResource, name="mresource")
+        spec = SpecStar()
+        spec.add_model(_PEquipment, name="pequipment")
+        spec.add_model(_MixedResource, name="mresource")
 
         _MixedItemPydantic = struct_to_pydantic(_MixedItem)
 
-        @crud.create_action("mresource", label="Mixed Action")
+        @spec.create_action("mresource", label="Mixed Action")
         async def mixed_action(
             q: str,
             name: Annotated[str, Body(embed=True), Ref("pequipment")],
@@ -1318,8 +1318,8 @@ class TestCreateActionMixedParams:
             return _MixedResource(name=f"{name}-{item.label}-{item.value}")
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -1335,7 +1335,7 @@ class TestCreateActionMixedParams:
             f"Expected 200, got {resp.status_code}: {resp.text}"
         )
         data = resp.json()
-        rm = crud.resource_managers["mresource"]
+        rm = spec.resource_managers["mresource"]
         resource = rm.get(data["resource_id"])
         assert resource.data.name == "Alice-sword-10"
 
@@ -1347,10 +1347,10 @@ class TestCreateActionMixedParams:
         """
         import json
 
-        crud = AutoCRUD()
-        crud.add_model(_MixedResource, name="mresource")
+        spec = SpecStar()
+        spec.add_model(_MixedResource, name="mresource")
 
-        @crud.create_action("mresource", label="Struct File Action")
+        @spec.create_action("mresource", label="Struct File Action")
         async def struct_file_action(
             q: str,
             pic: UploadFile,
@@ -1359,7 +1359,7 @@ class TestCreateActionMixedParams:
             return _MixedResource(name=f"{item.label}-{item.value}")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -1374,7 +1374,7 @@ class TestCreateActionMixedParams:
             f"Expected 200, got {resp.status_code}: {resp.text}"
         )
         data = resp.json()
-        rm = crud.resource_managers["mresource"]
+        rm = spec.resource_managers["mresource"]
         resource = rm.get(data["resource_id"])
         assert resource.data.name == "axe-5"
 
@@ -1386,7 +1386,7 @@ class TestCreateActionMixedParams:
 
 
 class TestCreateActionWithRouterPrefix:
-    """x-autocrud-custom-create-actions must include params even when
+    """x-specstar-custom-create-actions must include params even when
     the routes live under a prefixed APIRouter (e.g. /api/v1)."""
 
     @staticmethod
@@ -1397,25 +1397,25 @@ class TestCreateActionWithRouterPrefix:
             name: str
             value: int = 0
 
-        crud = AutoCRUD()
-        crud.add_model(Item, name="item")
+        spec = SpecStar()
+        spec.add_model(Item, name="item")
 
-        @crud.create_action("item", label="Create From Query")
+        @spec.create_action("item", label="Create From Query")
         async def create_from_query(name: str, value: int = 0):
             return Item(name=name, value=value)
 
         router = APIRouter(prefix=prefix)
-        crud.apply(router)
+        spec.apply(router)
         app = FastAPI()
         app.include_router(router)
-        crud.openapi(app)
+        spec.openapi(app)
         return app
 
     def test_query_params_present_with_prefix(self):
         """queryParams must be injected even when router has a prefix."""
         app = self._build_app()
         schema = app.openapi_schema
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        custom_actions = schema.get("x-specstar-custom-create-actions", {})
         assert "item" in custom_actions
         action = custom_actions["item"][0]
         assert "queryParams" in action, (
@@ -1433,21 +1433,21 @@ class TestCreateActionWithRouterPrefix:
         class Character(Struct):
             name: str
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="New Char", path="/{name}/new")
+        @spec.create_action("character", label="New Char", path="/{name}/new")
         async def create_new(name: str):
             return Character(name=name)
 
         router = APIRouter(prefix="/api/v1")
-        crud.apply(router)
+        spec.apply(router)
         app = FastAPI()
         app.include_router(router)
-        crud.openapi(app)
+        spec.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
+        action = schema["x-specstar-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "pathParams" in action, (
             f"pathParams missing — action only has keys: {list(action.keys())}"
         )
@@ -1460,23 +1460,23 @@ class TestCreateActionWithRouterPrefix:
         class Character(Struct):
             name: str
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="Create Inline")
+        @spec.create_action("character", label="Create Inline")
         async def create_inline(
             name: Annotated[str, Body(embed=True)],
         ):
             return Character(name=name)
 
         router = APIRouter(prefix="/api/v1")
-        crud.apply(router)
+        spec.apply(router)
         app = FastAPI()
         app.include_router(router)
-        crud.openapi(app)
+        spec.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
+        action = schema["x-specstar-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "inlineBodyParams" in action, (
             f"inlineBodyParams missing — action only has keys: {list(action.keys())}"
         )
@@ -1488,7 +1488,7 @@ class TestCreateActionWithRouterPrefix:
         API base path."""
         app = self._build_app()
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["item"][0]
+        action = schema["x-specstar-custom-create-actions"]["item"][0]
         assert action["path"] == "/item/create-from-query", (
             f"Expected '/item/create-from-query' but got '{action['path']}'"
         )
@@ -1512,16 +1512,16 @@ class TestCreateActionStructBodyNoDuplicate:
             skill_name: str
             power: int
 
-        crud = AutoCRUD()
-        crud.add_model(Character, name="character")
+        spec = SpecStar()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", label="Add Skill")
+        @spec.create_action("character", label="Add Skill")
         async def add_skill(body: SkillInput = Body(...)):
             return Character(name=body.skill_name, level=body.power)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_no_inline_body_params_when_body_is_struct(self):
@@ -1529,7 +1529,7 @@ class TestCreateActionStructBodyNoDuplicate:
         already represented by bodySchema)."""
         app = self._build_app()
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        action = schema["x-specstar-custom-create-actions"]["character"][0]
         assert "bodySchema" in action
         assert "inlineBodyParams" not in action, (
             f"inlineBodyParams must be absent when body is a pure struct; "
@@ -1540,5 +1540,5 @@ class TestCreateActionStructBodyNoDuplicate:
         """bodySchema should record the struct name."""
         app = self._build_app()
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        action = schema["x-specstar-custom-create-actions"]["character"][0]
         assert action["bodySchema"] == "SkillInput"

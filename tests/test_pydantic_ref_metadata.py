@@ -16,11 +16,11 @@ from typing import Annotated, Optional
 
 import pytest
 
-from autocrud.resource_manager.pydantic_converter import (
+from specstar.resource_manager.pydantic_converter import (
     _PYDANTIC_V2,
     pydantic_to_struct,
 )
-from autocrud.types import (
+from specstar.types import (
     DisplayName,
     OnDelete,
     Ref,

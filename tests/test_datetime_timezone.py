@@ -25,25 +25,25 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.basic import DependencyProvider
-from autocrud.crud.route_templates.create import CreateRouteTemplate
-from autocrud.crud.route_templates.get import ReadRouteTemplate
-from autocrud.crud.route_templates.update import UpdateRouteTemplate
-from autocrud.query_types import ResourceMetaSearchSort
-from autocrud.resource_manager.basic import (
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.basic import DependencyProvider
+from specstar.crud.route_templates.create import CreateRouteTemplate
+from specstar.crud.route_templates.get import ReadRouteTemplate
+from specstar.crud.route_templates.update import UpdateRouteTemplate
+from specstar.query_types import ResourceMetaSearchSort
+from specstar.resource_manager.basic import (
     Encoding,
     MsgspecSerializer,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
     get_sort_fn,
 )
-from autocrud.types import (
+from specstar.types import (
     ResourceMeta,
     RevisionInfo,
     RevisionStatus,
 )
-from autocrud.util.datetime_utils import ensure_aware
+from specstar.util.datetime_utils import ensure_aware
 
 # ---------------------------------------------------------------------------
 # Test models
@@ -348,15 +348,15 @@ class TestRevisionListAPITimezone:
                 return dt.datetime(2025, 3, 1, 11, 0, 0, tzinfo=dt.timezone.utc)
 
         deps = DependencyProvider(get_now=alternating_now)
-        crud = AutoCRUD(model_naming="kebab")
-        crud.add_route_template(CreateRouteTemplate(dependency_provider=deps))
-        crud.add_route_template(ReadRouteTemplate(dependency_provider=deps))
-        crud.add_route_template(UpdateRouteTemplate(dependency_provider=deps))
-        crud.add_model(Item)
+        spec = SpecStar(model_naming="kebab")
+        spec.add_route_template(CreateRouteTemplate(dependency_provider=deps))
+        spec.add_route_template(ReadRouteTemplate(dependency_provider=deps))
+        spec.add_route_template(UpdateRouteTemplate(dependency_provider=deps))
+        spec.add_model(Item)
 
         app = FastAPI()
         router = APIRouter()
-        crud.apply(router)
+        spec.apply(router)
         app.include_router(router)
         return TestClient(app)
 

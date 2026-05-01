@@ -299,7 +299,7 @@ export function StepStorage({ state, onChange }: Props) {
           <Stack gap="sm">
             <TextInput
               label="Bucket"
-              placeholder="autocrud"
+              placeholder="specstar"
               value={state.storageConfig.bucket || ""}
               onChange={(e) =>
                 updateStorageConfig({ bucket: e.currentTarget.value })
@@ -359,7 +359,7 @@ export function StepStorage({ state, onChange }: Props) {
             />
             <TextInput
               label="S3 Bucket (for blobs)"
-              placeholder="autocrud"
+              placeholder="specstar"
               value={state.storageConfig.s3Bucket || ""}
               onChange={(e) =>
                 updateStorageConfig({ s3Bucket: e.currentTarget.value })
@@ -811,7 +811,7 @@ export function StepStorage({ state, onChange }: Props) {
                 <Group grow>
                   <TextInput
                     label="Resource S3 Bucket"
-                    placeholder="autocrud"
+                    placeholder="specstar"
                     value={state.storageConfig.resBucket || ""}
                     onChange={(e) =>
                       updateStorageConfig({ resBucket: e.currentTarget.value })
@@ -850,7 +850,7 @@ export function StepStorage({ state, onChange }: Props) {
                 />
                 <TextInput
                   label="Queue Prefix"
-                  placeholder="autocrud:"
+                  placeholder="specstar:"
                   value={state.storageConfig.resQueuePrefix || ""}
                   onChange={(e) =>
                     updateStorageConfig({
@@ -904,7 +904,7 @@ export function StepStorage({ state, onChange }: Props) {
           <Stack gap="sm">
             <TextInput
               label="Blob S3 Bucket"
-              placeholder="autocrud-blobs"
+              placeholder="specstar-blobs"
               value={state.storageConfig.blobS3Bucket || ""}
               onChange={(e) =>
                 updateStorageConfig({ blobS3Bucket: e.currentTarget.value })
@@ -1020,7 +1020,7 @@ export function StepStorage({ state, onChange }: Props) {
             />
             <TextInput
               label="Queue Prefix"
-              placeholder="autocrud:"
+              placeholder="specstar:"
               value={state.messageQueueConfig.queuePrefix || ""}
               onChange={(e) =>
                 updateMQConfig({ queuePrefix: e.currentTarget.value })
@@ -1065,7 +1065,7 @@ export function StepStorage({ state, onChange }: Props) {
             />
             <TextInput
               label="Queue Prefix"
-              placeholder="autocrud:"
+              placeholder="specstar:"
               value={state.messageQueueConfig.queuePrefix || ""}
               onChange={(e) =>
                 updateMQConfig({ queuePrefix: e.currentTarget.value })
@@ -1147,7 +1147,7 @@ export function StepStorage({ state, onChange }: Props) {
         />
         <Text size="xs" c="dimmed" mt={4}>
           {state.modelStyle === "struct"
-            ? "msgspec.Struct 高效能序列化，AutoCRUD 原生支援。"
+            ? "msgspec.Struct 高效能序列化，SpecStar 原生支援。"
             : "Pydantic BaseModel，自動轉換為 Struct，支援 field_validator，不支援Job, Binary等功能。"}
         </Text>
       </div>
@@ -1163,7 +1163,7 @@ export function StepStorage({ state, onChange }: Props) {
 
       <Select
         label="Default Now"
-        description="crud.configure(default_now=...) — 自動時間戳的時區"
+        description="spec.configure(default_now=...) — 自動時間戳的時區"
         data={TIMEZONE_OPTIONS}
         value={isCustomTz ? "__other__" : state.defaultNow}
         onChange={(v) => {

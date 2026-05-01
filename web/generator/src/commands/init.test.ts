@@ -9,7 +9,7 @@ describe('initProject', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'autocrud-init-test-'));
+    tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'specstar-init-test-'));
     // Suppress console output during tests
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -79,8 +79,8 @@ describe('initProject', () => {
     // Should still have mantine-form-zod-resolver
     expect(pkg.dependencies['mantine-form-zod-resolver']).toBeDefined();
 
-    // .autocrudrc.json should exist with version 7
-    const rc = JSON.parse(await fs.readFile(path.join(projectPath, '.autocrudrc.json'), 'utf-8'));
+    // .specstarrc.json should exist with version 7
+    const rc = JSON.parse(await fs.readFile(path.join(projectPath, '.specstarrc.json'), 'utf-8'));
     expect(rc.mantineVersion).toBe('7');
   });
 
@@ -100,8 +100,8 @@ describe('initProject', () => {
     // Should have pnpm overrides
     expect(pkg.pnpm?.overrides?.['@mantine/core']).toMatch(/^\^8/);
 
-    // .autocrudrc.json should record version 8
-    const rc = JSON.parse(await fs.readFile(path.join(projectPath, '.autocrudrc.json'), 'utf-8'));
+    // .specstarrc.json should record version 8
+    const rc = JSON.parse(await fs.readFile(path.join(projectPath, '.specstarrc.json'), 'utf-8'));
     expect(rc.mantineVersion).toBe('8');
   });
 
@@ -112,7 +112,7 @@ describe('initProject', () => {
       tmpDir,
       'test-app',
       'src',
-      'autocrud',
+      'specstar',
       'lib',
       'components',
       'form',

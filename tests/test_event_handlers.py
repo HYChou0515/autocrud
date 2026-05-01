@@ -10,17 +10,17 @@ from unittest.mock import Mock
 import pytest
 from msgspec import Struct
 
-from autocrud.events import (
+from specstar.events import (
     EventContext,
     OnSuccessCreate,
     do,
 )
-from autocrud.query_types import ResourceMetaSearchQuery
-from autocrud.resource_manager.basic import IStorage
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import ResourceAction
+from specstar.query_types import ResourceMetaSearchQuery
+from specstar.resource_manager.basic import IStorage
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import ResourceAction
 
 
 class SampleData(Struct):
@@ -230,7 +230,7 @@ class TestResourceManagerEventHandlers:
 
     def test_event_handler_with_permission_checker(self, storage):
         """測試事件處理器與權限檢查器一起工作"""
-        from autocrud.permission.checker import PermissionResult
+        from specstar.permission.checker import PermissionResult
 
         # 創建 mock 權限檢查器
         permission_checker = Mock()

@@ -1,6 +1,6 @@
 # HTTP error mapping (route templates)
 
-This page documents how AutoCRUD route templates map internal exceptions to HTTP responses.
+This page documents how SpecStar route templates map internal exceptions to HTTP responses.
 
 All route templates use a **shared helper** (`to_http_exception`) that
 provides consistent error mapping across every endpoint.
@@ -12,7 +12,7 @@ provides consistent error mapping across every endpoint.
 | Exception                          | HTTP | Meaning              |
 |------------------------------------|------|----------------------|
 | `msgspec.ValidationError`          | 422  | Type-level validation |
-| `autocrud.types.ValidationError`   | 422  | Custom validation     |
+| `specstar.types.ValidationError`   | 422  | Custom validation     |
 | `PermissionDeniedError`            | 403  | Access denied         |
 | `ResourceNotFoundError` (family)   | 404  | Resource / revision missing |
 | `UniqueConstraintError`            | 409  | Unique field conflict (structured detail) |
@@ -51,7 +51,7 @@ The **ResourceConflictError** family includes:
 
 ## QB error conventions
 
-When using the HTTP `qb` query parameter, AutoCRUD applies two explicit rules so clients can distinguish syntax problems from invalid parameter combinations.
+When using the HTTP `qb` query parameter, SpecStar applies two explicit rules so clients can distinguish syntax problems from invalid parameter combinations.
 
 | Situation | HTTP | Meaning | Typical trigger |
 |-----------|------|---------|-----------------|
@@ -128,7 +128,7 @@ Blob-specific errors:
 Validation errors (caught explicitly before the fallback):
 
 * `msgspec.ValidationError`
-* `autocrud.types.ValidationError`
+* `specstar.types.ValidationError`
 
 ### 409 Conflict
 
@@ -165,7 +165,7 @@ All other exceptions go through `to_http_exception` (403, 404, 409, or 400).
 Validation errors (caught explicitly):
 
 * `msgspec.ValidationError`
-* `autocrud.types.ValidationError`
+* `specstar.types.ValidationError`
 
 ### 409 Conflict
 
@@ -193,7 +193,7 @@ Supports RFC6902 patch operations: `add`, `remove`, `replace`, `move`, `copy`, `
 Validation errors (caught explicitly):
 
 * `msgspec.ValidationError`
-* `autocrud.types.ValidationError`
+* `specstar.types.ValidationError`
 
 ### 409 Conflict
 
@@ -271,10 +271,10 @@ Other `409` responses have a plain string `detail`.
 
 ## Implementation
 
-The shared helper lives in `autocrud/crud/route_templates/exception_handlers.py`:
+The shared helper lives in `specstar/crud/route_templates/exception_handlers.py`:
 
 ```python
-from autocrud.crud.route_templates.exception_handlers import to_http_exception
+from specstar.crud.route_templates.exception_handlers import to_http_exception
 ```
 
 Route templates use it as:

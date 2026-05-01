@@ -1,9 +1,9 @@
 """Tests for default_user + DependencyProvider interaction.
 
 Covers:
-- default_user on AutoCRUD propagates to DependencyProvider when get_user is not customized
+- default_user on SpecStar propagates to DependencyProvider when get_user is not customized
 - default_user does NOT override a custom get_user on DependencyProvider
-- default_user on AutoCRUD.configure() works the same as __init__
+- default_user on SpecStar.configure() works the same as __init__
 - DependencyProvider(get_now=...) without get_user should still respect default_user
 - Per-model default_user (on add_model) still works for programmatic usage
 - DependencyProvider._user_is_default flag behavior
@@ -15,8 +15,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.basic import DependencyProvider
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.basic import DependencyProvider
 
 # ---------------------------------------------------------------------------
 # Test Models
@@ -33,16 +33,16 @@ class Item(Struct):
 # ---------------------------------------------------------------------------
 
 
-def _make_crud(**kwargs) -> AutoCRUD:
-    return AutoCRUD(
+def _make_crud(**kwargs) -> SpecStar:
+    return SpecStar(
         default_now=lambda: dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc),
         **kwargs,
     )
 
 
-def _build_app(crud: AutoCRUD) -> FastAPI:
+def _build_app(spec: SpecStar) -> FastAPI:
     app = FastAPI()
-    crud.apply(app)
+    spec.apply(app)
     return app
 
 
@@ -80,13 +80,13 @@ class TestDependencyProviderUserIsDefault:
 
 
 class TestDefaultUserPropagation:
-    """default_user on AutoCRUD should be used when DP's get_user is default."""
+    """default_user on SpecStar should be used when DP's get_user is default."""
 
     def test_default_user_in_init(self):
-        """AutoCRUD(default_user='admin') → resource created with user 'admin'."""
-        crud = _make_crud(default_user="admin")
-        crud.add_model(Item, name="item")
-        app = _build_app(crud)
+        """SpecStar(default_user='admin') → resource created with user 'admin'."""
+        spec = _make_crud(default_user="admin")
+        spec.add_model(Item, name="item")
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post("/item", json={"name": "test"})
@@ -101,14 +101,14 @@ class TestDefaultUserPropagation:
         assert meta["created_by"] == "admin"
 
     def test_default_user_in_configure(self):
-        """crud.configure(default_user='admin') → same effect."""
-        crud = AutoCRUD()
-        crud.configure(
+        """spec.configure(default_user='admin') → same effect."""
+        spec = SpecStar()
+        spec.configure(
             default_user="admin",
             default_now=lambda: dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc),
         )
-        crud.add_model(Item, name="item")
-        app = _build_app(crud)
+        spec.add_model(Item, name="item")
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post("/item", json={"name": "test"})
@@ -125,12 +125,12 @@ class TestDefaultUserPropagation:
         dp = DependencyProvider(
             get_now=lambda: dt.datetime(2025, 6, 1, tzinfo=dt.timezone.utc)
         )
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="game_admin",
             dependency_provider=dp,
         )
-        crud.add_model(Item, name="item")
-        app = _build_app(crud)
+        spec.add_model(Item, name="item")
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post("/item", json={"name": "sword"})
@@ -145,12 +145,12 @@ class TestDefaultUserPropagation:
     def test_custom_get_user_overrides_default_user(self):
         """Custom get_user on DP should override default_user."""
         dp = DependencyProvider(get_user=lambda: "auth_user")
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="game_admin",
             dependency_provider=dp,
         )
-        crud.add_model(Item, name="item")
-        app = _build_app(crud)
+        spec.add_model(Item, name="item")
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post("/item", json={"name": "shield"})
@@ -165,11 +165,11 @@ class TestDefaultUserPropagation:
 
     def test_no_default_user_falls_back_to_anonymous(self):
         """No default_user, no custom DP → 'anonymous' (backward compat)."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_now=lambda: dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc),
         )
-        crud.add_model(Item, name="item")
-        app = _build_app(crud)
+        spec.add_model(Item, name="item")
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post("/item", json={"name": "potion"})
@@ -191,9 +191,9 @@ class TestDefaultUserCallable:
     """default_user can be a callable that returns the user string."""
 
     def test_callable_default_user(self):
-        crud = _make_crud(default_user=lambda: "factory_user")
-        crud.add_model(Item, name="item")
-        app = _build_app(crud)
+        spec = _make_crud(default_user=lambda: "factory_user")
+        spec.add_model(Item, name="item")
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post("/item", json={"name": "test"})
@@ -215,9 +215,9 @@ class TestDefaultUserAffectsAllRoutes:
     """default_user should work for update, patch, delete, etc."""
 
     def test_update_uses_default_user(self):
-        crud = _make_crud(default_user="admin")
-        crud.add_model(Item, name="item")
-        app = _build_app(crud)
+        spec = _make_crud(default_user="admin")
+        spec.add_model(Item, name="item")
+        app = _build_app(spec)
         client = TestClient(app)
 
         # Create
@@ -234,9 +234,9 @@ class TestDefaultUserAffectsAllRoutes:
         assert meta["updated_by"] == "admin"
 
     def test_delete_uses_default_user(self):
-        crud = _make_crud(default_user="admin")
-        crud.add_model(Item, name="item")
-        app = _build_app(crud)
+        spec = _make_crud(default_user="admin")
+        spec.add_model(Item, name="item")
+        app = _build_app(spec)
         client = TestClient(app)
 
         # Create
@@ -248,9 +248,9 @@ class TestDefaultUserAffectsAllRoutes:
         assert resp2.status_code == 200
 
     def test_list_uses_default_user(self):
-        crud = _make_crud(default_user="admin")
-        crud.add_model(Item, name="item")
-        app = _build_app(crud)
+        spec = _make_crud(default_user="admin")
+        spec.add_model(Item, name="item")
+        app = _build_app(spec)
         client = TestClient(app)
 
         # Create
@@ -272,14 +272,14 @@ class TestDefaultUserWithCreateAction:
     def test_create_action_uses_default_user(self):
         from fastapi import Body
 
-        crud = _make_crud(default_user="action_admin")
-        crud.add_model(Item, name="item")
+        spec = _make_crud(default_user="action_admin")
+        spec.add_model(Item, name="item")
 
-        @crud.create_action("item", path="/generate")
+        @spec.create_action("item", path="/generate")
         def generate_item(body: Item = Body(...)) -> Item:
             return Item(name=f"generated-{body.name}", value=42)
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post("/item/generate", json={"name": "test"})

@@ -19,17 +19,17 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from msgspec import UNSET, Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.query import QB
-from autocrud.query_types import (
+from specstar.crud.core import SpecStar
+from specstar.query import QB
+from specstar.query_types import (
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
-from autocrud.resource_manager.basic import is_match_query
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.types import ResourceMeta, RevisionStatus
+from specstar.resource_manager.basic import is_match_query
+from specstar.resource_manager.core import ResourceManager
+from specstar.types import ResourceMeta, RevisionStatus
 
 
 class User(Struct):
@@ -38,9 +38,9 @@ class User(Struct):
 
 
 def _mgr_for_user() -> ResourceManager[User]:
-    crud = AutoCRUD()
-    crud.add_model(User)
-    return crud.get_resource_manager(User)  # ty:ignore[invalid-return-type]
+    spec = SpecStar()
+    spec.add_model(User)
+    return spec.get_resource_manager(User)  # ty:ignore[invalid-return-type]
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +274,7 @@ class TestBackwardsCompatibility:
         """A blob serialized before ``rev_*`` existed must still decode."""
         from typing import cast
 
-        from autocrud.resource_manager.basic import MsgspecSerializer
+        from specstar.resource_manager.basic import MsgspecSerializer
 
         ser = MsgspecSerializer(
             encoding="json",  # ty:ignore[invalid-argument-type]
@@ -367,9 +367,9 @@ class TestQBPythonOnRevFields:
 
     def test_qb_combine_rev_field_with_data_field(self) -> None:
         """rev_* condition AND a regular indexed-data condition."""
-        crud = AutoCRUD()
-        crud.add_model(User, indexed_fields=[("age", int)])
-        mgr: ResourceManager[User] = crud.get_resource_manager(User)  # ty:ignore[invalid-assignment]
+        spec = SpecStar()
+        spec.add_model(User, indexed_fields=[("age", int)])
+        mgr: ResourceManager[User] = spec.get_resource_manager(User)  # ty:ignore[invalid-assignment]
         _id_draft, id_stable_alice, _id_stable_bob = _seed_three_resources(mgr)
 
         # All resources where rev_created_by == alice AND age > 15
@@ -395,13 +395,13 @@ class TestQBHttpOnRevFields:
     def client_and_ids(self) -> _ClientAndIds:
         app = FastAPI()
         router = APIRouter()
-        crud = AutoCRUD()
-        crud.add_model(User, indexed_fields=[("age", int), ("name", str)])
-        crud.apply(router)
+        spec = SpecStar()
+        spec.add_model(User, indexed_fields=[("age", int), ("name", str)])
+        spec.apply(router)
         app.include_router(router)
         client = TestClient(app)
 
-        mgr: ResourceManager[User] = crud.get_resource_manager(User)  # ty:ignore[invalid-assignment]
+        mgr: ResourceManager[User] = spec.get_resource_manager(User)  # ty:ignore[invalid-assignment]
         id_draft, id_stable_alice, id_stable_bob = _seed_three_resources(mgr)
         return client, (id_draft, id_stable_alice, id_stable_bob)
 

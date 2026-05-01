@@ -15,17 +15,17 @@ import pytest
 from jsonpatch import JsonPatch
 from msgspec import Struct
 
-from autocrud.events import EventContext
-from autocrud.resource_manager.constraint_handler import (
+from specstar.events import EventContext
+from specstar.resource_manager.constraint_handler import (
     ConstraintEventHandler,
     _PhaseState,
 )
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.resource_manager.unique_handler import (
+from specstar.resource_manager.core import ResourceManager
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.resource_manager.unique_handler import (
     UniqueConstraintChecker,
 )
-from autocrud.types import (
+from specstar.types import (
     RevisionStatus,
     Unique,
     UniqueConstraintError,
@@ -134,7 +134,7 @@ class TestIsSupported:
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
         # delete is not in supported actions
-        from autocrud.events import BeforeDelete
+        from specstar.events import BeforeDelete
 
         ctx = BeforeDelete(
             user="system",
@@ -149,7 +149,7 @@ class TestIsSupported:
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
         # 'after' and 'on_failure' should not be supported
-        from autocrud.events import (
+        from specstar.events import (
             AfterCreate,
             OnFailureCreate,
         )
@@ -174,7 +174,7 @@ class TestIsSupported:
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
         # Verify supported actions: create, update, modify, switch, restore
-        from autocrud.events import (
+        from specstar.events import (
             BeforeCreate,
             BeforeModify,
             BeforeRestore,
@@ -382,7 +382,7 @@ class TestPostCheckCreate:
             rm.create(Item(name="alpha"))
         # After compensation, the second resource should not exist
         # Only one resource should exist
-        from autocrud.query_types import ResourceMetaSearchQuery
+        from specstar.query_types import ResourceMetaSearchQuery
 
         results = rm.storage.search(ResourceMetaSearchQuery(is_deleted=False))
         assert len(results) == 1
@@ -517,7 +517,7 @@ class TestHandlerHelpers:
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
         # Use the UniqueConstraintChecker's data_relevant_changed directly
-        from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
+        from specstar.resource_manager.unique_handler import UniqueConstraintChecker
 
         checker = next(
             c
@@ -531,7 +531,7 @@ class TestHandlerHelpers:
     def test_unique_fields_changed_false(self):
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
-        from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
+        from specstar.resource_manager.unique_handler import UniqueConstraintChecker
 
         checker = next(
             c
@@ -548,7 +548,7 @@ class TestHandlerHelpers:
     def test_check_unique_constraints_no_fields(self):
         """UniqueConstraintChecker.check should be a no-op when no unique fields."""
         rm = make_rm(NoUnique)
-        from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
+        from specstar.resource_manager.unique_handler import UniqueConstraintChecker
 
         checker = UniqueConstraintChecker(rm)
         # Should not raise
@@ -602,8 +602,8 @@ class TestHandlerRegistration:
 
     def test_handler_after_permission(self):
         """ConstraintEventHandler should come after PermissionEventHandler."""
-        from autocrud.permission.simple import AllowAll
-        from autocrud.resource_manager.core import PermissionEventHandler
+        from specstar.permission.simple import AllowAll
+        from specstar.resource_manager.core import PermissionEventHandler
 
         rm = make_rm(
             Item,
@@ -711,7 +711,7 @@ def _get_handler(rm: ResourceManager) -> ConstraintEventHandler | None:
 
 
 def _make_before_create(rm: ResourceManager, data) -> EventContext:
-    from autocrud.events import BeforeCreate
+    from specstar.events import BeforeCreate
 
     return BeforeCreate(
         user="system",

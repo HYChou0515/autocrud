@@ -14,14 +14,14 @@ from uuid import uuid4
 
 from msgspec import Struct
 
-from autocrud.message_queue.context import JobContext
-from autocrud.message_queue.log_flush import LogFlushThread
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.resource_manager.blob_store.simple import MemoryBlobStore
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.message_queue.context import JobContext
+from specstar.message_queue.log_flush import LogFlushThread
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.resource_manager.blob_store.simple import MemoryBlobStore
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     IndexableField,
     Job,
     Resource,

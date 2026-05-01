@@ -1,4 +1,4 @@
-"""Unit tests for ``autocrud.schema.Schema``."""
+"""Unit tests for ``specstar.schema.Schema``."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import msgspec
 import pytest
 from msgspec import Struct
 
-from autocrud.schema import Schema
-from autocrud.types import (
+from specstar.schema import Schema
+from specstar.types import (
     IMigration,
     IValidator,
     ValidationError,

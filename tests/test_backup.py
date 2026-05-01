@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.resource_manager.storage_factory import DiskStorageFactory
+from specstar.crud.core import SpecStar
+from specstar.resource_manager.storage_factory import DiskStorageFactory
 
 
 class User(Struct):
@@ -24,26 +24,26 @@ def my_tmpdir():
         yield Path(d)
 
 
-class TestAutocrudDumpLoad:
+class TestSpecStarDumpLoad:
     """Test IMetaStore.iter_search method with different storage types."""
 
     @pytest.fixture(autouse=True)
     def setup_method(self, my_tmpdir):
         os.makedirs(my_tmpdir / "1", exist_ok=True)
         os.makedirs(my_tmpdir / "2", exist_ok=True)
-        self.crud1 = AutoCRUD(storage_factory=DiskStorageFactory(my_tmpdir / "1"))
-        self.crud2 = AutoCRUD(storage_factory=DiskStorageFactory(my_tmpdir / "2"))
+        self.crud1 = SpecStar(storage_factory=DiskStorageFactory(my_tmpdir / "1"))
+        self.crud2 = SpecStar(storage_factory=DiskStorageFactory(my_tmpdir / "2"))
         self.crud1.add_model(User)
         self.crud2.add_model(User)
 
-    def _add_users(self, crud: AutoCRUD):
+    def _add_users(self, spec: SpecStar):
         users = [
             User(name="Alice", age=30),
             User(name="Bob", age=25),
             User(name="Charlie", age=35),
             User(name="David", age=40),
         ]
-        mgr = crud.get_resource_manager(User)
+        mgr = spec.get_resource_manager(User)
         with mgr.meta_provide("user", dt.datetime.now()):
             for user in users:
                 mgr.create(user)

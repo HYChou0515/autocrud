@@ -1,6 +1,6 @@
 """Individual CRUD operation benchmarks.
 
-Each public function accepts a :class:`~autocrud.types.IResourceManager`,
+Each public function accepts a :class:`~specstar.types.IResourceManager`,
 pre-generated data, and timing parameters, then returns an
 :class:`OperationResult` with statistical summaries.
 """
@@ -12,8 +12,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from autocrud.query import QB
-from autocrud.types import RevisionStatus
+from specstar.query import QB
+from specstar.types import RevisionStatus
 
 # ---------------------------------------------------------------------------
 # Result container

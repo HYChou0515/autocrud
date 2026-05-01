@@ -1,4 +1,4 @@
-"""Integration tests for Schema with ResourceManager and AutoCRUD.add_model."""
+"""Integration tests for Schema with ResourceManager and SpecStar.add_model."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ import msgspec
 import pytest
 from msgspec import Struct
 
-from autocrud import Schema
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.types import (
+from specstar import Schema
+from specstar.resource_manager.core import ResourceManager
+from specstar.types import (
     IMigration,
     IndexableField,
     ResourceMeta,
@@ -241,13 +241,13 @@ class TestSchemaResourceManagerIntegration:
 
 
 class TestSchemaAddModelIntegration:
-    """Test Schema integrated with AutoCRUD.add_model()."""
+    """Test Schema integrated with SpecStar.add_model()."""
 
     @pytest.fixture
     def app(self):
-        from autocrud.crud.core import AutoCRUD
+        from specstar.crud.core import SpecStar
 
-        return AutoCRUD()
+        return SpecStar()
 
     def test_add_model_with_schema_as_first_arg(self, app):
         """add_model with Schema as first argument."""
@@ -340,7 +340,7 @@ class TestSchemaAddModelIntegration:
         pytest.importorskip("pydantic")
         from pydantic import BaseModel
 
-        from autocrud.crud.core import AutoCRUD
+        from specstar.crud.core import SpecStar
 
         class PydItem(BaseModel):
             name: str
@@ -350,7 +350,7 @@ class TestSchemaAddModelIntegration:
             if data.price > 9999:
                 raise ValueError("too expensive")
 
-        app = AutoCRUD()
+        app = SpecStar()
         schema = Schema(PydItem, "v1", validator=custom_check)
         app.add_model(schema)
         rm = app.resource_managers["pyd-item"]
@@ -363,22 +363,22 @@ class TestSchemaAddModelIntegration:
         pytest.importorskip("pydantic")
         from pydantic import BaseModel
 
-        from autocrud.crud.core import AutoCRUD
+        from specstar.crud.core import SpecStar
 
         class PydItem2(BaseModel):
             name: str
             price: int
 
-        app = AutoCRUD()
+        app = SpecStar()
         schema = Schema(PydItem2, "v1")  # no validator
         app.add_model(schema)
         rm = app.resource_managers["pyd-item2"]
         # Pydantic auto-detect should set the validator
         assert rm._validator is not None  # ty:ignore[unresolved-attribute]
 
-    def test_schema_importable_from_autocrud(self):
-        """Schema is importable from autocrud package."""
-        from autocrud import Schema as S
+    def test_schema_importable_from_specstar(self):
+        """Schema is importable from specstar package."""
+        from specstar import Schema as S
 
         assert S is Schema
 
@@ -394,9 +394,9 @@ class TestMigrateRevisionAndSwitch:
     @pytest.fixture
     def real_storage(self):
         """Create a real SimpleStorage (memory) for integration tests."""
-        from autocrud.resource_manager.core import SimpleStorage
-        from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-        from autocrud.resource_manager.resource_store.simple import (
+        from specstar.resource_manager.core import SimpleStorage
+        from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+        from specstar.resource_manager.resource_store.simple import (
             MemoryResourceStore,
         )
 
@@ -491,7 +491,7 @@ class TestMigrateRevisionAndSwitch:
 
     def test_switch_to_unmigrated_revision_raises(self, real_storage):
         """switch() to a revision with old schema_version raises RevisionNotMigratedError."""
-        from autocrud.types import RevisionNotMigratedError
+        from specstar.types import RevisionNotMigratedError
 
         rm_v1 = self._create_rm_v1(real_storage)
         with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 1)):

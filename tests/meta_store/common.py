@@ -26,12 +26,12 @@ ALL_META_STORE_TYPES = [
 
 def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-parameter-default]
     """Get meta store instance."""
-    from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
-    from autocrud.resource_manager.meta_store.simple import (
+    from specstar.resource_manager.meta_store.df import DFMemoryMetaStore
+    from specstar.resource_manager.meta_store.simple import (
         DiskMetaStore,
         MemoryMetaStore,
     )
-    from autocrud.resource_manager.meta_store.sqlite3 import (
+    from specstar.resource_manager.meta_store.sqlite3 import (
         FileSqliteMetaStore,
         MemorySqliteMetaStore,
         S3SqliteMetaStore,
@@ -48,7 +48,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
     if store_type == "postgres":
         import psycopg2
 
-        from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
+        from specstar.resource_manager.meta_store.postgres import PostgresMetaStore
 
         # Setup PostgreSQL connection
         pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
@@ -79,7 +79,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
         test_key = f"test-regex-{uuid.uuid4()}.db"
         try:
             store = S3SqliteMetaStore(
-                bucket="test-autocrud",
+                bucket="test-specstar",
                 key=test_key,
                 endpoint_url="http://localhost:9000",
                 access_key_id="minioadmin",
@@ -103,7 +103,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
                         aws_secret_access_key="minioadmin",
                         region_name="us-east-1",
                     )
-                    s3.delete_object(Bucket="test-autocrud", Key=test_key)
+                    s3.delete_object(Bucket="test-specstar", Key=test_key)
                 except Exception:
                     pass
 
@@ -114,8 +114,8 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
     if store_type == "memory-pg":
         import psycopg2
 
-        from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
-        from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
+        from specstar.resource_manager.meta_store.fast_slow import FastSlowMetaStore
+        from specstar.resource_manager.meta_store.postgres import PostgresMetaStore
 
         # Setup PostgreSQL connection
         pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
@@ -137,7 +137,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
     if store_type == "redis":
         import redis
 
-        from autocrud.resource_manager.meta_store.redis import RedisMetaStore
+        from specstar.resource_manager.meta_store.redis import RedisMetaStore
 
         # Setup Redis connection
         redis_url = "redis://localhost:6379/0"
@@ -158,9 +158,9 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
         import psycopg2
         import redis
 
-        from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
-        from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
-        from autocrud.resource_manager.meta_store.redis import RedisMetaStore
+        from specstar.resource_manager.meta_store.fast_slow import FastSlowMetaStore
+        from specstar.resource_manager.meta_store.postgres import PostgresMetaStore
+        from specstar.resource_manager.meta_store.redis import RedisMetaStore
 
         # Setup Redis and PostgreSQL connections
         redis_url = "redis://localhost:6379/0"
@@ -193,7 +193,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
     if store_type == "sa-pg":
         import psycopg2
 
-        from autocrud.resource_manager.meta_store.sqlalchemy import (
+        from specstar.resource_manager.meta_store.sqlalchemy import (
             SQLAlchemyMetaStore,
         )
 
@@ -223,7 +223,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
     if store_type == "sa-mariadb":
         import pymysql
 
-        from autocrud.resource_manager.meta_store.sqlalchemy import (
+        from specstar.resource_manager.meta_store.sqlalchemy import (
             SQLAlchemyMetaStore,
         )
 
@@ -257,7 +257,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
     if store_type == "sa-mysql":
         import pymysql
 
-        from autocrud.resource_manager.meta_store.sqlalchemy import (
+        from specstar.resource_manager.meta_store.sqlalchemy import (
             SQLAlchemyMetaStore,
         )
 
@@ -289,7 +289,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
         except Exception as e:
             pytest.fail(f"MySQL not available: {e}")
     if store_type == "sa-sqlite":
-        from autocrud.resource_manager.meta_store.sqlalchemy import (
+        from specstar.resource_manager.meta_store.sqlalchemy import (
             SQLAlchemyMetaStore,
         )
 
@@ -303,7 +303,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-p
     if store_type == "sa-oracle":
         import oracledb
 
-        from autocrud.resource_manager.meta_store.sqlalchemy import (
+        from specstar.resource_manager.meta_store.sqlalchemy import (
             SQLAlchemyMetaStore,
         )
 

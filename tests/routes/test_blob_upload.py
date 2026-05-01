@@ -21,8 +21,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import Binary
+from specstar.crud.core import SpecStar
+from specstar.types import Binary
 
 # ---------------------------------------------------------------------------
 # Test Models
@@ -51,26 +51,26 @@ class OptionalBinaryModel(Struct):
 
 
 @pytest.fixture
-def autocrud():
-    app = AutoCRUD()
+def specstar():
+    app = SpecStar()
     app.add_model(UserWithAvatar)
     return app
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     app = FastAPI()
-    autocrud.apply(app)
+    specstar.apply(app)
     return TestClient(app)
 
 
 @pytest.fixture
 def multi_binary_client():
-    crud = AutoCRUD()
-    crud.add_model(Document)
+    spec = SpecStar()
+    spec.add_model(Document)
     app = FastAPI()
-    crud.apply(app)
-    return TestClient(app), crud
+    spec.apply(app)
+    return TestClient(app), spec
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ class TestBlobUpload:
 class TestCreateWithFileId:
     """Create a resource using a pre-uploaded file_id."""
 
-    def test_create_with_uploaded_file_id(self, client, autocrud):
+    def test_create_with_uploaded_file_id(self, client, specstar):
         """Upload → create resource with file_id → verify binary field metadata."""
         # 1. Upload
         raw = b"avatar-image-bytes"
@@ -189,7 +189,7 @@ class TestCreateWithFileId:
         assert resp.status_code == 404
         assert "nonexistent-id" in resp.json()["detail"]
 
-    def test_create_with_file_id_and_partial_metadata(self, client, autocrud):
+    def test_create_with_file_id_and_partial_metadata(self, client, specstar):
         """Create with file_id + content_type but no size → size is backfilled."""
         raw = b"some-content"
         upload_resp = client.post(
@@ -235,7 +235,7 @@ class TestCreateWithFileId:
 class TestUpdateWithFileId:
     """Update a resource's Binary field using a pre-uploaded file_id."""
 
-    def test_update_binary_with_new_file_id(self, client, autocrud):
+    def test_update_binary_with_new_file_id(self, client, specstar):
         """Create with base64, then update with a new file_id."""
         # Create with base64
         raw1 = b"original-content"
@@ -278,7 +278,7 @@ class TestMultipleBinaryFields:
 
     def test_create_with_multiple_file_ids(self, multi_binary_client):
         """Upload two files separately, then create a resource referencing both."""
-        client, crud = multi_binary_client
+        client, spec = multi_binary_client
 
         # Upload attachment
         att_raw = b"attachment-content"
@@ -318,7 +318,7 @@ class TestMultipleBinaryFields:
 
     def test_create_mixed_base64_and_file_id(self, multi_binary_client):
         """One field with base64, another with file_id."""
-        client, crud = multi_binary_client
+        client, spec = multi_binary_client
 
         # Upload thumbnail only
         thumb_raw = b"thumb-data"
@@ -360,10 +360,10 @@ class TestBlobUploadNoBlobStore:
         """BlobRouteTemplate should not mount routes if blob_store is None."""
         from fastapi import APIRouter
 
-        from autocrud.crud.route_templates.blob import BlobRouteTemplate
-        from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-        from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-        from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+        from specstar.crud.route_templates.blob import BlobRouteTemplate
+        from specstar.resource_manager.core import ResourceManager, SimpleStorage
+        from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+        from specstar.resource_manager.resource_store.simple import MemoryResourceStore
 
         store = SimpleStorage(MemoryMetaStore(), MemoryResourceStore())
         manager = ResourceManager(UserWithAvatar, storage=store, blob_store=None)

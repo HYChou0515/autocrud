@@ -1,4 +1,4 @@
-"""測試 AutoCRUD 對不同數據類型的支持"""
+"""測試 SpecStar 對不同數據類型的支持"""
 
 from dataclasses import asdict, dataclass, is_dataclass
 from typing import Optional, TypedDict
@@ -8,14 +8,14 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import (
-    AutoCRUD,
+from specstar.crud.core import (
+    SpecStar,
 )
-from autocrud.crud.route_templates.create import CreateRouteTemplate
-from autocrud.crud.route_templates.delete import DeleteRouteTemplate
-from autocrud.crud.route_templates.get import ReadRouteTemplate
-from autocrud.crud.route_templates.search import ListRouteTemplate
-from autocrud.crud.route_templates.update import UpdateRouteTemplate
+from specstar.crud.route_templates.create import CreateRouteTemplate
+from specstar.crud.route_templates.delete import DeleteRouteTemplate
+from specstar.crud.route_templates.get import ReadRouteTemplate
+from specstar.crud.route_templates.search import ListRouteTemplate
+from specstar.crud.route_templates.update import UpdateRouteTemplate
 
 
 # 1. TypedDict 方式
@@ -41,31 +41,31 @@ class MsgspecUser(msgspec.Struct):
 
 
 @pytest.fixture
-def autocrud():
-    """創建 AutoCRUD 實例並註冊所有數據類型"""
-    crud = AutoCRUD(model_naming="kebab")
+def specstar():
+    """創建 SpecStar 實例並註冊所有數據類型"""
+    spec = SpecStar(model_naming="kebab")
 
     # 添加基本路由模板
-    crud.add_route_template(CreateRouteTemplate())
-    crud.add_route_template(ReadRouteTemplate())
-    crud.add_route_template(UpdateRouteTemplate())
-    crud.add_route_template(DeleteRouteTemplate())
-    crud.add_route_template(ListRouteTemplate())
+    spec.add_route_template(CreateRouteTemplate())
+    spec.add_route_template(ReadRouteTemplate())
+    spec.add_route_template(UpdateRouteTemplate())
+    spec.add_route_template(DeleteRouteTemplate())
+    spec.add_route_template(ListRouteTemplate())
 
     # 註冊所有數據類型 - 用戶期望的簡潔API
-    crud.add_model(TypedDictUser)
-    crud.add_model(DataclassUser)
-    crud.add_model(MsgspecUser)
+    spec.add_model(TypedDictUser)
+    spec.add_model(DataclassUser)
+    spec.add_model(MsgspecUser)
 
-    return crud
+    return spec
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     """創建測試客戶端"""
     app = FastAPI()
     router = APIRouter()
-    autocrud.apply(router)
+    specstar.apply(router)
     app.include_router(router)
     return TestClient(app)
 

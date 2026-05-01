@@ -13,7 +13,7 @@ A Schema defines a directed graph of version transitions:
 
 - `.step(from_ver, fn)` appends a step to the **current chain**
 - `.plus(from_ver, fn)` starts a **new chain** (parallel path)
-- at runtime, AutoCRUD / ResourceManager uses **BFS shortest path** from stored version → target version
+- at runtime, SpecStar / ResourceManager uses **BFS shortest path** from stored version → target version
 
 ## Reindex-only (version bump)
 
@@ -129,7 +129,7 @@ Attach a validator once and reuse it on every write:
 schema = Schema(User, "v2", validator=my_validator).step("v1", v1_to_v2)
 ```
 
-Validator types follow AutoCRUD conventions (callable / IValidator / Pydantic model).
+Validator types follow SpecStar conventions (callable / IValidator / Pydantic model).
 
 ## Legacy IMigration adapter
 
@@ -146,11 +146,11 @@ This wraps the migration and preserves `schema_version` + `migrate()` compatibil
 By default, `migrate()` migrates only the **current revision** of a resource.
 Older revisions remain at their original `schema_version` until explicitly migrated.
 
-This matters when you want to **switch** back to an older revision — AutoCRUD
+This matters when you want to **switch** back to an older revision — SpecStar
 will raise `RevisionNotMigratedError` if that revision has not been migrated yet.
 
 ```python
-from autocrud import RevisionNotMigratedError
+from specstar import RevisionNotMigratedError
 
 # After a schema upgrade, migrate the current revision
 resource_manager.migrate(resource_id)

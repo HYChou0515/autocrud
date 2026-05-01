@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from autocrud.query_types import (
+from specstar.query_types import (
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
@@ -16,8 +16,8 @@ from autocrud.query_types import (
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
-from autocrud.resource_manager.basic import is_match_query
-from autocrud.types import ResourceMeta
+from specstar.resource_manager.basic import is_match_query
+from specstar.types import ResourceMeta
 
 from .common import ALL_META_STORE_TYPES, get_meta_store
 

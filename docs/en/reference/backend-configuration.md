@@ -1,6 +1,6 @@
 # Backend configuration reference
 
-This page is the lookup reference for AutoCRUD backend settings.
+This page is the lookup reference for SpecStar backend settings.
 
 It covers both supported setup levels:
 
@@ -41,7 +41,7 @@ The four backend roles are:
 Example:
 
 ```python
-from autocrud import BackendBinding, BackendConfig, ConnectionProfile, crud
+from specstar import BackendBinding, BackendConfig, ConnectionProfile, crud
 
 crud.configure(
     backend=BackendConfig(
@@ -67,7 +67,7 @@ crud.configure(
 
 ## Resolution and override rules
 
-When AutoCRUD resolves `backend=...`, it applies these rules:
+When SpecStar resolves `backend=...`, it applies these rules:
 
 1. the value may be a `BackendConfig` object, a plain mapping, or a JSON file path
 2. environment variables inside strings are expanded automatically
@@ -95,7 +95,7 @@ If `mq` is omitted, no message queue factory is created.
 Example:
 
 ```python
-from autocrud import BackendBinding, BackendConfig, BackendDefaults
+from specstar import BackendBinding, BackendConfig, BackendDefaults
 
 config = BackendConfig(
     defaults=BackendDefaults(
@@ -177,7 +177,7 @@ config = BackendConfig(
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `amqp_url` | `amqp://guest:guest@localhost:5672/` | broker connection URL |
-| `queue_prefix` | `autocrud:` | queue naming prefix |
+| `queue_prefix` | `specstar:` | queue naming prefix |
 | `max_retries` | `3` | job retry count |
 | `retry_delay_seconds` | `10` | delay before retry |
 | `amqp_heartbeat_seconds` | `600` | heartbeat interval |
@@ -220,9 +220,9 @@ This makes it practical to keep secrets and environment-specific values outside 
 The factory path stays useful when you want to construct the exact backend objects yourself.
 
 ```python
-from autocrud import crud
-from autocrud.message_queue import RabbitMQMessageQueueFactory
-from autocrud.resource_manager import PostgresDiskS3StorageFactory
+from specstar import crud
+from specstar.message_queue import RabbitMQMessageQueueFactory
+from specstar.resource_manager import PostgresDiskS3StorageFactory
 
 crud.configure(
     storage_factory=PostgresDiskS3StorageFactory(
@@ -244,7 +244,7 @@ Use this path when you want:
 
 ## Related pages
 
-- [Backend setup](/autocrud/guides/backend-setup)
-- [Storage backends](/autocrud/guides/storage)
-- [Behavior & initialization](/autocrud/reference/behavior)
-- [Job Queue quickstart](/autocrud/quickstart/job-queue)
+- [Backend setup](/specstar/guides/backend-setup)
+- [Storage backends](/specstar/guides/storage)
+- [Behavior & initialization](/specstar/reference/behavior)
+- [Job Queue quickstart](/specstar/quickstart/job-queue)

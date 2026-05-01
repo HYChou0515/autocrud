@@ -94,7 +94,7 @@ function buildCharacterSpec(actionOverrides: Record<string, any>) {
       },
       '/character/{id}': { get: {} },
     },
-    'x-autocrud-custom-create-actions': {
+    'x-specstar-custom-create-actions': {
       character: [{ path: '/character/action', label: 'Test Action', operationId: 'test_action', ...actionOverrides }],
     },
     components: {
@@ -118,7 +118,7 @@ function buildCustomActionSpec() {
       '/article/import-from-url': {
         post: {
           summary: 'Import from URL (article)',
-          'x-autocrud-create-action': { resource: 'article', label: 'Import from URL' },
+          'x-specstar-create-action': { resource: 'article', label: 'Import from URL' },
           requestBody: {
             content: {
               'application/json': {
@@ -136,7 +136,7 @@ function buildCustomActionSpec() {
       '/article/import-from-multiple': {
         post: {
           summary: 'Import from Multiple (article)',
-          'x-autocrud-create-action': { resource: 'article', label: 'Import from Multiple' },
+          'x-specstar-create-action': { resource: 'article', label: 'Import from Multiple' },
           requestBody: {
             content: {
               'application/json': {
@@ -152,7 +152,7 @@ function buildCustomActionSpec() {
         },
       },
     },
-    'x-autocrud-custom-create-actions': {
+    'x-specstar-custom-create-actions': {
       article: [
         {
           path: '/article/import-from-url',
@@ -536,7 +536,7 @@ describe('extractCustomCreateActions — bodySchema', () => {
     expect(urlsField!.isArray).toBe(true);
   });
 
-  it('does nothing when no x-autocrud-custom-create-actions', () => {
+  it('does nothing when no x-specstar-custom-create-actions', () => {
     const spec = {
       paths: {
         '/article': {
@@ -557,7 +557,7 @@ describe('extractCustomCreateActions — bodySchema', () => {
 
   it('includes actions without any params (no-param trigger action)', () => {
     const spec = buildCharacterSpec({});
-    spec['x-autocrud-custom-create-actions'].character[0] = {
+    spec['x-specstar-custom-create-actions'].character[0] = {
       path: '/character/no-params',
       label: 'No Params',
       operationId: 'no_params',
@@ -773,7 +773,7 @@ describe('extractCustomCreateActions — duplicate label deduplication', () => {
         },
         '/character/{id}': { get: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         character: [
           {
             path: '/character/import-a',
@@ -832,7 +832,7 @@ describe('extractCustomCreateActions — duplicate label deduplication', () => {
         '/character/import-b': { post: {} },
         '/character/{id}': { get: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         character: [
           {
             path: '/character/import-a',
@@ -965,7 +965,7 @@ describe('inlineBodyParam with object-type schema — should expand sub-fields',
         },
         '/character/{id}': { get: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         character: [
           {
             path: '/character/action',
@@ -1003,7 +1003,7 @@ describe('inlineBodyParam with object-type schema — should expand sub-fields',
 
   it('expands inline object (non-$ref) inlineBodyParam into dot-notation sub-fields', () => {
     const spec = buildObjectInlineBodyParamSpec();
-    spec['x-autocrud-custom-create-actions'].character[0].inlineBodyParams[0].schema = {
+    spec['x-specstar-custom-create-actions'].character[0].inlineBodyParams[0].schema = {
       type: 'object',
       properties: { strength: { type: 'integer' }, dexterity: { type: 'integer' } },
       required: ['strength', 'dexterity'],
@@ -1016,7 +1016,7 @@ describe('inlineBodyParam with object-type schema — should expand sub-fields',
 
   it('expands nullable $ref object inlineBodyParam (anyOf + null)', () => {
     const spec = buildObjectInlineBodyParamSpec();
-    spec['x-autocrud-custom-create-actions'].character[0].inlineBodyParams[0].schema = {
+    spec['x-specstar-custom-create-actions'].character[0].inlineBodyParams[0].schema = {
       anyOf: [{ $ref: '#/components/schemas/CharacterConfig' }, { type: 'null' }],
     };
     const resources = buildIR(spec).resources;
@@ -1742,7 +1742,7 @@ describe('extractCustomCreateActions — asyncMode', () => {
         '/generate-article-job': { get: {} },
         '/generate-article-job/{id}': { get: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         article: [
           {
             path: '/article/generate-article',
@@ -1754,7 +1754,7 @@ describe('extractCustomCreateActions — asyncMode', () => {
           },
         ],
       },
-      'x-autocrud-async-create-jobs': { 'generate-article-job': 'article' },
+      'x-specstar-async-create-jobs': { 'generate-article-job': 'article' },
       components: {
         schemas: {
           Article: {
@@ -2061,9 +2061,9 @@ describe('extractFields — nullable optional struct expansion', () => {
   });
 });
 
-// ─── x-autocrud-indexed-fields ──────────────────────────────────────────────
+// ─── x-specstar-indexed-fields ──────────────────────────────────────────────
 
-describe('x-autocrud-indexed-fields', () => {
+describe('x-specstar-indexed-fields', () => {
   it('should populate indexedFields from top-level extension', () => {
     const spec = {
       info: { title: 'Test', version: '1.0' },
@@ -2099,7 +2099,7 @@ describe('x-autocrud-indexed-fields', () => {
           },
         },
       },
-      'x-autocrud-indexed-fields': {
+      'x-specstar-indexed-fields': {
         hero: ['name', 'level'],
         weapon: ['name'],
       },
@@ -2166,7 +2166,7 @@ describe('x-autocrud-indexed-fields', () => {
           },
         },
       },
-      'x-autocrud-indexed-fields': {
+      'x-specstar-indexed-fields': {
         weapon: ['name'],
       },
     };
@@ -2304,7 +2304,7 @@ function buildUpdateActionSpec() {
       '/character/{resource_id}/level-up': {
         post: {
           summary: 'Level Up (character)',
-          'x-autocrud-update-action': { resource: 'character', label: 'Level Up' },
+          'x-specstar-update-action': { resource: 'character', label: 'Level Up' },
           requestBody: {
             content: {
               'application/json': {
@@ -2322,11 +2322,11 @@ function buildUpdateActionSpec() {
       '/character/{resource_id}/reset': {
         post: {
           summary: 'Reset (character)',
-          'x-autocrud-update-action': { resource: 'character', label: 'Reset' },
+          'x-specstar-update-action': { resource: 'character', label: 'Reset' },
         },
       },
     },
-    'x-autocrud-custom-update-actions': {
+    'x-specstar-custom-update-actions': {
       character: [
         {
           path: '/character/{resource_id}/level-up',
@@ -2398,7 +2398,7 @@ describe('extractCustomUpdateActions — bodySchema', () => {
     expect(resetAction!.fields.length).toBe(0);
   });
 
-  it('does nothing when no x-autocrud-custom-update-actions', () => {
+  it('does nothing when no x-specstar-custom-update-actions', () => {
     const spec = {
       paths: {
         '/article': {
@@ -2419,7 +2419,7 @@ describe('extractCustomUpdateActions — bodySchema', () => {
 
   it('handles query params in update actions', () => {
     const spec = buildUpdateActionSpec();
-    spec['x-autocrud-custom-update-actions'].character[0].queryParams = [
+    spec['x-specstar-custom-update-actions'].character[0].queryParams = [
       { name: 'force', required: false, schema: { type: 'boolean' } },
     ];
     const resources = buildIR(spec).resources;
@@ -2448,7 +2448,7 @@ describe('extractCustomUpdateActions — asyncMode', () => {
         '/character/{resource_id}/train': {
           post: {
             summary: 'Train (character)',
-            'x-autocrud-update-action': { resource: 'character', label: 'Train' },
+            'x-specstar-update-action': { resource: 'character', label: 'Train' },
             requestBody: {
               content: {
                 'application/json': {
@@ -2466,7 +2466,7 @@ describe('extractCustomUpdateActions — asyncMode', () => {
         '/train-character-job': { get: {} },
         '/train-character-job/{id}': { get: {} },
       },
-      'x-autocrud-custom-update-actions': {
+      'x-specstar-custom-update-actions': {
         character: [
           {
             path: '/character/{resource_id}/train',
@@ -2479,7 +2479,7 @@ describe('extractCustomUpdateActions — asyncMode', () => {
           },
         ],
       },
-      'x-autocrud-async-update-jobs': { 'train-character-job': 'character' },
+      'x-specstar-async-update-jobs': { 'train-character-job': 'character' },
       components: {
         schemas: {
           Character: {
@@ -2513,7 +2513,7 @@ describe('extractCustomUpdateActions — asyncMode', () => {
 
   it('parses background asyncMode without jobResourceName', () => {
     const spec = buildUpdateActionSpec();
-    spec['x-autocrud-custom-update-actions'].character[0].asyncMode = 'background';
+    spec['x-specstar-custom-update-actions'].character[0].asyncMode = 'background';
     const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customUpdateActions![0];
     expect(action.asyncMode).toBe('background');

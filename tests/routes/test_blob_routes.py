@@ -6,8 +6,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import Binary
+from specstar.crud.core import SpecStar
+from specstar.types import Binary
 
 
 class UserWithAvatar(Struct):
@@ -16,16 +16,16 @@ class UserWithAvatar(Struct):
 
 
 @pytest.fixture
-def autocrud():
-    app = AutoCRUD()
+def specstar():
+    app = SpecStar()
     app.add_model(UserWithAvatar)
     return app
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     app = FastAPI()
-    autocrud.apply(app)
+    specstar.apply(app)
     return TestClient(app)
 
 
@@ -86,15 +86,15 @@ def test_blob_file_not_found(client):
 
 def test_blob_store_not_configured():
     """Test behavior when blob store is not configured"""
-    # We need to manually construct AutoCRUD/ResourceManager to simulate no blob_store
-    # or Mock AutoCRUD to return a manager without blob_store
+    # We need to manually construct SpecStar/ResourceManager to simulate no blob_store
+    # or Mock SpecStar to return a manager without blob_store
 
     from fastapi import APIRouter
 
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
-    from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-    from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-    from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+    from specstar.crud.route_templates.blob import BlobRouteTemplate
+    from specstar.resource_manager.core import ResourceManager, SimpleStorage
+    from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+    from specstar.resource_manager.resource_store.simple import MemoryResourceStore
 
     # Create manager without blob_store
     store = SimpleStorage(MemoryMetaStore(), MemoryResourceStore())
@@ -124,7 +124,7 @@ def test_blob_route_not_implemented_error():
     # Create a mock that passes isinstance(ResourceManager)
     # easiest way is to create a subclass or minimal implementation
 
-    from autocrud.resource_manager.core import ResourceManager
+    from specstar.resource_manager.core import ResourceManager
 
     class MockBlobStore:
         def get_url(self, file_id):
@@ -149,7 +149,7 @@ def test_blob_route_not_implemented_error():
     # Setup Route
     from fastapi import APIRouter
 
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
+    from specstar.crud.route_templates.blob import BlobRouteTemplate
 
     template = BlobRouteTemplate()
     router = APIRouter()
@@ -174,7 +174,7 @@ def test_blob_route_skip_non_resource_manager():
 
     from fastapi import APIRouter
 
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
+    from specstar.crud.route_templates.blob import BlobRouteTemplate
 
     template = BlobRouteTemplate()
     router = APIRouter()
@@ -185,8 +185,8 @@ def test_blob_route_skip_non_resource_manager():
 
 def test_blob_redirect():
     """Test that blob route redirects if blob store provides a URL"""
-    from autocrud.resource_manager.core import ResourceManager
-    from autocrud.types import BlobResponse
+    from specstar.resource_manager.core import ResourceManager
+    from specstar.types import BlobResponse
 
     class MockRedirectBlobStore:
         def get_url(self, file_id):
@@ -220,7 +220,7 @@ def test_blob_redirect():
 
     from fastapi import APIRouter
 
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
+    from specstar.crud.route_templates.blob import BlobRouteTemplate
 
     template = BlobRouteTemplate()
     router = APIRouter()
@@ -242,26 +242,26 @@ def test_add_route_template_deduplicates_blob():
     """
     import warnings
 
-    crud = AutoCRUD()  # default route_templates includes BlobRouteTemplate
+    spec = SpecStar()  # default route_templates includes BlobRouteTemplate
 
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
+    from specstar.crud.route_templates.blob import BlobRouteTemplate
 
     # Simulate the pattern in rpg_game_api.py: user adds BlobRouteTemplate again
-    crud.add_route_template(BlobRouteTemplate())
+    spec.add_route_template(BlobRouteTemplate())
 
     # Should have exactly one BlobRouteTemplate
     blob_count = sum(
-        1 for t in crud.route_templates if isinstance(t, BlobRouteTemplate)
+        1 for t in spec.route_templates if isinstance(t, BlobRouteTemplate)
     )
     assert blob_count == 1, f"Expected 1 BlobRouteTemplate, got {blob_count}"
 
-    crud.add_model(UserWithAvatar)
+    spec.add_model(UserWithAvatar)
     app = FastAPI()
 
     # No duplicate-operation-ID warning should be emitted
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        crud.apply(app)
+        spec.apply(app)
 
     dup_warnings = [w for w in caught if "Duplicate Operation ID" in str(w.message)]
     assert dup_warnings == [], f"Unexpected duplicate warnings: {dup_warnings}"

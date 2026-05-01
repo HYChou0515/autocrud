@@ -16,7 +16,7 @@ node /path/to/generator/dist/cli.js init test-project
 cd test-project
 pnpm install
 
-# 測試 generate 命令（需要先啟動 AutoCRUD API）
+# 測試 generate 命令（需要先啟動 SpecStar API）
 node /path/to/generator/dist/cli.js generate --url http://localhost:8000
 ```
 
@@ -40,9 +40,9 @@ npm publish
 
 3. **全域安裝測試**：
 ```bash
-npm install -g autocrud-web-generator
-autocrud-web --version
-autocrud-web init test-app
+npm install -g specstar-web-generator
+specstar-web --version
+specstar-web init test-app
 ```
 
 ## 本地測試（不發布）
@@ -59,13 +59,13 @@ npm link
 
 ```bash
 cd /tmp
-autocrud-web init my-test-app
+specstar-web init my-test-app
 ```
 
 取消連結：
 
 ```bash
-npm unlink -g autocrud-web-generator
+npm unlink -g specstar-web-generator
 ```
 
 ## 發布檢查清單

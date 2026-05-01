@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc -b",
-    "generate": "autocrud-web generate",
+    "generate": "specstar-web generate",
     "preview": "vite preview",
     "test": "vite build && tsc -b && vitest run --coverage",
     "lint": "eslint src",

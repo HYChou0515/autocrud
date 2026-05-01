@@ -1,10 +1,10 @@
 # Quickstart - Data Versioning
 
-Instead of overwriting data in place, AutoCRUD keeps every change as a new revision.
+Instead of overwriting data in place, SpecStar keeps every change as a new revision.
 
-In this quickstart, we will show how to use AutoCRUD resource revision control to keep change history in your application.
+In this quickstart, we will show how to use SpecStar resource revision control to keep change history in your application.
 
-With AutoCRUD, each create, update, and delete operation can produce a new revision. This allows you to:
+With SpecStar, each create, update, and delete operation can produce a new revision. This allows you to:
 
 - keep a full history of changes
 - inspect older versions of a resource
@@ -26,7 +26,7 @@ from typing import Literal
 import msgspec
 from fastapi import FastAPI
 
-from autocrud import crud, Schema
+from specstar import crud, Schema
 
 
 class Issue(msgspec.Struct):
@@ -194,9 +194,9 @@ If you plan to rely on revision history in a real deployment, backend setup is a
 
 Next Steps:
 
-- [Set up backend persistence and storage](/autocrud/guides/backend-setup)
-- [Handle schema evolution safely](/autocrud/quickstart/schema-migration)
-- [Move from demo to production](/autocrud/guides/from-demo-to-production)
+- [Set up backend persistence and storage](/specstar/guides/backend-setup)
+- [Handle schema evolution safely](/specstar/quickstart/schema-migration)
+- [Move from demo to production](/specstar/guides/from-demo-to-production)
 
 ---
 
@@ -209,7 +209,7 @@ from typing import Literal
 import msgspec
 from fastapi import FastAPI
 
-from autocrud import crud, Schema
+from specstar import crud, Schema
 
 
 class Issue(msgspec.Struct):

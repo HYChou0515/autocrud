@@ -10,7 +10,7 @@ This guide intentionally shows **two setup levels**:
 
 Both are valid and fully supported. This guide starts with the higher-level backend API because it keeps the backend story unified, then moves to factories for cases that need more explicit control.
 
-AutoCRUD separates backend setup into four concerns:
+SpecStar separates backend setup into four concerns:
 
 | Concern | What it stores | Typical choices |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ If you choose these four pieces deliberately at the start, the rest of the produ
 Configure your backend before registering models.
 
 ```python
-from autocrud import BackendBinding, BackendConfig, ConnectionProfile, Schema, crud
+from specstar import BackendBinding, BackendConfig, ConnectionProfile, Schema, crud
 
 crud.configure(
     backend=BackendConfig(
@@ -76,14 +76,14 @@ A common progression is to begin with the unified backend API and move to the lo
 ## 1. Install the integrations you actually need
 
 ```bash
-pip install "autocrud[postgresql,s3,mq]"
+pip install "specstar[postgresql,s3,mq]"
 ```
 
 Common combinations:
 
-- `autocrud[postgresql]` for PostgreSQL metadata and resource storage
-- `autocrud[s3]` for S3-compatible data and blob storage
-- `autocrud[mq]` for RabbitMQ or Celery queue backends
+- `specstar[postgresql]` for PostgreSQL metadata and resource storage
+- `specstar[s3]` for S3-compatible data and blob storage
+- `specstar[mq]` for RabbitMQ or Celery queue backends
 
 If you only need local persistence, the base package plus `DiskStorageFactory` is often enough.
 
@@ -118,7 +118,7 @@ If you want deployment-friendly backend setup, place the unified config in a JSO
 ```
 
 ```python
-from autocrud import crud
+from specstar import crud
 
 crud.configure(backend="./backend.json")
 ```
@@ -135,7 +135,7 @@ This is the simplest durable setup for a single-node deployment using the higher
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import BackendBinding, BackendConfig, ConnectionProfile, Schema, crud
+from specstar import BackendBinding, BackendConfig, ConnectionProfile, Schema, crud
 
 
 class User(Struct):
@@ -189,7 +189,7 @@ import os
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import BackendBinding, BackendConfig, BackendDefaults, ConnectionProfile, Schema, crud
+from specstar import BackendBinding, BackendConfig, BackendDefaults, ConnectionProfile, Schema, crud
 
 
 class Document(Struct):
@@ -251,12 +251,12 @@ If you prefer object storage for both resource payloads and blobs, use S3 for bo
 
 ## 5. When to use the lower-level factory path
 
-The factory-style configuration is still a strong option when you want explicit control over the storage and queue objects being wired into AutoCRUD.
+The factory-style configuration is still a strong option when you want explicit control over the storage and queue objects being wired into SpecStar.
 
 ```python
-from autocrud import crud
-from autocrud.message_queue import RabbitMQMessageQueueFactory
-from autocrud.resource_manager import PostgresDiskS3StorageFactory
+from specstar import crud
+from specstar.message_queue import RabbitMQMessageQueueFactory
+from specstar.resource_manager import PostgresDiskS3StorageFactory
 
 crud.configure(
     storage_factory=PostgresDiskS3StorageFactory(
@@ -312,9 +312,9 @@ When jobs matter:
 A minimal local job setup looks like this:
 
 ```python
-from autocrud import Schema, crud
-from autocrud.message_queue import SimpleMessageQueueFactory
-from autocrud.resource_manager import DiskStorageFactory
+from specstar import Schema, crud
+from specstar.message_queue import SimpleMessageQueueFactory
+from specstar.resource_manager import DiskStorageFactory
 
 crud.configure(
     storage_factory=DiskStorageFactory("./data"),
@@ -357,8 +357,8 @@ A quick persistence smoke test is simple:
 
 ## 9. What to read next
 
-- [Backend configuration reference](/autocrud/reference/backend-configuration)
-- [Storage](/autocrud/guides/storage)
-- [From demo to production](/autocrud/guides/from-demo-to-production)
-- [Job Queue quickstart](/autocrud/quickstart/job-queue)
-- [Binary data](/autocrud/howto/binary-data)
+- [Backend configuration reference](/specstar/reference/backend-configuration)
+- [Storage](/specstar/guides/storage)
+- [From demo to production](/specstar/guides/from-demo-to-production)
+- [Job Queue quickstart](/specstar/quickstart/job-queue)
+- [Binary data](/specstar/howto/binary-data)

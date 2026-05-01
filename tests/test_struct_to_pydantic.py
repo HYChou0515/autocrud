@@ -23,8 +23,8 @@ import pytest
 from msgspec import Struct
 from pydantic import BaseModel
 
-from autocrud import struct_to_pydantic
-from autocrud.types import (
+from specstar import struct_to_pydantic
+from specstar.types import (
     DisplayName,
     Unique,
 )

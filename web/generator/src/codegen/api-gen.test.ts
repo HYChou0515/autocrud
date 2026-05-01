@@ -100,7 +100,7 @@ function buildCustomActionSpec() {
       '/article/import-from-url': {
         post: {
           summary: 'Import from URL (article)',
-          'x-autocrud-create-action': { resource: 'article', label: 'Import from URL' },
+          'x-specstar-create-action': { resource: 'article', label: 'Import from URL' },
           requestBody: {
             content: {
               'application/json': {
@@ -116,7 +116,7 @@ function buildCustomActionSpec() {
         },
       },
     },
-    'x-autocrud-custom-create-actions': {
+    'x-specstar-custom-create-actions': {
       article: [
         {
           path: '/article/import-from-url',
@@ -145,7 +145,7 @@ function buildCharacterSpec(actionOverrides: Record<string, any>) {
       },
       '/character/{id}': { get: {} },
     },
-    'x-autocrud-custom-create-actions': {
+    'x-specstar-custom-create-actions': {
       character: [{ path: '/character/action', label: 'Test Action', operationId: 'test_action', ...actionOverrides }],
     },
     components: {
@@ -318,7 +318,7 @@ describe('genApiClient — custom action paths use BASE variable', () => {
         },
         '/api/character/{id}': { get: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         character: [
           {
             path: '/api/character/action',
@@ -343,14 +343,14 @@ describe('genApiClient — custom action paths use BASE variable', () => {
   it('strips resource prefix when action.path lacks basePath prefix', () => {
     const spec = {
       paths: {
-        '/v1/autocrud/character': {
+        '/v1/specstar/character': {
           post: {
             requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
           },
         },
-        '/v1/autocrud/character/{id}': { get: {} },
+        '/v1/specstar/character/{id}': { get: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         character: [
           {
             path: '/character/{name}/new',
@@ -364,10 +364,10 @@ describe('genApiClient — custom action paths use BASE variable', () => {
         schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
       },
     };
-    const resources = parse(spec, '/v1/autocrud');
-    const api = genApiClient(resources.find((r) => r.name === 'character')!, '/v1/autocrud');
+    const resources = parse(spec, '/v1/specstar');
+    const api = genApiClient(resources.find((r) => r.name === 'character')!, '/v1/specstar');
 
-    expect(api).toContain("const BASE = '/v1/autocrud/character'");
+    expect(api).toContain("const BASE = '/v1/specstar/character'");
     expect(api).toContain('${BASE}/');
     expect(api).not.toContain('/character/${allParams');
     expect(api).not.toContain('/character/character/');
@@ -376,13 +376,13 @@ describe('genApiClient — custom action paths use BASE variable', () => {
   it('strips resource prefix for query-only action when action.path lacks basePath', () => {
     const spec = {
       paths: {
-        '/v1/autocrud/character': {
+        '/v1/specstar/character': {
           post: {
             requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
           },
         },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         character: [
           {
             path: '/character/create-custom',
@@ -396,10 +396,10 @@ describe('genApiClient — custom action paths use BASE variable', () => {
         schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
       },
     };
-    const resources = parse(spec, '/v1/autocrud');
-    const api = genApiClient(resources.find((r) => r.name === 'character')!, '/v1/autocrud');
+    const resources = parse(spec, '/v1/specstar');
+    const api = genApiClient(resources.find((r) => r.name === 'character')!, '/v1/specstar');
 
-    expect(api).toContain("const BASE = '/v1/autocrud/character'");
+    expect(api).toContain("const BASE = '/v1/specstar/character'");
     expect(api).toContain('${BASE}/create-custom');
     expect(api).not.toContain('/character/create-custom');
   });
@@ -407,13 +407,13 @@ describe('genApiClient — custom action paths use BASE variable', () => {
   it('strips resource prefix for body-schema action when action.path lacks basePath', () => {
     const spec = {
       paths: {
-        '/v1/autocrud/character': {
+        '/v1/specstar/character': {
           post: {
             requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
           },
         },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         character: [
           {
             path: '/character/import',
@@ -430,10 +430,10 @@ describe('genApiClient — custom action paths use BASE variable', () => {
         },
       },
     };
-    const resources = parse(spec, '/v1/autocrud');
-    const api = genApiClient(resources.find((r) => r.name === 'character')!, '/v1/autocrud');
+    const resources = parse(spec, '/v1/specstar');
+    const api = genApiClient(resources.find((r) => r.name === 'character')!, '/v1/specstar');
 
-    expect(api).toContain("const BASE = '/v1/autocrud/character'");
+    expect(api).toContain("const BASE = '/v1/specstar/character'");
     expect(api).toContain('${BASE}/import');
     expect(api).not.toContain('/character/import');
   });
@@ -448,7 +448,7 @@ describe('genApiClient — custom action paths use BASE variable', () => {
         },
         '/character/{id}': { get: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         character: [
           {
             path: '/character/trigger',
@@ -673,7 +673,7 @@ function buildUpdateActionSpec(basePath = '') {
         },
       },
     },
-    'x-autocrud-custom-update-actions': {
+    'x-specstar-custom-update-actions': {
       character: [
         {
           path: '/character/{resource_id}/level-up',

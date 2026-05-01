@@ -4,11 +4,11 @@ from typing import Any, Dict, Generic, List, Optional, TypeVar
 import pytest
 from msgspec import UNSET, Struct
 
-from autocrud.resource_manager.binary_processor import BinaryProcessor
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.resource_manager.binary_processor import BinaryProcessor
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     Binary,
     Job,
 )

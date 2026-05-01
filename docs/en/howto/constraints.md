@@ -1,6 +1,6 @@
 # Constraints (Unique)
 
-AutoCRUD supports a built-in uniqueness constraint via `Unique()` metadata.
+SpecStar supports a built-in uniqueness constraint via `Unique()` metadata.
 
 ## Declare unique fields
 
@@ -9,7 +9,7 @@ Use `typing.Annotated`:
 ```python
 from typing import Annotated
 from msgspec import Struct
-from autocrud.types import Unique
+from specstar.types import Unique
 
 class User(Struct):
     username: Annotated[str, Unique()]
@@ -25,7 +25,7 @@ of the same resource type.
 * **Soft-deleted resources are ignored** when checking uniqueness.
 * **`None` values are ignored** (i.e. `None` can repeat without violating uniqueness).
 
-If a duplicate is detected, AutoCRUD raises `UniqueConstraintError`.
+If a duplicate is detected, SpecStar raises `UniqueConstraintError`.
 
 ## When does the check run?
 
@@ -41,7 +41,7 @@ constraint is violated.
 
 ## How it works (implementation notes)
 
-AutoCRUD uses a `UniqueConstraintChecker`:
+SpecStar uses a `UniqueConstraintChecker`:
 
 * detects unique fields from `Unique()` annotations (or accepts an explicit list)
 * ensures each unique field is present in `ResourceManager` indexed fields (auto-adds if missing)
@@ -49,7 +49,7 @@ AutoCRUD uses a `UniqueConstraintChecker`:
 
 ## Update behavior (exclude current resource)
 
-When updating a resource, AutoCRUD excludes the current resource ID so that:
+When updating a resource, SpecStar excludes the current resource ID so that:
 
 * updating a resource without changing the unique value does **not** fail
 * changing to a value owned by another resource fails
@@ -67,7 +67,7 @@ If you see `UniqueConstraintError`:
 
 Suppose you already created a user with `username="alice"`.
 
-If you try to create another non-deleted user with the same username, AutoCRUD will reject the write with `409 Conflict`.
+If you try to create another non-deleted user with the same username, SpecStar will reject the write with `409 Conflict`.
 
 That means the uniqueness rule is enforced at the API layer in a predictable way, not left to ad-hoc application code.
 

@@ -5,7 +5,7 @@ Performance depends on storage backend, indexing choices, payload size, and quer
 
 ## Storage backend
 
-AutoCRUD uses a storage factory to create a per-model storage instance:
+SpecStar uses a storage factory to create a per-model storage instance:
 
 - **Memory storage**: suitable for development / small datasets; fastest, but not persistent.
 - **Disk storage** (or other persistent backends): suitable for production; performance depends on IO.

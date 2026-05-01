@@ -10,10 +10,10 @@ from typing import Annotated
 import pytest
 from msgspec import Struct
 
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
-from autocrud.types import (
+from specstar.resource_manager.core import ResourceManager
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.resource_manager.unique_handler import UniqueConstraintChecker
+from specstar.types import (
     RevisionStatus,
     Unique,
     UniqueConstraintError,
@@ -63,10 +63,10 @@ def make_rm(resource_type, unique_fields=None, indexed_fields=None):
 
 
 def make_ac():
-    """Create a configured AutoCRUD instance for integration tests."""
-    from autocrud import AutoCRUD
+    """Create a configured SpecStar instance for integration tests."""
+    from specstar import SpecStar
 
-    ac = AutoCRUD()
+    ac = SpecStar()
     ac.configure(
         storage_factory=MemoryStorageFactory(),
         default_user="system",
@@ -221,7 +221,7 @@ class TestModifyUnique:
 
 
 # ---------------------------------------------------------------------------
-# 5. Auto-indexing via add_model (integration with AutoCRUD)
+# 5. Auto-indexing via add_model (integration with SpecStar)
 # ---------------------------------------------------------------------------
 
 
@@ -302,7 +302,7 @@ class TestUniqueAutoIndexing:
 
     def test_unique_checker_preserves_existing_indexed(self):
         """Existing indexed fields should not be duplicated."""
-        from autocrud.types import IndexableField
+        from specstar.types import IndexableField
 
         rm = make_rm(
             Item,
@@ -415,13 +415,13 @@ class TestOpenAPIUniqueExtension:
     def _build_app(self, model, name="test"):
         from fastapi import FastAPI
 
-        from autocrud import AutoCRUD
+        from specstar import SpecStar
 
-        crud = AutoCRUD()
-        crud.add_model(model, name=name)
+        spec = SpecStar()
+        spec.add_model(model, name=name)
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_single_unique_field_has_x_unique(self):

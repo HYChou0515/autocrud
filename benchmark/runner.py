@@ -1,7 +1,7 @@
 """Benchmark runner — orchestrates scenario execution.
 
 Reads a :class:`~benchmark.config.BenchmarkConfig`, iterates over each
-scenario, builds the appropriate AutoCRUD instance, runs the requested
+scenario, builds the appropriate SpecStar instance, runs the requested
 CRUD operations, and collects results into a :class:`BenchmarkReport`.
 """
 
@@ -99,8 +99,8 @@ def _run_scenario(
     Returns:
         A :class:`ScenarioResult` with timing data for each operation.
     """
-    from autocrud.crud.core import AutoCRUD
-    from autocrud.resource_manager.basic import Encoding
+    from specstar.crud.core import SpecStar
+    from specstar.resource_manager.basic import Encoding
 
     n = scenario.n or config.default_n
     warmup = scenario.warmup or config.default_warmup
@@ -135,16 +135,16 @@ def _run_scenario(
     # Teardown leftover artefacts from previous runs
     cleanup_storage(storage_cfg.name, storage_cfg.params)
 
-    # Build AutoCRUD instance per scenario (isolated)
+    # Build SpecStar instance per scenario (isolated)
     storage_factory = build_storage_factory(
         storage_cfg.name, storage_cfg.params, encoding
     )
-    crud = AutoCRUD(storage_factory=storage_factory, encoding=encoding)
-    crud.add_model(
+    spec = SpecStar(storage_factory=storage_factory, encoding=encoding)
+    spec.add_model(
         model_info.struct_type,
         indexed_fields=model_info.indexed_fields,  # ty:ignore[invalid-argument-type]
     )
-    rm = crud.get_resource_manager(model_info.struct_type)
+    rm = spec.get_resource_manager(model_info.struct_type)
 
     # Generate test data (repeat * n for multiple rounds)
     total_data_needed = n * repeat

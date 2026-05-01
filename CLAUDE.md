@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AutoCRUD (v0.8.3) is a model-driven backend platform for FastAPI. Define a `msgspec.Struct` model once; the framework generates REST APIs, GraphQL, search, version history, permissions, background jobs, and an admin UI automatically.
+SpecStar is a model-driven backend platform for FastAPI. Define a `msgspec.Struct` model once; the framework generates REST APIs, GraphQL, search, version history, permissions, background jobs, and an admin UI automatically.
 
 ## Commands
 
@@ -24,7 +24,7 @@ make serve         # serve docs locally
 
 **Run a single test:**
 ```bash
-uv run pytest tests/test_autocrud.py::TestAutocrud::test_add_model_with_encoding -v
+uv run pytest tests/test_specstar.py::TestSpecStar::test_add_model_with_encoding -v
 uv run pytest tests/ -k "test_add_model" -v
 ```
 
@@ -32,23 +32,23 @@ uv run pytest tests/ -k "test_add_model" -v
 
 ### Core Components
 
-- **`AutoCRUD`** (`autocrud/crud/core.py`): Entry point — model registration + route generation.
-  - **Global Instance** (recommended): `from autocrud import crud` → `crud.configure()` → `crud.add_model()`
-  - **Manual Instance**: `AutoCRUD()` constructor for multiple independent instances
-- **`ResourceManager`** (`autocrud/resource_manager/core.py`): Core business logic — CRUD, versioning, permissions, events, migration, unique constraints, data coercion.
-- **Route Templates** (`autocrud/crud/route_templates/`): Each template generates specific API endpoints.
+- **`SpecStar`** (`specstar/crud/core.py`): Entry point — model registration + route generation.
+  - **Global Instance** (recommended): `from specstar import spec` → `spec.configure()` → `spec.add_model()`
+  - **Manual Instance**: `SpecStar()` constructor for multiple independent instances
+- **`ResourceManager`** (`specstar/resource_manager/core.py`): Core business logic — CRUD, versioning, permissions, events, migration, unique constraints, data coercion.
+- **Route Templates** (`specstar/crud/route_templates/`): Each template generates specific API endpoints.
   - Basic: `create`, `read`, `update`, `delete`, `search`, `patch`, `switch`
   - Advanced: `blob`, `graphql`, `migrate`, `backup`, `rerun`, `batch_delete`, `batch_restore`, `restore`, `permanently_delete`
-- **Schema API** (`autocrud/schema.py`): Unified migration + validation with fluent `.step()` / `.plus()` chain API. Uses BFS to find shortest migration path between versions.
-- **Query Builder** (`autocrud/query.py` + `autocrud/crud/qb_parser.py`): Django-like query API with operator overloading (`==`, `!=`, `>=`, `&`, `|`, `~`).
+- **Schema API** (`specstar/schema.py`): Unified migration + validation with fluent `.step()` / `.plus()` chain API. Uses BFS to find shortest migration path between versions.
+- **Query Builder** (`specstar/query.py` + `specstar/crud/qb_parser.py`): Django-like query API with operator overloading (`==`, `!=`, `>=`, `&`, `|`, `~`).
 - **Storage Abstraction** — three independent layers, each with multiple backends:
   - `IMetaStore`: simple (memory), postgres, redis, sqlalchemy, sqlite3, df, fast_slow
   - `IResourceStore`: simple (memory), s3, cache, cached_s3, etag_cached_s3, mq_cached_s3, postgres
   - `IBlobStore`: simple (memory), s3
-  - `IStorageFactory` (`autocrud/resource_manager/storage_factory.py`) creates per-model storage instances.
-- **Permission System** (`autocrud/permission/`): ACL, RBAC, action-based, data-based, meta-based, composite.
-- **Message Queue** (`autocrud/message_queue/`): Simple, RabbitMQ, Celery backends + heartbeat.
-- **Pydantic Converter** (`autocrud/resource_manager/pydantic_converter.py`): Bidirectional `pydantic_to_struct()` / `struct_to_pydantic()`.
+  - `IStorageFactory` (`specstar/resource_manager/storage_factory.py`) creates per-model storage instances.
+- **Permission System** (`specstar/permission/`): ACL, RBAC, action-based, data-based, meta-based, composite.
+- **Message Queue** (`specstar/message_queue/`): Simple, RabbitMQ, Celery backends + heartbeat.
+- **Pydantic Converter** (`specstar/resource_manager/pydantic_converter.py`): Bidirectional `pydantic_to_struct()` / `struct_to_pydantic()`.
 
 ### Key Architectural Patterns
 
@@ -56,11 +56,11 @@ uv run pytest tests/ -k "test_add_model" -v
 - **Data Coercion**: `_coerce_data()` accepts `dict`, `Struct`, or Pydantic `BaseModel` → **always outputs `msgspec.Struct` internally**. Never return Pydantic instances from `ResourceManager` methods — `MsgspecResponse.render()` only supports Struct.
 - **UNSET Pattern**: Use `msgspec.UNSET` / `UnsetType` to distinguish "not provided" from `None`.
 - **Soft Delete**: `DeleteRouteTemplate` is soft-delete; use `RestoreRouteTemplate` / `PermanentlyDeleteRouteTemplate` for recovery.
-- **Unique Constraints**: `Unique` annotation + `UniqueConstraintHandler` (`autocrud/resource_manager/unique_handler.py`).
+- **Unique Constraints**: `Unique` annotation + `UniqueConstraintHandler` (`specstar/resource_manager/unique_handler.py`).
 
 ### Public API
 
-Only exports from `autocrud/__init__.py` are public: `AutoCRUD`, `crud`, `Schema`, `LoadStats`, `struct_to_pydantic`, `DisplayName`, `Unique`, `UniqueConstraintError`, `IConstraintChecker`, `IValidator`, `ValidationError`, `DuplicateResourceError`, `OnDelete`, `OnDuplicate`, `Ref`, `RefRevision`, `RefType`, `RevisionNotMigratedError`, `SearchedResource`, `ResourceOps`, `BackgroundTaskAccepted`, `BlobUploadSession`, `JobRedirectInfo`, `MissingOperationContextError`.
+Only exports from `specstar/__init__.py` are public: `SpecStar`, `spec`, `Schema`, `LoadStats`, `struct_to_pydantic`, `DisplayName`, `Unique`, `UniqueConstraintError`, `IConstraintChecker`, `IValidator`, `ValidationError`, `DuplicateResourceError`, `OnDelete`, `OnDuplicate`, `Ref`, `RefRevision`, `RefType`, `RevisionNotMigratedError`, `SearchedResource`, `ResourceOps`, `BackgroundTaskAccepted`, `BlobUploadSession`, `JobRedirectInfo`, `MissingOperationContextError`.
 
 ## Coding Conventions
 
@@ -83,10 +83,10 @@ class PatchUser(Struct, kw_only=True):
 ### Schema API
 
 ```python
-from autocrud import Schema
+from specstar import Schema
 
 schema = Schema(UserV2, "v2").step("v1", migrate_v1_to_v2).plus(validator_fn)
-crud.add_model(User, schema=schema)
+spec.add_model(User, schema=schema)
 ```
 
 ### General
@@ -104,7 +104,7 @@ crud.add_model(User, schema=schema)
 - Use `msgspec.Struct` for test models.
 - Only run your own tests — avoid running unrelated test suites.
 - Frontend tests: run `pnpm test` under `web/app/` and confirm they pass.
-- Key test directories: `tests/test_autocrud.py` (integration), `tests/test_schema.py`, `tests/routes/` (API), `tests/meta_store/` (storage), `tests/permission/`.
+- Key test directories: `tests/test_specstar.py` (integration), `tests/test_schema.py`, `tests/routes/` (API), `tests/meta_store/` (storage), `tests/permission/`.
 
 ## Component Skills
 
@@ -112,8 +112,8 @@ Detailed implementation guides live in `.claude/skills/`. Consult the relevant s
 
 | Component | Skill File |
 |-----------|-----------|
-| Full Stack routing | `.claude/skills/autocrud-fullstack/SKILL.md` |
-| AutoCRUD Core | `.claude/skills/autocrud-core/SKILL.md` |
+| Full Stack routing | `.claude/skills/specstar-fullstack/SKILL.md` |
+| SpecStar Core | `.claude/skills/specstar-core/SKILL.md` |
 | ResourceManager | `.claude/skills/resource-manager/SKILL.md` |
 | Schema API | `.claude/skills/schema/SKILL.md` |
 | Query Builder | `.claude/skills/query-builder/SKILL.md` |

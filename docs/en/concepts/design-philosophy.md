@@ -1,8 +1,8 @@
 # Design philosophy
 
-This page explains the **principles and trade-offs** behind AutoCRUD.
+This page explains the **principles and trade-offs** behind SpecStar.
 
-If [Why AutoCRUD exists](/autocrud/concepts/why-autocrud) explains the problem, this page explains the design choices used to solve it.
+If [Why SpecStar exists](/specstar/concepts/why-specstar) explains the problem, this page explains the design choices used to solve it.
 
 ---
 
@@ -10,7 +10,7 @@ If [Why AutoCRUD exists](/autocrud/concepts/why-autocrud) explains the problem, 
 
 The first principle is that developers should define the domain model once and avoid rebuilding the same supporting infrastructure repeatedly.
 
-From that model, AutoCRUD can derive:
+From that model, SpecStar can derive:
 
 - API routes
 - validation flow
@@ -26,7 +26,7 @@ The goal is not to remove application logic. The goal is to remove repetitive fr
 
 Many CRUD systems treat updates as destructive overwrites.
 
-AutoCRUD instead assumes that revision history is often operationally useful:
+SpecStar instead assumes that revision history is often operationally useful:
 
 - for auditing
 - for rollback
@@ -39,7 +39,7 @@ That is why versioned resources are central to the design rather than an optiona
 
 ## 3. Separate payload data from operational metadata
 
-AutoCRUD keeps the resource payload separate from metadata such as revision pointers, timestamps, deletion state, and indexed values.
+SpecStar keeps the resource payload separate from metadata such as revision pointers, timestamps, deletion state, and indexed values.
 
 This makes it easier to support:
 
@@ -62,7 +62,7 @@ This helps keep behavior consistent across different routes and storage backends
 
 ## 5. Stay flexible about storage
 
-AutoCRUD is designed to be API- and model-oriented rather than tied to a single database engine.
+SpecStar is designed to be API- and model-oriented rather than tied to a single database engine.
 
 That is why metadata, revisions, and blobs can be backed by different storage layers depending on the deployment needs.
 
@@ -76,7 +76,7 @@ This allows the same conceptual model to work in:
 
 ## 6. Prefer practical automation over framework sprawl
 
-AutoCRUD is intentionally opinionated around a specific class of applications:
+SpecStar is intentionally opinionated around a specific class of applications:
 
 - API-centric systems
 - operational tools
@@ -89,13 +89,13 @@ It is not trying to be a universal replacement for every web framework pattern.
 
 ## The trade-off
 
-This design gives you strong consistency and less repetitive code, but it also means AutoCRUD is most valuable when your project fits a **model-driven, API-first** workflow.
+This design gives you strong consistency and less repetitive code, but it also means SpecStar is most valuable when your project fits a **model-driven, API-first** workflow.
 
 If your team wants a traditional full-stack monolith or a purely database-first GraphQL layer, another tool may be a better fit.
 
-### When AutoCRUD is usually the better fit
+### When SpecStar is usually the better fit
 
-AutoCRUD is especially effective for applications such as:
+SpecStar is especially effective for applications such as:
 
 - internal admin and operations tools
 - configuration or content management systems
@@ -103,7 +103,7 @@ AutoCRUD is especially effective for applications such as:
 - job and workflow backends where task state should be tracked like normal resources
 - FastAPI services that benefit from generated CRUD plus custom business logic
 
-Typical signals that AutoCRUD fits well:
+Typical signals that SpecStar fits well:
 
 - you want revision history and restore behavior by default
 - your team prefers Python models as the source of truth
@@ -139,12 +139,12 @@ A more custom FastAPI setup may be better when:
 - the domain is not CRUD-oriented
 - you need very custom request handling, protocols, or orchestration that gains little from generation
 
-In short, AutoCRUD works best when the problem looks like **versioned resources + repeatable APIs + operational tooling**.
+In short, SpecStar works best when the problem looks like **versioned resources + repeatable APIs + operational tooling**.
 
 ---
 
 ## Read next
 
-- [Architecture](/autocrud/concepts/architecture) — how these principles appear in the system design
-- [Resource lifecycle](/autocrud/concepts/resource-lifecycle) — how the revision model behaves in practice
-- [AutoCRUD vs Hasura vs Django](/autocrud/concepts/autocrud-vs-hasura-vs-django) — when AutoCRUD is the better fit
+- [Architecture](/specstar/concepts/architecture) — how these principles appear in the system design
+- [Resource lifecycle](/specstar/concepts/resource-lifecycle) — how the revision model behaves in practice
+- [SpecStar vs Hasura vs Django](/specstar/concepts/specstar-vs-hasura-vs-django) — when SpecStar is the better fit

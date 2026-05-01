@@ -4,8 +4,8 @@ import msgspec
 import pytest
 from fastapi import FastAPI
 
-from autocrud import AutoCRUD, Schema
-from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
+from specstar import Schema, SpecStar
+from specstar.crud.route_templates.migrate import MigrateRouteTemplate
 
 
 class ItemV1(msgspec.Struct):
@@ -28,13 +28,13 @@ class TestMigrateProgressInOpenAPI:
     @pytest.fixture()
     def app_with_migrate(self) -> FastAPI:
         app = FastAPI()
-        crud = AutoCRUD()
+        spec = SpecStar()
 
         schema = Schema(ItemV2, "v2").step("v1", migrate_v1_to_v2)
-        crud.add_model(schema)
-        crud.add_route_template(MigrateRouteTemplate())
-        crud.apply(app)
-        crud.openapi(app)
+        spec.add_model(schema)
+        spec.add_route_template(MigrateRouteTemplate())
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_migrate_progress_in_openapi_components(self, app_with_migrate: FastAPI):

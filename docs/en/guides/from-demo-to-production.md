@@ -1,6 +1,6 @@
 # From Demo to Production
 
-AutoCRUD works well with in-memory backends for demos, tests, and early experiments.
+SpecStar works well with in-memory backends for demos, tests, and early experiments.
 That setup optimizes for speed and convenience, not durability.
 
 Once the project needs persistent data, repeatable deployments, background workers, or
@@ -52,13 +52,13 @@ Rule of thumb:
 * use PostgreSQL + Disk + S3 blobs + RabbitMQ for the default production path
 * use PostgreSQL + S3 when you specifically want object storage for resource payloads too
 
-If you need a deeper comparison, see the [storage guide](/autocrud/guides/storage).
+If you need a deeper comparison, see the [storage guide](/specstar/guides/storage).
 
 ---
 
 ## 2. Choose a queue only if you run background jobs
 
-Not every AutoCRUD application needs a message queue.
+Not every SpecStar application needs a message queue.
 
 If all requests are handled synchronously, you can deploy without one.
 
@@ -106,7 +106,7 @@ This matters for:
 
 You do not need to throw away demo data.
 
-AutoCRUD provides two migration paths:
+SpecStar provides two migration paths:
 
 * per-model export/import routes
 * global backup/restore routes
@@ -147,7 +147,7 @@ Before calling a system production-ready, verify that:
 
 The main transition is simple:
 
-> Keep the AutoCRUD model and API shape.
+> Keep the SpecStar model and API shape.
 > Replace demo backends with production backends.
 > Use export/import or backup/restore to move the data.
 

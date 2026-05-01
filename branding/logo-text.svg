@@ -1,0 +1,33 @@
+<svg viewBox="0 0 480 280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="star" viewBox="0 0 100 100">
+      <path d="M 50,0 L 57,43 L 100,50 L 57,57 L 50,100 L 43,57 L 0,50 L 43,43 Z"/>
+    </symbol>
+  </defs>
+
+  <!-- 4-point north star, centered above 'spec'; geometric center at (240, 50) -->
+  <use href="#star" x="200" y="10" width="80" height="80" fill="#0F172A"/>
+
+  <!-- 4 straight rays. Each segment lies on a line that, when extended backward, -->
+  <!-- passes through the star's center (240, 50). Angles from vertical: ±15°, ±45°. -->
+  <!-- Rays start at y=98 (8px below star tip) and end at y=135 (7px above 'spec'). -->
+  <g stroke="#0F172A" stroke-width="1.5" stroke-linecap="round">
+    <!-- Outer left (-45°) -->
+    <line x1="192" y1="98" x2="155" y2="135"/>
+    <!-- Inner left (-15°) -->
+    <line x1="227.1" y1="98" x2="217.2" y2="135"/>
+    <!-- Inner right (+15°) -->
+    <line x1="252.9" y1="98" x2="262.8" y2="135"/>
+    <!-- Outer right (+45°) -->
+    <line x1="288" y1="98" x2="325" y2="135"/>
+  </g>
+
+  <!-- 'spec' wordmark -->
+  <text x="240" y="240"
+        font-family="Inter, Geist, 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
+        font-size="140"
+        font-weight="600"
+        letter-spacing="-6"
+        text-anchor="middle"
+        fill="#0F172A">spec</text>
+</svg>

@@ -25,18 +25,18 @@ import uuid
 
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.resource_manager.basic import Encoding
-from autocrud.types import OnDuplicate
+from specstar.crud.core import SpecStar
+from specstar.resource_manager.basic import Encoding
+from specstar.types import OnDuplicate
 
 # ---------------------------------------------------------------------------
 # Configuration (override via env vars)
 # ---------------------------------------------------------------------------
 POSTGRES_DSN = os.getenv(
     "POSTGRES_DSN",
-    "postgresql://admin:password@localhost:5432/autocrud_bench",
+    "postgresql://admin:password@localhost:5432/specstar_bench",
 )
-S3_BUCKET = os.getenv("S3_BUCKET", "autocrud-bench")
+S3_BUCKET = os.getenv("S3_BUCKET", "specstar-bench")
 S3_REGION = os.getenv("S3_REGION", "us-east-1")
 S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID", "minioadmin")
 S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "minioadmin")
@@ -57,7 +57,7 @@ class Item(Struct):
 # Helpers
 # ---------------------------------------------------------------------------
 def _make_storage_factory(prefix: str = ""):
-    from autocrud.resource_manager.storage_factory import (
+    from specstar.resource_manager.storage_factory import (
         PostgreSQLStorageFactory,  # ty:ignore[unresolved-import]
     )
 
@@ -73,21 +73,21 @@ def _make_storage_factory(prefix: str = ""):
     )
 
 
-def make_crud(prefix: str = "") -> AutoCRUD:
+def make_crud(prefix: str = "") -> SpecStar:
     sf = _make_storage_factory(prefix)
-    crud = AutoCRUD(storage_factory=sf)
-    crud.add_model(Item)
-    return crud
+    spec = SpecStar(storage_factory=sf)
+    spec.add_model(Item)
+    return spec
 
 
-def make_memory_crud() -> AutoCRUD:
-    crud = AutoCRUD()
-    crud.add_model(Item)
-    return crud
+def make_memory_crud() -> SpecStar:
+    spec = SpecStar()
+    spec.add_model(Item)
+    return spec
 
 
-def seed(crud: AutoCRUD, n: int):
-    mgr = crud.get_resource_manager(Item)
+def seed(spec: SpecStar, n: int):
+    mgr = spec.get_resource_manager(Item)
     with mgr.meta_provide("bench", dt.datetime(2025, 1, 1)):
         for i in range(n):
             mgr.create(
@@ -201,10 +201,10 @@ def _ensure_infra():
 # ---------------------------------------------------------------------------
 # Benchmarks
 # ---------------------------------------------------------------------------
-def bench_dump(crud: AutoCRUD, label: str) -> bytes:
+def bench_dump(spec: SpecStar, label: str) -> bytes:
     buf = io.BytesIO()
     t0 = time.perf_counter()
-    crud.dump(buf)
+    spec.dump(buf)
     elapsed = time.perf_counter() - t0
     data = buf.getvalue()
     rate = int(len(data) / elapsed) if elapsed > 0 else 0
@@ -256,12 +256,12 @@ def profile_load(data: bytes, n: int, prefix: str):
     ps.print_stats(40)
 
 
-def profile_dump(crud: AutoCRUD, n: int):
+def profile_dump(spec: SpecStar, n: int):
     """Profile dump with cProfile."""
     buf = io.BytesIO()
     pr = cProfile.Profile()
     pr.enable()
-    crud.dump(buf)
+    spec.dump(buf)
     pr.disable()
     print(f"\n--- cProfile for DUMP {n} items PG+S3 (top 40) ---")
     ps = pstats.Stats(pr)
@@ -271,7 +271,7 @@ def profile_dump(crud: AutoCRUD, n: int):
 
 def bench_load_breakdown(data: bytes, n: int, prefix: str):
     """Break down load into phases to show where time goes."""
-    from autocrud.resource_manager.dump_format import (
+    from specstar.resource_manager.dump_format import (
         BlobRecord,
         DumpStreamReader,
         MetaRecord,
@@ -401,13 +401,13 @@ def main():
         print(f"{'=' * 60}")
 
         # Seed into PG+S3
-        crud = make_crud(src_prefix)
+        spec = make_crud(src_prefix)
         t0 = time.perf_counter()
-        seed(crud, n)
+        seed(spec, n)
         print(f"\n  SEED ({n} items): {time.perf_counter() - t0:.3f}s")
 
         # Dump from PG+S3
-        data = bench_dump(crud, f"{n} items from PG+S3")
+        data = bench_dump(spec, f"{n} items from PG+S3")
 
         # Load into PG+S3
         bench_load(data, f"{n} items into PG+S3", tgt_prefix)
@@ -420,7 +420,7 @@ def main():
 
         if do_profile:
             prof_prefix = f"bench_{run_id}_prof_"
-            profile_dump(crud, n)
+            profile_dump(spec, n)
             profile_load(data, n, prof_prefix)
             _cleanup_pg_tables(prof_prefix)
             _cleanup_s3_prefix("item/data/")

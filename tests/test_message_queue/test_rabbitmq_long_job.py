@@ -20,11 +20,11 @@ from uuid import uuid4
 import pytest
 from msgspec import Struct
 
-from autocrud.message_queue.rabbitmq import (
+from specstar.message_queue.rabbitmq import (
     RabbitMQMessageQueue,
     RabbitMQMessageQueueFactory,
 )
-from autocrud.types import (
+from specstar.types import (
     Job,
     Resource,
     RevisionInfo,
@@ -113,7 +113,7 @@ def make_queue(request):
     def _factory(handler=None, *, amqp_heartbeat_seconds=None, mock_channel=None):
         ch = mock_channel or MockChannel()
 
-        patcher = patch("autocrud.message_queue.rabbitmq.pika")
+        patcher = patch("specstar.message_queue.rabbitmq.pika")
         mock_pika = patcher.start()
         _patchers.append(patcher)
         mock_pika.URLParameters = MagicMock()
@@ -165,7 +165,7 @@ class TestAMQPHeartbeatParameter:
 
     def test_heartbeat_applied_to_url_params(self):
         """_get_connection should set params.heartbeat before creating BlockingConnection."""
-        with patch("autocrud.message_queue.rabbitmq.pika") as mock_pika:
+        with patch("specstar.message_queue.rabbitmq.pika") as mock_pika:
             params_instance = MagicMock()
             mock_pika.URLParameters.return_value = params_instance
             mock_conn = MagicMock()
@@ -280,7 +280,7 @@ class TestHeartbeatThreadInRabbitMQ:
         rm.get.return_value = resource
 
         with patch(
-            "autocrud.message_queue.heartbeat.HeartbeatThread",
+            "specstar.message_queue.heartbeat.HeartbeatThread",
         ) as MockHB:
             hb_instance = MagicMock()
             MockHB.return_value = hb_instance
@@ -317,7 +317,7 @@ class TestHeartbeatThreadInRabbitMQ:
         rm.get.return_value = resource
 
         with patch(
-            "autocrud.message_queue.heartbeat.HeartbeatThread",
+            "specstar.message_queue.heartbeat.HeartbeatThread",
         ) as MockHB:
             hb_instance = MagicMock()
             MockHB.return_value = hb_instance

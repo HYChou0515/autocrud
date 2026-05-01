@@ -1,12 +1,12 @@
 # 貢獻指南
 
-感謝你對 AutoCRUD 的關注！我們歡迎各種形式的貢獻。
+感謝你對 SpecStar 的關注！我們歡迎各種形式的貢獻。
 
 ## 貢獻方式
 
 ### 回報問題
 
-如果你發現 bug 或有功能建議，請在 [GitHub Issues](https://github.com/HYChou0515/autocrud/issues) 提出。
+如果你發現 bug 或有功能建議，請在 [GitHub Issues](https://github.com/HYChou0515/specstar/issues) 提出。
 
 提交 issue 時請包含：
 
@@ -14,19 +14,19 @@
 - **重現步驟**：如何重現問題（若是 bug）
 - **預期行為**：你期望發生什麼
 - **實際行為**：實際發生了什麼
-- **環境資訊**：Python 版本、AutoCRUD 版本、作業系統
+- **環境資訊**：Python 版本、SpecStar 版本、作業系統
 
 ### 提交程式碼
 
 1. **Fork 專案**
 
-   Fork [autocrud](https://github.com/HYChou0515/autocrud) 到你的 GitHub 帳號
+   Fork [specstar](https://github.com/HYChou0515/specstar) 到你的 GitHub 帳號
 
 2. **Clone 到本地**
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/autocrud.git
-   cd autocrud
+   git clone https://github.com/YOUR_USERNAME/specstar.git
+   cd specstar
    ```
 
 3. **安裝開發環境**
@@ -157,9 +157,9 @@ make test-benchmark
 ## 專案結構
 
 ```
-autocrud/
-├── autocrud/           # 核心程式碼
-│   ├── crud/          # AutoCRUD 主要邏輯
+specstar/
+├── specstar/           # 核心程式碼
+│   ├── crud/          # SpecStar 主要邏輯
 │   ├── resource_manager/  # 資源管理
 │   ├── permission/    # 權限系統
 │   ├── message_queue/ # 訊息佇列
@@ -212,7 +212,7 @@ autocrud/
 **環境**
 - OS: [e.g. Ubuntu 22.04]
 - Python: [e.g. 3.11.5]
-- AutoCRUD: [e.g. 0.1.0]
+- SpecStar: [e.g. 0.1.0]
 
 **額外資訊**
 其他相關資訊、截圖、錯誤訊息等
@@ -240,8 +240,8 @@ git push origin v0.x.x
 
 ## 需要幫助？
 
-- 查看 [文檔](https://hychou0515.github.io/autocrud/)
-- 提出 [Issue](https://github.com/HYChou0515/autocrud/issues)
-- 查看現有的 [Pull Requests](https://github.com/HYChou0515/autocrud/pulls)
+- 查看 [文檔](https://hychou0515.github.io/specstar/)
+- 提出 [Issue](https://github.com/HYChou0515/specstar/issues)
+- 查看現有的 [Pull Requests](https://github.com/HYChou0515/specstar/pulls)
 
 感謝你的貢獻！🚀

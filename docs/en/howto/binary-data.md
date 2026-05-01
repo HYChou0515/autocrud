@@ -1,6 +1,6 @@
 # Binary Data
 
-AutoCRUD supports binary or blob workflows for files such as images, documents, and other uploaded content.
+SpecStar supports binary or blob workflows for files such as images, documents, and other uploaded content.
 
 The key type is `Binary`, which lets you store file metadata in the resource while keeping the raw bytes in the blob store.
 
@@ -11,7 +11,7 @@ The key type is `Binary`, which lets you store file metadata in the resource whi
 ```python
 from msgspec import Struct
 
-from autocrud.types import Binary
+from specstar.types import Binary
 
 
 class Avatar(Struct):
@@ -19,7 +19,7 @@ class Avatar(Struct):
     image: Binary | None = None
 ```
 
-When a resource contains binary data, AutoCRUD can move the raw bytes into the configured blob backend and keep only the file metadata in the stored resource.
+When a resource contains binary data, SpecStar can move the raw bytes into the configured blob backend and keep only the file metadata in the stored resource.
 
 ---
 
@@ -30,8 +30,8 @@ Add the blob route template before applying the app:
 ```python
 from fastapi import FastAPI
 
-from autocrud import crud
-from autocrud.crud.route_templates.blob import BlobRouteTemplate
+from specstar import crud
+from specstar.crud.route_templates.blob import BlobRouteTemplate
 
 app = FastAPI()
 
@@ -73,7 +73,7 @@ Example JSON payload after upload:
 
 ## 4. Use upload sessions for larger files
 
-AutoCRUD also provides an upload-session flow for larger or multi-part uploads.
+SpecStar also provides an upload-session flow for larger or multi-part uploads.
 
 | Step | Method | Endpoint |
 | --- | --- | --- |
@@ -85,7 +85,7 @@ AutoCRUD also provides an upload-session flow for larger or multi-part uploads.
 
 The upload session reports whether the client should use:
 
-- `proxy` mode, where bytes are sent through the AutoCRUD endpoint
+- `proxy` mode, where bytes are sent through the SpecStar endpoint
 - `single_put` mode, where the blob store provides a direct upload URL
 
 This is especially useful for S3-style storage backends.
@@ -98,7 +98,7 @@ To retrieve stored bytes, use:
 
 - `GET /blobs/{file_id}`
 
-Depending on the backend, AutoCRUD may:
+Depending on the backend, SpecStar may:
 
 - stream the file
 - redirect to a signed URL
@@ -131,7 +131,7 @@ In most stored resources, the raw byte content is not kept inline.
 
 ## Related pages
 
-- [API conventions](/autocrud/howto/api-conventions)
-- [Routes generation](/autocrud/howto/routes)
-- [From demo to production](/autocrud/guides/from-demo-to-production)
-- [Examples](/autocrud/examples/)
+- [API conventions](/specstar/howto/api-conventions)
+- [Routes generation](/specstar/howto/routes)
+- [From demo to production](/specstar/guides/from-demo-to-production)
+- [Examples](/specstar/examples/)

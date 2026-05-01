@@ -1,16 +1,16 @@
 # Resource Lifecycle
 
-This page explains how a resource changes over time in AutoCRUD.
+This page explains how a resource changes over time in SpecStar.
 
 It focuses on the practical lifecycle of a resource: **create, update, modify, switch, delete, restore, and migrate**.
 
-If you are looking for terminology, read [Core Concepts](/autocrud/concepts/core-concepts) first. If you want the component view, see [Architecture](/autocrud/concepts/architecture).
+If you are looking for terminology, read [Core Concepts](/specstar/concepts/core-concepts) first. If you want the component view, see [Architecture](/specstar/concepts/architecture).
 
 ---
 
 ## Why this matters
 
-The lifecycle model is what gives AutoCRUD its built-in support for:
+The lifecycle model is what gives SpecStar its built-in support for:
 
 - revision history
 - rollback and restore flows
@@ -180,7 +180,7 @@ stable
 
 ## 6. Switch the current revision
 
-AutoCRUD allows changing which revision is considered **current (HEAD)**.
+SpecStar allows changing which revision is considered **current (HEAD)**.
 
 Example:
 
@@ -227,7 +227,7 @@ rev_created_time
 rev_updated_time
 ```
 
-The `rev_*` fields mirror key attributes of the current revision so that filtering and sorting by revision properties is efficient. AutoCRUD keeps them in sync on every write.
+The `rev_*` fields mirror key attributes of the current revision so that filtering and sorting by revision properties is efficient. SpecStar keeps them in sync on every write.
 
 Metadata is accessed via:
 
@@ -265,7 +265,7 @@ GET /{model}/{resource_id}?returns=revision_info
 
 ## 9. Soft delete and restore
 
-AutoCRUD uses **soft deletion**.
+SpecStar uses **soft deletion**.
 
 ```text
 DELETE /{model}/{resource_id}
@@ -308,7 +308,7 @@ Each revision stores a `schema_version`.
 
 When reading a revision:
 
-- AutoCRUD attempts to decode using the **current schema**
+- SpecStar attempts to decode using the **current schema**
 - If decoding fails, the error is ignored (not treated as 404)
 
 Resources can be migrated explicitly using:
@@ -352,7 +352,7 @@ has been migrated to the resource's current schema_version.
 - You must migrate the revision first before switching to it.
 
 ```python
-from autocrud import RevisionNotMigratedError
+from specstar import RevisionNotMigratedError
 
 try:
     resource_manager.switch(resource_id, old_revision_id)
@@ -406,7 +406,7 @@ Schema changes are handled through explicit migrations, and switching to older r
 
 ## Read next
 
-- [Data model](/autocrud/concepts/data-model)
-- [Architecture](/autocrud/concepts/architecture)
-- [Schema](/autocrud/concepts/schema)
-- [Migrations](/autocrud/howto/migrations)
+- [Data model](/specstar/concepts/data-model)
+- [Architecture](/specstar/concepts/architecture)
+- [Schema](/specstar/concepts/schema)
+- [Migrations](/specstar/howto/migrations)

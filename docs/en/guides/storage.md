@@ -1,6 +1,6 @@
 # Storage backends
 
-AutoCRUD separates persistence into three related but distinct layers:
+SpecStar separates persistence into three related but distinct layers:
 
 - **metadata** — IDs, revision information, search/index state, lifecycle flags
 - **resource data** — the structured payload of the resource itself
@@ -16,7 +16,7 @@ This page starts with the unified backend config, then maps the lower-level fact
 The unified backend config is the most compact way to choose the default backend:
 
 ```python
-from autocrud import BackendBinding, BackendConfig, ConnectionProfile, crud
+from specstar import BackendBinding, BackendConfig, ConnectionProfile, crud
 
 crud.configure(
     backend=BackendConfig(
@@ -46,7 +46,7 @@ crud.configure(backend="./backend.json")
 
 The lower-level `storage_factory=` and `message_queue_factory=` parameters remain fully supported when you need more direct control over the underlying storage composition.
 
-For a full option-by-option backend settings reference, see [Backend configuration reference](/autocrud/reference/backend-configuration).
+For a full option-by-option backend settings reference, see [Backend configuration reference](/specstar/reference/backend-configuration).
 
 ---
 
@@ -108,8 +108,8 @@ If your app uses file uploads or binary fields, do not assume every SQL-backed s
 ### DiskStorageFactory
 
 ```python
-from autocrud import crud
-from autocrud.resource_manager import DiskStorageFactory
+from specstar import crud
+from specstar.resource_manager import DiskStorageFactory
 
 crud.configure(
     storage_factory=DiskStorageFactory("./data")
@@ -138,8 +138,8 @@ Cons:
 ### S3StorageFactory
 
 ```python
-from autocrud import crud
-from autocrud.resource_manager import S3StorageFactory
+from specstar import crud
+from specstar.resource_manager import S3StorageFactory
 
 crud.configure(
     storage_factory=S3StorageFactory(
@@ -171,8 +171,8 @@ Cons:
 ### PostgresStorageFactory
 
 ```python
-from autocrud import crud
-from autocrud.resource_manager import PostgresStorageFactory
+from specstar import crud
+from specstar.resource_manager import PostgresStorageFactory
 
 crud.configure(
     storage_factory=PostgresStorageFactory(
@@ -205,8 +205,8 @@ If you need durable file uploads as well, prefer `PostgresDiskS3StorageFactory` 
 ### PostgresDiskStorageFactory
 
 ```python
-from autocrud import crud
-from autocrud.resource_manager import PostgresDiskStorageFactory
+from specstar import crud
+from specstar.resource_manager import PostgresDiskStorageFactory
 
 crud.configure(
     storage_factory=PostgresDiskStorageFactory(
@@ -240,8 +240,8 @@ Pair this setup with S3-backed blob handling when your application stores upload
 ### PostgresDiskS3StorageFactory
 
 ```python
-from autocrud import crud
-from autocrud.resource_manager import PostgresDiskS3StorageFactory
+from specstar import crud
+from specstar.resource_manager import PostgresDiskS3StorageFactory
 
 crud.configure(
     storage_factory=PostgresDiskS3StorageFactory(
@@ -274,8 +274,8 @@ Cons:
 ### PostgreSQLS3StorageFactory
 
 ```python
-from autocrud import crud
-from autocrud.resource_manager import Encoding, PostgreSQLS3StorageFactory
+from specstar import crud
+from specstar.resource_manager import Encoding, PostgreSQLS3StorageFactory
 
 crud.configure(
     storage_factory=PostgreSQLS3StorageFactory(
@@ -309,8 +309,8 @@ Cons:
 ### MemoryStorageFactory
 
 ```python
-from autocrud import crud
-from autocrud.resource_manager import MemoryStorageFactory
+from specstar import crud
+from specstar.resource_manager import MemoryStorageFactory
 
 crud.configure(
     storage_factory=MemoryStorageFactory()
@@ -351,10 +351,10 @@ prefer fully object-backed resource payloads → PostgreSQLS3StorageFactory
 Different resources can use different storage backends.
 
 ```python
-from autocrud import AutoCRUD
-from autocrud.resource_manager import DiskStorageFactory, S3StorageFactory
+from specstar import SpecStar
+from specstar.resource_manager import DiskStorageFactory, S3StorageFactory
 
-crud = AutoCRUD(
+crud = SpecStar(
     storage_factory=DiskStorageFactory("./data")
 )
 
@@ -372,7 +372,7 @@ This is useful when:
 - binary-heavy resources should live in object storage
 - you want to migrate one model at a time rather than the whole system at once
 
-All resources still share the same AutoCRUD programming model.
+All resources still share the same SpecStar programming model.
 
 ---
 
@@ -381,5 +381,5 @@ All resources still share the same AutoCRUD programming model.
 - call `crud.configure(...)` before `add_model(...)`
 - do not use in-memory storage if restarts must preserve data
 - if the app stores files, verify the selected factory gives you durable blob storage
-- for jobs and workers, combine the storage decision with a queue decision from the [Job Queue quickstart](/autocrud/quickstart/job-queue)
+- for jobs and workers, combine the storage decision with a queue decision from the [Job Queue quickstart](/specstar/quickstart/job-queue)
 

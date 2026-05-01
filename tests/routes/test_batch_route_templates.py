@@ -7,15 +7,15 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.create import CreateRouteTemplate
-from autocrud.crud.route_templates.delete import (
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.create import CreateRouteTemplate
+from specstar.crud.route_templates.delete import (
     BatchDeleteRouteTemplate,
     BatchRestoreRouteTemplate,
     DeleteRouteTemplate,
     RestoreRouteTemplate,
 )
-from autocrud.crud.route_templates.search import ListRouteTemplate
+from specstar.crud.route_templates.search import ListRouteTemplate
 
 
 class User(msgspec.Struct):
@@ -25,28 +25,28 @@ class User(msgspec.Struct):
 
 
 @pytest.fixture
-def autocrud():
-    """創建 AutoCRUD 實例"""
-    crud = AutoCRUD(model_naming="kebab")
+def specstar():
+    """創建 SpecStar 實例"""
+    spec = SpecStar(model_naming="kebab")
 
-    crud.add_route_template(CreateRouteTemplate())
-    crud.add_route_template(ListRouteTemplate())
-    crud.add_route_template(DeleteRouteTemplate())
-    crud.add_route_template(RestoreRouteTemplate())
-    crud.add_route_template(BatchDeleteRouteTemplate())
-    crud.add_route_template(BatchRestoreRouteTemplate())
+    spec.add_route_template(CreateRouteTemplate())
+    spec.add_route_template(ListRouteTemplate())
+    spec.add_route_template(DeleteRouteTemplate())
+    spec.add_route_template(RestoreRouteTemplate())
+    spec.add_route_template(BatchDeleteRouteTemplate())
+    spec.add_route_template(BatchRestoreRouteTemplate())
 
-    crud.add_model(User, indexed_fields=["name", "email", "age"])
+    spec.add_model(User, indexed_fields=["name", "email", "age"])
 
-    return crud
+    return spec
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     """創建測試客戶端"""
     app = FastAPI()
     router = APIRouter()
-    autocrud.apply(router)
+    specstar.apply(router)
     app.include_router(router)
     return TestClient(app)
 

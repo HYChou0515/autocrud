@@ -16,15 +16,15 @@ from __future__ import annotations
 
 import datetime as dt
 
-from autocrud.query_types import (
+from specstar.query_types import (
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
     ResourceMetaSearchQuery,
 )
-from autocrud.resource_manager.basic import is_match_query
-from autocrud.types import ResourceMeta
+from specstar.resource_manager.basic import is_match_query
+from specstar.types import ResourceMeta
 
 
 def _meta(indexed: dict | None) -> ResourceMeta:

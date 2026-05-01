@@ -18,9 +18,9 @@ from typing import Annotated
 import pytest
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD as AutoCRUDClass
-from autocrud.schema import Schema
-from autocrud.types import (
+from specstar.crud.core import SpecStar as SpecStarClass
+from specstar.schema import Schema
+from specstar.types import (
     DisplayName,
     OnDelete,
     Ref,
@@ -58,42 +58,42 @@ class MultiPetOwner(Struct):
 
 def test_resource_name_union_type_two_args():
     """_resource_name(Cat | Dog) with default kebab naming should return 'cat-or-dog'."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure()
     assert ac._resource_name(Cat | Dog) == "cat-or-dog"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_union_type_three_args():
     """_resource_name(Cat | Dog | Bird) with kebab should return 'cat-or-dog-or-bird'."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure()
     assert ac._resource_name(Cat | Dog | Bird) == "cat-or-dog-or-bird"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_union_type_snake():
     """_resource_name with snake model_naming should return 'cat_or_dog'."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="snake")
     assert ac._resource_name(Cat | Dog) == "cat_or_dog"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_union_type_kebab():
     """_resource_name with kebab model_naming should return 'cat-or-dog'."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="kebab")
     assert ac._resource_name(Cat | Dog) == "cat-or-dog"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_union_type_same():
     """_resource_name with 'same' model_naming should return 'CatOrDog' (PascalCase)."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     assert ac._resource_name(Cat | Dog) == "CatOrDog"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_uninferrable_raises_clear_error():
     """Passing a non-union type with no __name__ should raise a clear ValueError."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure()
 
     # Simulate an object that is not a union and has no __name__ and no get_args
@@ -110,7 +110,7 @@ def test_resource_name_uninferrable_raises_clear_error():
 
 def test_get_resource_manager_multiple_names_error_message_safe():
     """get_resource_manager() error message should not crash for union models."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure()
     # Manually simulate a conflicting registration state
     ac.model_names[Cat | Dog] = (
@@ -124,17 +124,17 @@ def test_add_model_duplicate_registration_warning_safe(caplog):
     """Duplicate union type registration should warn without crashing."""
     import logging
 
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure()
     # Simulate conflicting registration state: model is in model_names with None value
     ac.model_names[Cat | Dog] = None  # ty:ignore[invalid-assignment]
-    with caplog.at_level(logging.WARNING, logger="autocrud"):
+    with caplog.at_level(logging.WARNING, logger="specstar"):
         model = Cat | Dog
         # Verify getattr fallback doesn't crash and produces a readable message
         name_repr = getattr(model, "__name__", repr(model))
         import logging as _logging
 
-        logger = _logging.getLogger("autocrud")
+        logger = _logging.getLogger("specstar")
         logger.warning(
             f"Model {name_repr} is already registered with a different name."
         )
@@ -163,7 +163,7 @@ COMPLEX_UNION_MODELS = [
 @pytest.mark.parametrize("model", UNION_MODELS)
 def test_add_model_union_auto_name(model):
     """add_model(Cat|Dog) and add_model(Schema(Cat|Dog)) both produce 'CatOrDog'."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(model)
     rm = ac.get_resource_manager("CatOrDog")
@@ -173,7 +173,7 @@ def test_add_model_union_auto_name(model):
 @pytest.mark.parametrize("model", UNION_MODELS)
 def test_add_model_union_explicit_name(model):
     """add_model with explicit name= works for both direct union and Schema."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure()
     ac.add_model(model, name="animal")
     rm = ac.get_resource_manager("animal")
@@ -183,7 +183,7 @@ def test_add_model_union_explicit_name(model):
 @pytest.mark.parametrize("model", UNION_MODELS)
 def test_add_model_union_kebab_auto_name(model):
     """Default kebab naming produces 'cat-or-dog' for both variants."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure()
     ac.add_model(model)
     rm = ac.get_resource_manager("cat-or-dog")
@@ -193,7 +193,7 @@ def test_add_model_union_kebab_auto_name(model):
 @pytest.mark.parametrize("model", UNION_MODELS)
 def test_add_model_union_create_and_get(model):
     """Full CRUD cycle works for both Cat|Dog and Schema(Cat|Dog)."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(model)
     rm = ac.get_resource_manager("CatOrDog")
@@ -208,7 +208,7 @@ def test_add_model_union_create_and_get(model):
 @pytest.mark.parametrize("model", STRUCT_WITH_UNION_MODELS)
 def test_add_model_struct_with_union_field(model):
     """Struct with tagged Cat|Dog field works both directly and via Schema."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(model)
     rm = ac.get_resource_manager("PetOwner")
@@ -218,7 +218,7 @@ def test_add_model_struct_with_union_field(model):
 @pytest.mark.parametrize("model", COMPLEX_UNION_MODELS)
 def test_add_model_struct_with_complex_union_field(model):
     """Struct with list[Cat|Dog|Bird] field works both directly and via Schema."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(model)
     rm = ac.get_resource_manager("MultiPetOwner")
@@ -228,7 +228,7 @@ def test_add_model_struct_with_complex_union_field(model):
 @pytest.mark.parametrize("model", STRUCT_WITH_UNION_MODELS)
 def test_struct_with_union_field_create_and_get(model):
     """Full CRUD cycle for Struct with union field works both directly and via Schema."""
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(model)
     rm = ac.get_resource_manager("PetOwner")
@@ -260,7 +260,7 @@ def test_openapi_with_union_type_model(model):
     """openapi() should not crash when a union type is registered as a resource."""
     from fastapi import FastAPI
 
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(model)
     app = FastAPI()
@@ -274,7 +274,7 @@ def test_openapi_with_struct_having_union_field(model):
     """openapi() should not crash when a Struct with a union field is registered."""
     from fastapi import FastAPI
 
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(model)
     app = FastAPI()
@@ -296,7 +296,7 @@ def test_openapi_schema_names_no_dots_for_union_resource(model):
     """
     from fastapi import FastAPI
 
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(model)
     app = FastAPI()
@@ -313,7 +313,7 @@ def test_openapi_schema_names_no_dots_for_struct_with_union_field(model):
     """Component schema names must not contain '.' for Structs with union fields."""
     from fastapi import FastAPI
 
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(model)
     app = FastAPI()
@@ -331,7 +331,7 @@ def test_openapi_refs_consistent_after_dot_sanitisation():
 
     from fastapi import FastAPI
 
-    ac = AutoCRUDClass()
+    ac = SpecStarClass()
     ac.configure(model_naming="same")
     ac.add_model(Cat | Dog)  # ty:ignore[invalid-argument-type]
     app = FastAPI()
@@ -382,7 +382,7 @@ class TestUnionMemberMetadataInjection:
     def _build_schema(self):
         from fastapi import FastAPI
 
-        ac = AutoCRUDClass()
+        ac = SpecStarClass()
         ac.configure(model_naming="same")
         ac.add_model(Owner)
         ac.add_model(RefPet)  # ty:ignore[invalid-argument-type]
@@ -418,10 +418,10 @@ class TestUnionMemberMetadataInjection:
         assert components["RefMount"].get("x-display-name-field") == "name"
 
     def test_union_refs_in_relationships_list(self):
-        """x-autocrud-relationships should include refs from union members."""
+        """x-specstar-relationships should include refs from union members."""
         from fastapi import FastAPI
 
-        ac = AutoCRUDClass()
+        ac = SpecStarClass()
         ac.configure(model_naming="same")
         ac.add_model(Owner)
         ac.add_model(RefPet, name="ref-pet")  # ty:ignore[invalid-argument-type]
@@ -429,7 +429,7 @@ class TestUnionMemberMetadataInjection:
         ac.apply(app)
         ac.openapi(app)
 
-        rels = app.openapi_schema.get("x-autocrud-relationships", [])  # ty:ignore[unresolved-attribute]
+        rels = app.openapi_schema.get("x-specstar-relationships", [])  # ty:ignore[unresolved-attribute]
         pet_rels = [r for r in rels if r["source"] == "ref-pet"]
         assert len(pet_rels) >= 2, (
             f"Expected >=2 refs from union members, got: {pet_rels}"

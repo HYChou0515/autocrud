@@ -1,9 +1,9 @@
 # Architecture
 
-AutoCRUD is designed as a **model-driven API framework** built on top of FastAPI.
+SpecStar is designed as a **model-driven API framework** built on top of FastAPI.
 
 Instead of manually implementing storage, search, versioning, and routing logic,
-AutoCRUD provides a unified architecture that automatically generates these capabilities
+SpecStar provides a unified architecture that automatically generates these capabilities
 from your domain models.
 
 At the center of this architecture is the **ResourceManager**.
@@ -18,8 +18,8 @@ The overall architecture looks like this:
 ```mermaid
 graph TD
 
-FastAPI --> AutoCRUD
-AutoCRUD --> ResourceManager
+FastAPI --> SpecStar
+SpecStar --> ResourceManager
 ResourceManager --> IStorage
 IStorage --> MetaStore
 IStorage --> RevisionStore
@@ -32,7 +32,7 @@ Each layer has a clear responsibility.
 | Layer | Responsibility |
 |---|---|
 | FastAPI | HTTP routing and request handling |
-| AutoCRUD | resource registration and route generation |
+| SpecStar | resource registration and route generation |
 | ResourceManager | business operations on resources |
 | IStorage | persistence abstraction |
 | MetaStore | metadata and search |
@@ -43,7 +43,7 @@ Each layer has a clear responsibility.
 
 # Core principle: ResourceManager is the single interface
 
-A key design rule of AutoCRUD is:
+A key design rule of SpecStar is:
 
 > Developers should only interact with resources through the **ResourceManager**.
 
@@ -77,7 +77,7 @@ This keeps application logic consistent.
 
 # Resource model
 
-AutoCRUD treats application data as **versioned resources**.
+SpecStar treats application data as **versioned resources**.
 
 A resource consists of:
 
@@ -166,7 +166,7 @@ Older revisions remain unchanged.
 
 # Search architecture
 
-AutoCRUD avoids scanning full resource payloads.
+SpecStar avoids scanning full resource payloads.
 
 Instead, searchable fields are extracted into metadata.
 
@@ -199,7 +199,7 @@ This keeps queries fast even when revision payloads are large.
 
 # Storage abstraction
 
-AutoCRUD abstracts persistence using `IStorage`.
+SpecStar abstracts persistence using `IStorage`.
 
 ```
 IStorage
@@ -225,7 +225,7 @@ Because storage is abstracted, application code never changes.
 
 # Route generation
 
-AutoCRUD generates API routes automatically using **route templates**.
+SpecStar generates API routes automatically using **route templates**.
 
 ```
 RouteTemplate
@@ -277,7 +277,7 @@ When `max_retries` is `None`, the queue configuration is used.
 
 # Event handlers
 
-AutoCRUD supports event handlers that run during resource operations.
+SpecStar supports event handlers that run during resource operations.
 
 Examples:
 
@@ -308,7 +308,7 @@ and the infrastructure is generated automatically.
 
 # Summary
 
-The AutoCRUD architecture centers on a simple idea:
+The SpecStar architecture centers on a simple idea:
 
 > Application data should be managed as versioned resources.
 
@@ -320,5 +320,5 @@ By combining:
 * storage abstraction
 * automatic route generation
 
-AutoCRUD reduces infrastructure complexity and allows developers to focus on business logic.
+SpecStar reduces infrastructure complexity and allows developers to focus on business logic.
 

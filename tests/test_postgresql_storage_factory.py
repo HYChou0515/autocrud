@@ -10,8 +10,8 @@ from unittest.mock import patch
 import pytest
 from msgspec import Struct
 
-from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.storage_factory import (
+from specstar.resource_manager.basic import Encoding
+from specstar.resource_manager.storage_factory import (
     PostgreSQLS3StorageFactory,
     S3StorageFactory,
 )
@@ -35,9 +35,9 @@ class GameCharacter(Struct):
 def mock_postgres_factory():
     """Create PostgreSQL storage factory with mocked backends for testing."""
     with (
-        patch("autocrud.resource_manager.storage_factory.PostgresMetaStore") as mock_pg,
-        patch("autocrud.resource_manager.storage_factory.S3ResourceStore") as mock_s3,
-        patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob,
+        patch("specstar.resource_manager.storage_factory.PostgresMetaStore") as mock_pg,
+        patch("specstar.resource_manager.storage_factory.S3ResourceStore") as mock_s3,
+        patch("specstar.resource_manager.storage_factory.S3BlobStore") as mock_blob,
     ):
         # Create factory
         factory = PostgreSQLS3StorageFactory(
@@ -166,8 +166,8 @@ def test_postgresql_storage_factory_build_blob_store(mock_postgres_factory):
 def test_postgresql_storage_factory_table_prefix():
     """Test table name generation with and without prefix."""
     with (
-        patch("autocrud.resource_manager.storage_factory.PostgresMetaStore") as mock_pg,
-        patch("autocrud.resource_manager.storage_factory.S3ResourceStore"),
+        patch("specstar.resource_manager.storage_factory.PostgresMetaStore") as mock_pg,
+        patch("specstar.resource_manager.storage_factory.S3ResourceStore"),
     ):
         # Without prefix
         factory1 = PostgreSQLS3StorageFactory(
@@ -193,7 +193,7 @@ def test_postgresql_storage_factory_table_prefix():
 
 def test_postgresql_storage_factory_separate_blob_bucket():
     """Test using separate bucket for blobs."""
-    with patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob:
+    with patch("specstar.resource_manager.storage_factory.S3BlobStore") as mock_blob:
         factory = PostgreSQLS3StorageFactory(
             connection_string="postgresql://localhost/db",
             s3_bucket="data-bucket",
@@ -210,7 +210,7 @@ def test_postgresql_storage_factory_separate_blob_bucket():
 
 def test_postgresql_storage_factory_upload_method_single_put():
     """Test build_blob_store passes upload_method and presigned_url_expiry."""
-    with patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob:
+    with patch("specstar.resource_manager.storage_factory.S3BlobStore") as mock_blob:
         factory = PostgreSQLS3StorageFactory(
             connection_string="postgresql://localhost/db",
             s3_bucket="bucket",
@@ -228,8 +228,8 @@ def test_postgresql_storage_factory_upload_method_single_put():
 def test_postgresql_storage_factory_s3_client_kwargs():
     """Test passing custom S3 client kwargs."""
     with (
-        patch("autocrud.resource_manager.storage_factory.S3ResourceStore") as mock_s3,
-        patch("autocrud.resource_manager.storage_factory.PostgresMetaStore"),
+        patch("specstar.resource_manager.storage_factory.S3ResourceStore") as mock_s3,
+        patch("specstar.resource_manager.storage_factory.PostgresMetaStore"),
     ):
         custom_kwargs = {
             "use_ssl": True,
@@ -256,7 +256,7 @@ def test_postgresql_storage_factory_s3_client_kwargs():
 
 def test_s3_storage_factory_build_blob_store_defaults():
     """Test S3StorageFactory.build_blob_store() passes default upload params."""
-    with patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob:
+    with patch("specstar.resource_manager.storage_factory.S3BlobStore") as mock_blob:
         factory = S3StorageFactory(
             bucket="my-bucket",
             endpoint_url="http://localhost:9000",
@@ -273,7 +273,7 @@ def test_s3_storage_factory_build_blob_store_defaults():
 
 def test_s3_storage_factory_build_blob_store_single_put():
     """Test S3StorageFactory.build_blob_store() passes custom upload params."""
-    with patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob:
+    with patch("specstar.resource_manager.storage_factory.S3BlobStore") as mock_blob:
         factory = S3StorageFactory(
             bucket="my-bucket",
             endpoint_url="http://localhost:9000",

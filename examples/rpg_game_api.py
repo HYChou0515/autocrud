@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""⚔️ RPG 遊戲 API 系統 - AutoCRUD + FastAPI 完整示範 🛡️
+"""⚔️ RPG 遊戲 API 系統 - SpecStar + FastAPI 完整示範 🛡️
 
 這個範例展示：
-- 完整的 AutoCRUD + FastAPI 集成
+- 完整的 SpecStar + FastAPI 集成
 - Schema 演化和版本控制
 - 預填遊戲數據
 - 可直接使用的 OpenAPI 文檔
@@ -35,7 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from msgspec import Struct
 from pydantic_core import Url
 
-from autocrud import (
+from specstar import (
     BackendBinding,
     BackendConfig,
     ConnectionProfile,
@@ -43,20 +43,20 @@ from autocrud import (
     OnDelete,
     Ref,
     Schema,
-    crud,
+    spec,
     struct_to_pydantic,
 )
 
 # 預先將 Struct 轉為 Pydantic Model，供 FastAPI 端點作為型別標註使用
 # 直接在 annotation 寫 struct_to_pydantic(Skill) 會被 Pylance 報 reportInvalidTypeForm
-from autocrud.crud.route_templates.basic import DependencyProvider
-from autocrud.crud.route_templates.blob import BlobRouteTemplate
-from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
-from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
-from autocrud.message_queue.basic import DelayRetry
-from autocrud.message_queue.context import JobContext
-from autocrud.query import QB
-from autocrud.types import (
+from specstar.crud.route_templates.basic import DependencyProvider
+from specstar.crud.route_templates.blob import BlobRouteTemplate
+from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
+from specstar.crud.route_templates.migrate import MigrateRouteTemplate
+from specstar.message_queue.basic import DelayRetry
+from specstar.message_queue.context import JobContext
+from specstar.query import QB
+from specstar.types import (
     Binary,
     DisplayName,
     Job,
@@ -74,7 +74,7 @@ class CharacterClass(Enum):
     WARRIOR = "⚔️ 戰士"
     MAGE = "🔮 法師"
     ARCHER = "🏹 弓箭手"
-    DATA_KEEPER = "💾 數據守護者"  # AutoCRUD 特色職業
+    DATA_KEEPER = "💾 數據守護者"  # SpecStar 特色職業
 
 
 class ItemRarity(Enum):
@@ -84,7 +84,7 @@ class ItemRarity(Enum):
     RARE = "稀有"
     EPIC = "史詩"
     LEGENDARY = "傳奇"
-    AUTOCRUD = "🚀 AutoCRUD 神器"  # 特殊等級
+    AUTOCRUD = "🚀 SpecStar 神器"  # 特殊等級
 
 
 class ActiveSkillData(Struct, tag_field="skill_type", tag="active"):
@@ -492,11 +492,11 @@ def create_sample_data():
     print("🎮 創建示範遊戲數據...")
 
     # 取得資源管理器
-    guild_manager = crud.get_resource_manager(Guild)
-    skill_manager = crud.get_resource_manager(Skill)
-    character_manager = crud.get_resource_manager(Character)
-    equipment_manager = crud.get_resource_manager(Equipment)
-    pet_manager = crud.get_resource_manager(Pet)  # ty:ignore[invalid-argument-type]
+    guild_manager = spec.get_resource_manager(Guild)
+    skill_manager = spec.get_resource_manager(Skill)
+    character_manager = spec.get_resource_manager(Character)
+    equipment_manager = spec.get_resource_manager(Equipment)
+    pet_manager = spec.get_resource_manager(Pet)  # ty:ignore[invalid-argument-type]
 
     if not all(
         [
@@ -516,8 +516,8 @@ def create_sample_data():
     # 🏰 創建公會
     guilds = [
         Guild(
-            name="AutoCRUD 開發者聯盟",
-            description="致力於推廣 AutoCRUD 技術的頂尖公會",
+            name="SpecStar 開發者聯盟",
+            description="致力於推廣 SpecStar 技術的頂尖公會",
             leader="架構師阿明",
             member_count=50,
             level=10,
@@ -633,7 +633,7 @@ def create_sample_data():
     # ⚔️ 創建角色
     characters = [
         Character(
-            name="AutoCRUD 大神",
+            name="SpecStar 大神",
             character_class=CharacterClass.DATA_KEEPER,
             level=99,
             hp=9999,
@@ -642,8 +642,8 @@ def create_sample_data():
             defense=300,
             experience=999999,
             gold=1000000,
-            guild_id=guild_ids.get("AutoCRUD 開發者聯盟"),
-            guild_name="AutoCRUD 開發者聯盟",
+            guild_id=guild_ids.get("SpecStar 開發者聯盟"),
+            guild_name="SpecStar 開發者聯盟",
             special_ability="🚀 一鍵生成完美 API",
             skill_ids=[
                 skill_ids.get("CRUD 終極奧義", ""),
@@ -652,7 +652,7 @@ def create_sample_data():
             ],
             equipments=[
                 Equipment(
-                    name="AutoCRUD 神劍",
+                    name="SpecStar 神劍",
                     rarity=ItemRarity.AUTOCRUD,
                     attack_bonus=200,
                     defense_bonus=50,
@@ -665,8 +665,8 @@ def create_sample_data():
                     special_effects=["📖 自動追蹤所有變更", "🔄 一鍵回滾"],
                 ),
                 Item(
-                    name="神秘的 AutoCRUD 卷軸",
-                    description="一卷記載著 AutoCRUD 最高機密的古老卷軸，使用後可能會帶來意想不到的效果",
+                    name="神秘的 SpecStar 卷軸",
+                    description="一卷記載著 SpecStar 最高機密的古老卷軸，使用後可能會帶來意想不到的效果",
                     price=999999,
                     icon=Binary(data=get_random_image()),
                 ),
@@ -763,8 +763,8 @@ def create_sample_data():
             defense=120,
             experience=600000,
             gold=400000,
-            guild_id=guild_ids.get("AutoCRUD 開發者聯盟"),
-            guild_name="AutoCRUD 開發者聯盟",
+            guild_id=guild_ids.get("SpecStar 開發者聯盟"),
+            guild_name="SpecStar 開發者聯盟",
             special_ability="🎯 精準數據建模",
             skill_ids=[
                 skill_ids.get("精準射擊", ""),
@@ -841,9 +841,9 @@ def create_sample_data():
 
     equipment_list = [
         Equipment(
-            name="AutoCRUD 神劍",
+            name="SpecStar 神劍",
             rarity=ItemRarity.AUTOCRUD,
-            owner_id=character_ids.get("AutoCRUD 大神"),  # 1:N — 歸屬角色
+            owner_id=character_ids.get("SpecStar 大神"),  # 1:N — 歸屬角色
             character_class_req=CharacterClass.DATA_KEEPER,
             attack_bonus=200,
             defense_bonus=50,
@@ -927,7 +927,7 @@ def create_sample_data():
             mp=50,
             attack=45,
             defense=30,
-            owner_id=f"{character_ids.get('AutoCRUD 大神')}:5",
+            owner_id=f"{character_ids.get('SpecStar 大神')}:5",
         ),
         Dog(
             name="數據獵犬",
@@ -968,7 +968,7 @@ def create_sample_data():
             species="飛馬",
             speed=70,
             stamina=450,
-            owner_id=character_ids.get("AutoCRUD 大神"),  # ty:ignore[invalid-argument-type]
+            owner_id=character_ids.get("SpecStar 大神"),  # ty:ignore[invalid-argument-type]
         ),
         Dog(
             name="SQL 注入偵測犬",
@@ -1000,7 +1000,7 @@ def create_sample_data():
                 print(f"❌ 寵物創建失敗: {e}")
 
     # 📜 創建任務（展示 dict 欄位 Monaco JSON 編輯器 + Union 子欄位處理）
-    quest_manager = crud.get_resource_manager(Quest)
+    quest_manager = spec.get_resource_manager(Quest)
     if quest_manager:
         quests = [
             Quest(
@@ -1043,8 +1043,8 @@ def create_sample_data():
                 ],
             ),
             Quest(
-                title="收集 AutoCRUD 碎片",
-                description="在各個副本中收集散落的 AutoCRUD 碎片，拼湊出完整的框架",
+                title="收集 SpecStar 碎片",
+                description="在各個副本中收集散落的 SpecStar 碎片，拼湊出完整的框架",
                 level_requirement=10,
                 difficulty="normal",
                 quest_config={
@@ -1058,11 +1058,11 @@ def create_sample_data():
                 rewards=[
                     QuestRewardExp(exp=3000),
                     QuestRewardItem(
-                        item_name="AutoCRUD 碎片",
+                        item_name="SpecStar 碎片",
                         quantity=10,
                         extra_properties={
                             "combinable": True,
-                            "result": "AutoCRUD 神器原型",
+                            "result": "SpecStar 神器原型",
                         },
                     ),
                 ],
@@ -1131,7 +1131,7 @@ def demonstrate_qb_queries():
     """展示 QueryBuilder (QB) 的使用範例"""
     print("\n🔍 === QueryBuilder (QB) 使用範例 ===")
 
-    character_manager = crud.get_resource_manager(Character)
+    character_manager = spec.get_resource_manager(Character)
     if not character_manager:
         print("❌ 角色管理器未找到")
         return
@@ -1220,7 +1220,7 @@ def demonstrate_qb_queries():
         print(f"   - {resource.data.name}")
 
     print("\n📊 範例 9: IN 查詢 - 特定公會的成員")
-    target_guilds = ["AutoCRUD 開發者聯盟", "API 法師學院"]
+    target_guilds = ["SpecStar 開發者聯盟", "API 法師學院"]
     query9 = QB["guild_name"].in_(target_guilds).limit(10)
     metas9 = character_manager.search_resources(query9)  # ty:ignore[invalid-argument-type]
     print(f"   找到 {len(metas9)} 個目標公會成員:")
@@ -1280,7 +1280,7 @@ def demonstrate_qb_queries():
 
 
 def configure_crud():
-    """設定全域 crud 實例"""
+    """設定全域 spec 實例"""
     storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk/(S)3]: ")
     connections: dict[str, ConnectionProfile] = {}
 
@@ -1297,7 +1297,7 @@ def configure_crud():
         connections["storage"] = ConnectionProfile(
             type="s3",
             options={
-                "bucket": "autocrud",
+                "bucket": "specstar",
                 "endpoint_url": "http://localhost:9000",
                 "access_key_id": "minioadmin",
                 "secret_access_key": "minioadmin",
@@ -1324,27 +1324,27 @@ def configure_crud():
         mq=BackendBinding(use="mq"),
     )
 
-    # 使用全域 crud 實例的 configure 方法
+    # 使用全域 spec 實例的 configure 方法
     dp = DependencyProvider(
         get_user=lambda: "game_admin",  # 簡單的使用者提供者，實際應用中可以整合認證系統
         get_now=lambda: (
             dt.datetime.now()
         ),  # 簡單的時間提供者，實際應用中可以使用更精確的時間源
     )
-    crud.configure(
+    spec.configure(
         backend=backend,
         dependency_provider=dp,
     )
 
     # 添加額外的路由模板
-    crud.add_route_template(GraphQLRouteTemplate())
-    crud.add_route_template(BlobRouteTemplate())
-    crud.add_route_template(MigrateRouteTemplate())
+    spec.add_route_template(GraphQLRouteTemplate())
+    spec.add_route_template(BlobRouteTemplate())
+    spec.add_route_template(MigrateRouteTemplate())
 
     # 註冊模型
     # 推薦做法：使用 Schema 將 resource type、version、validator 統一管理
     # 注意：使用 QB 查詢的欄位必須建立索引
-    crud.add_model(
+    spec.add_model(
         Schema(Character, "v1", validator=validate_character),  # Callable 風格驗證器
         indexed_fields=[
             ("level", int),  # 用於等級查詢、排序
@@ -1355,18 +1355,18 @@ def configure_crud():
             # guild_id 會由 Ref 自動索引，不需手動添加
         ],  # ty:ignore[invalid-argument-type]
     )
-    crud.add_model(Schema(Guild, "v1", validator=validate_guild))  # Callable 風格驗證器
-    crud.add_model(
+    spec.add_model(Schema(Guild, "v1", validator=validate_guild))  # Callable 風格驗證器
+    spec.add_model(
         Schema(Skill, "v1", validator=SkillValidator()),  # IValidator 風格驗證器
         indexed_fields=[
             ("name", str),
             ("required_level", int),
         ],
     )
-    crud.add_model(
+    spec.add_model(
         Schema(Equipment, "v1", validator=validate_equipment)
     )  # Callable 風格驗證器
-    crud.add_model(
+    spec.add_model(
         Schema(Pet, "v1"),  # ty:ignore[invalid-argument-type]
         name="pet",
         indexed_fields=[
@@ -1374,13 +1374,13 @@ def configure_crud():
             ("level", int),
         ],
     )
-    crud.add_model(
+    spec.add_model(
         Schema(Job[Pet], "v1"),
         name="pet-job",
     )
 
     # 註冊任務模型（展示 dict 欄位 + Union 子欄位 Monaco 編輯器）
-    crud.add_model(
+    spec.add_model(
         Schema(Quest, "v1", validator=validate_quest),
         indexed_fields=[
             ("title", str),
@@ -1392,13 +1392,13 @@ def configure_crud():
     # 註冊遊戲事件任務模型（使用 Message Queue）
     # 注意：需要提供 job_handler 才會啟用 message queue
     # 這裡先用一個簡單的佔位函數，實際處理會在背景執行緒中進行
-    crud.add_model(
+    spec.add_model(
         GameEvent,
         indexed_fields=[("status", str)],
         job_handler=process_game_event,  # ty:ignore[invalid-argument-type]
     )
 
-    @crud.update_action(
+    @spec.update_action(
         "character", label="New Character0", meta_param="xx", async_mode="background"
     )
     async def update_char_name(
@@ -1410,7 +1410,7 @@ def configure_crud():
         )
         return existing
 
-    @crud.create_action(
+    @spec.create_action(
         "character",
         label="New Character0",
     )
@@ -1421,7 +1421,7 @@ def configure_crud():
             character_class=CharacterClass.WARRIOR,
         )
 
-    @crud.create_action(
+    @spec.create_action(
         "character",
         label="New Character background",
         async_mode="background",
@@ -1433,7 +1433,7 @@ def configure_crud():
             character_class=CharacterClass.WARRIOR,
         )
 
-    @crud.create_action(
+    @spec.create_action(
         "character",
         label="New Character1",
         path="/{name}/new",
@@ -1451,7 +1451,7 @@ def configure_crud():
             character_class=CharacterClass.WARRIOR,
         )
 
-    @crud.create_action("character", label="New Character2", async_mode="job")
+    @spec.create_action("character", label="New Character2", async_mode="job")
     async def create_new_character2(
         name: Annotated[str, Ref("equipment")],
     ):
@@ -1461,7 +1461,7 @@ def configure_crud():
             character_class=CharacterClass.WARRIOR,
         )
 
-    @crud.create_action("character", label="New Character3", async_mode="job")
+    @spec.create_action("character", label="New Character3", async_mode="job")
     async def create_new_character4(
         x: int | str,
         y: Url,
@@ -1579,7 +1579,7 @@ def create_sample_events():
     """創建一些示範遊戲事件"""
     print("\n🎮 創建示範遊戲事件...")
 
-    event_manager = crud.resource_managers.get("game-event")
+    event_manager = spec.resource_managers.get("game-event")
     if not event_manager:
         print("❌ 遊戲事件管理器未找到")
         return
@@ -1598,8 +1598,8 @@ def create_sample_events():
         ),
         GameEventPayload(
             event_type=GameEventType.GUILD_REWARD,
-            character_name="AutoCRUD 大神",
-            character_id=character_revs.get("AutoCRUD 大神"),
+            character_name="SpecStar 大神",
+            character_id=character_revs.get("SpecStar 大神"),
             description="公會活動獎勵發放",
             reward_gold=5000,
         ),
@@ -1630,7 +1630,7 @@ def create_sample_events():
         # 🎯 DelayRetry 範例事件
         GameEventPayload(
             event_type=GameEventType.RAID_BOSS,
-            character_name="AutoCRUD 開發者聯盟",
+            character_name="SpecStar 開發者聯盟",
             character_id=None,
             description="挑戰世界 BOSS：代碼債務巨龍",
             reward_gold=50000,
@@ -1691,7 +1691,7 @@ def main():
         - 🗡️ **裝備系統**: 武器裝備的完整管理
         - 📜 **任務系統**: dict 欄位 Monaco 編輯器 + Union 子欄位展示
         - 🎯 **遊戲事件系統**: 使用 Message Queue 處理異步遊戲事件
-        - 🚀 **AutoCRUD 驅動**: 自動生成的完整 CRUD API
+        - 🚀 **SpecStar 驅動**: 自動生成的完整 CRUD API
         - 📊 **數據搜尋**: 強大的查詢和篩選功能
         - 📖 **版本控制**: 追蹤所有數據變更歷史
         
@@ -1719,17 +1719,17 @@ def main():
         allow_headers=["*"],
     )
 
-    # 設定全域 crud 實例
+    # 設定全域 spec 實例
     configure_crud()
-    router = APIRouter(prefix="/v1/autocrud")
+    router = APIRouter(prefix="/v1/specstar")
 
     # 應用到 FastAPI
-    crud.apply(app, router=router)
+    spec.apply(app, router=router)
 
-    crud.get_resource_manager(GameEvent).start_consume(block=False)
+    spec.get_resource_manager(GameEvent).start_consume(block=False)
 
     # Start all async create-job consumers for the 'character' resource
-    crud.get_resource_manager(Character).start_consume(
+    spec.get_resource_manager(Character).start_consume(
         block=False, custom_creation="all", custom_update="all"
     )
 

@@ -45,7 +45,7 @@ from uuid import uuid4
 import pytest
 from msgspec import Struct
 
-from autocrud.types import (
+from specstar.types import (
     IndexableField,
     Job,
     TaskStatus,
@@ -94,10 +94,10 @@ def rmq():
       max_retries            = 2
       retry_delay_seconds    = 1
     """
-    from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
-    from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-    from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-    from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+    from specstar.message_queue.rabbitmq import RabbitMQMessageQueueFactory
+    from specstar.resource_manager.core import ResourceManager, SimpleStorage
+    from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+    from specstar.resource_manager.resource_store.simple import MemoryResourceStore
 
     prefix = f"bdd-{uuid4().hex[:8]}:"
 

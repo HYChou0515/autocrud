@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.crud.core import SpecStar
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
 
 
 class Item(Struct, kw_only=True):
@@ -15,15 +15,15 @@ class Item(Struct, kw_only=True):
 
 
 @pytest.fixture
-def autocrud():
-    return AutoCRUD(storage_factory=MemoryStorageFactory())
+def specstar():
+    return SpecStar(storage_factory=MemoryStorageFactory())
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     app = FastAPI()
-    autocrud.add_model(Item, name="item")
-    autocrud.apply(app)
+    specstar.add_model(Item, name="item")
+    specstar.apply(app)
     return TestClient(app)
 
 

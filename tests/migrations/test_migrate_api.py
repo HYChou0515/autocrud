@@ -11,17 +11,17 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.route_templates.migrate import (
+from specstar.crud.route_templates.migrate import (
     MigrateProgress,
     MigrateResult,
     MigrateRouteTemplate,
 )
-from autocrud.query_types import (
+from specstar.query_types import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceMetaSearchQuery,
 )
-from autocrud.types import ResourceNotFoundError
+from specstar.types import ResourceNotFoundError
 
 
 class User(msgspec.Struct):

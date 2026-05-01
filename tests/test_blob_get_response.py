@@ -13,9 +13,9 @@ from __future__ import annotations
 import pytest
 from msgspec import Struct as _Struct
 
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
-from autocrud.types import Binary as BinaryField
-from autocrud.types import (
+from specstar.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
+from specstar.types import Binary as BinaryField
+from specstar.types import (
     BlobResponse,
     BlobStreamInfo,
 )
@@ -30,7 +30,7 @@ def _make_store_with_presigned(
     """Create an S3BlobStore with prefer_presigned_url support."""
     from unittest.mock import patch
 
-    from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+    from specstar.resource_manager.blob_store.s3 import S3BlobStore
 
     with patch("boto3.client", return_value=fake_client):
         return S3BlobStore(prefix=prefix, prefer_presigned_url=prefer_presigned_url)
@@ -190,11 +190,11 @@ class TestBlobRouteGetResponse:
     def app_and_store(self, tmp_path):
         from fastapi import FastAPI
 
-        from autocrud.crud.core import AutoCRUD
+        from specstar.crud.core import SpecStar
 
         store = DiskBlobStore(tmp_path / "blobs")
 
-        crud_instance = AutoCRUD()
+        crud_instance = SpecStar()
         crud_instance.blob_store = store
         crud_instance.add_model(_RouteFileModel)
         app = FastAPI()

@@ -1,8 +1,8 @@
 # Quickstart - Async Action
 
-In this quickstart, we will show how to run actions asynchronously in AutoCRUD.
+In this quickstart, we will show how to run actions asynchronously in SpecStar.
 
-AutoCRUD allows you to turn normal create/update actions into background tasks  
+SpecStar allows you to turn normal create/update actions into background tasks  
 without changing your business logic.
 
 ---
@@ -21,13 +21,13 @@ Instead of manually wiring:
 - task queues
 - API + async orchestration
 
-AutoCRUD lets you switch execution mode with a single parameter.
+SpecStar lets you switch execution mode with a single parameter.
 
 ---
 
 ## Execution modes
 
-AutoCRUD supports three execution modes:
+SpecStar supports three execution modes:
 
 | mode | behavior |
 |------|--------|
@@ -129,7 +129,7 @@ Use this when:
 - you need observability
 - you need retry or failure handling
 
-👉 See: [Job Queue](/autocrud/quickstart/job-queue)
+👉 See: [Job Queue](/specstar/quickstart/job-queue)
 
 ---
 
@@ -153,7 +153,7 @@ async def update_char_name(existing: Character, info: RevisionInfo):
 
 ## 5. Request → function mapping
 
-AutoCRUD uses FastAPI’s parameter parsing.
+SpecStar uses FastAPI’s parameter parsing.
 
 This means:
 
@@ -220,7 +220,7 @@ The route is derived from:
 
 ## 8. Summary
 
-With AutoCRUD async actions, you can:
+With SpecStar async actions, you can:
 
 - define business logic as normal Python functions
 - expose them as APIs automatically
@@ -238,6 +238,6 @@ This allows you to:
 
 If you decide to run actions in `job` mode, the next step is to configure the backend and queue setup so workers have a real execution path.
 
-- [Set up backend persistence and queue choices](/autocrud/guides/backend-setup)
-- [Job Queue](/autocrud/quickstart/job-queue)
-- [Integrate Existing](/autocrud/quickstart/integrate-existing)
+- [Set up backend persistence and queue choices](/specstar/guides/backend-setup)
+- [Job Queue](/specstar/quickstart/job-queue)
+- [Integrate Existing](/specstar/quickstart/integrate-existing)

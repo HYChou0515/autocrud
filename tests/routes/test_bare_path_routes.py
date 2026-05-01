@@ -7,16 +7,16 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.create import CreateRouteTemplate
-from autocrud.crud.route_templates.delete import (
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.create import CreateRouteTemplate
+from specstar.crud.route_templates.delete import (
     DeleteRouteTemplate,
     RestoreRouteTemplate,
 )
-from autocrud.crud.route_templates.get import ReadRouteTemplate
-from autocrud.crud.route_templates.search import ListRouteTemplate
-from autocrud.crud.route_templates.switch import SwitchRevisionRouteTemplate
-from autocrud.crud.route_templates.update import UpdateRouteTemplate
+from specstar.crud.route_templates.get import ReadRouteTemplate
+from specstar.crud.route_templates.search import ListRouteTemplate
+from specstar.crud.route_templates.switch import SwitchRevisionRouteTemplate
+from specstar.crud.route_templates.update import UpdateRouteTemplate
 
 
 class Hero(msgspec.Struct):
@@ -26,26 +26,26 @@ class Hero(msgspec.Struct):
 
 
 @pytest.fixture
-def autocrud():
-    """建立 AutoCRUD 實例"""
-    crud = AutoCRUD(model_naming="kebab")
-    crud.add_route_template(CreateRouteTemplate())
-    crud.add_route_template(ListRouteTemplate())
-    crud.add_route_template(ReadRouteTemplate())
-    crud.add_route_template(UpdateRouteTemplate())
-    crud.add_route_template(DeleteRouteTemplate())
-    crud.add_route_template(SwitchRevisionRouteTemplate())
-    crud.add_route_template(RestoreRouteTemplate())
-    crud.add_model(Hero)
-    return crud
+def specstar():
+    """建立 SpecStar 實例"""
+    spec = SpecStar(model_naming="kebab")
+    spec.add_route_template(CreateRouteTemplate())
+    spec.add_route_template(ListRouteTemplate())
+    spec.add_route_template(ReadRouteTemplate())
+    spec.add_route_template(UpdateRouteTemplate())
+    spec.add_route_template(DeleteRouteTemplate())
+    spec.add_route_template(SwitchRevisionRouteTemplate())
+    spec.add_route_template(RestoreRouteTemplate())
+    spec.add_model(Hero)
+    return spec
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     """建立測試客戶端"""
     app = FastAPI()
     router = APIRouter()
-    autocrud.apply(router)
+    specstar.apply(router)
     app.include_router(router)
     return TestClient(app)
 

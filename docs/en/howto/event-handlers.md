@@ -1,6 +1,6 @@
 # Event Handlers
 
-AutoCRUD provides lifecycle hooks around resource operations.
+SpecStar provides lifecycle hooks around resource operations.
 
 Use event handlers when you want to add audit logging, cross-resource updates, validation, notifications, or custom business rules around create, read, update, delete, and related actions.
 
@@ -19,8 +19,8 @@ An event handler receives an event context object describing:
 A simple handler looks like this:
 
 ```python
-from autocrud.resource_manager.events import do
-from autocrud.types import EventContext, ResourceAction
+from specstar.resource_manager.events import do
+from specstar.types import EventContext, ResourceAction
 
 
 def audit_log(context: EventContext) -> None:
@@ -37,7 +37,7 @@ event_handlers = do(audit_log).before(ResourceAction.create)
 You can configure handlers globally:
 
 ```python
-from autocrud import crud
+from specstar import crud
 
 crud.configure(event_handlers=event_handlers)
 ```
@@ -96,8 +96,8 @@ Use it for:
 You can define several handlers in one fluent expression:
 
 ```python
-from autocrud.resource_manager.events import do
-from autocrud.types import ResourceAction
+from specstar.resource_manager.events import do
+from specstar.types import ResourceAction
 
 
 def before_create(context):
@@ -131,8 +131,8 @@ You can also attach one function to multiple actions by using the grouped action
 ### Audit every write
 
 ```python
-from autocrud.resource_manager.events import do
-from autocrud.types import ResourceAction
+from specstar.resource_manager.events import do
+from specstar.types import ResourceAction
 
 
 def audit(context):
@@ -145,7 +145,7 @@ event_handlers = do(audit).on_success(ResourceAction.write)
 ### Block invalid input early
 
 ```python
-from autocrud.types import EventContext, ResourceAction
+from specstar.types import EventContext, ResourceAction
 
 
 def validate_title(context: EventContext) -> None:
@@ -156,8 +156,8 @@ def validate_title(context: EventContext) -> None:
 ### Log failures
 
 ```python
-from autocrud.resource_manager.events import do
-from autocrud.types import ResourceAction
+from specstar.resource_manager.events import do
+from specstar.types import ResourceAction
 
 
 def log_failure(context):
@@ -199,6 +199,6 @@ Event handlers can listen to actions such as:
 
 ## Related pages
 
-- [Behavior reference](/autocrud/reference/behavior)
-- [Routes generation](/autocrud/howto/routes)
-- [Schema migration](/autocrud/quickstart/schema-migration)
+- [Behavior reference](/specstar/reference/behavior)
+- [Routes generation](/specstar/howto/routes)
+- [Schema migration](/specstar/quickstart/schema-migration)

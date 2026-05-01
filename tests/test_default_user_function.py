@@ -5,7 +5,7 @@ import uuid
 
 from msgspec import Struct
 
-from autocrud import AutoCRUD
+from specstar import SpecStar
 
 
 class SampleModel(Struct):
@@ -15,10 +15,10 @@ class SampleModel(Struct):
 
 def test_default_user_as_string():
     """測試 default_user 為字串的情況"""
-    crud = AutoCRUD(default_user="system")
-    crud.add_model(SampleModel)
+    spec = SpecStar(default_user="system")
+    spec.add_model(SampleModel)
 
-    mgr = crud.get_resource_manager(SampleModel)
+    mgr = spec.get_resource_manager(SampleModel)
 
     # 測試不提供 user 時會使用預設值
     with mgr.meta_provide(now=dt.datetime.now()):
@@ -37,10 +37,10 @@ def test_default_user_as_function():
         users_created.append(user)
         return user
 
-    crud = AutoCRUD(default_user=get_user)
-    crud.add_model(SampleModel)
+    spec = SpecStar(default_user=get_user)
+    spec.add_model(SampleModel)
 
-    mgr = crud.get_resource_manager(SampleModel)
+    mgr = spec.get_resource_manager(SampleModel)
 
     # 測試每次都會呼叫 function
     with mgr.meta_provide(now=dt.datetime.now()):
@@ -62,10 +62,10 @@ def test_default_user_override():
     def get_user():
         return "default_user"
 
-    crud = AutoCRUD(default_user=get_user)
-    crud.add_model(SampleModel)
+    spec = SpecStar(default_user=get_user)
+    spec.add_model(SampleModel)
 
-    mgr = crud.get_resource_manager(SampleModel)
+    mgr = spec.get_resource_manager(SampleModel)
 
     # 測試明確提供 user 時會覆蓋預設值
     with mgr.meta_provide(user="custom_user", now=dt.datetime.now()):
@@ -80,10 +80,10 @@ def test_add_model_default_user_function():
     def get_user():
         return "model_specific_user"
 
-    crud = AutoCRUD()
-    crud.add_model(SampleModel, default_user=get_user)
+    spec = SpecStar()
+    spec.add_model(SampleModel, default_user=get_user)
 
-    mgr = crud.get_resource_manager(SampleModel)
+    mgr = spec.get_resource_manager(SampleModel)
 
     with mgr.meta_provide(now=dt.datetime.now()):
         result = mgr.create(SampleModel(name="test", value=1))
@@ -97,10 +97,10 @@ def test_default_user_uuid_generator():
     def generate_session_id():
         return f"session_{uuid.uuid4().hex[:8]}"
 
-    crud = AutoCRUD(default_user=generate_session_id)
-    crud.add_model(SampleModel)
+    spec = SpecStar(default_user=generate_session_id)
+    spec.add_model(SampleModel)
 
-    mgr = crud.get_resource_manager(SampleModel)
+    mgr = spec.get_resource_manager(SampleModel)
 
     with mgr.meta_provide(now=dt.datetime.now()):
         result = mgr.create(SampleModel(name="test", value=1))
