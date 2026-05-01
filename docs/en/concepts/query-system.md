@@ -219,7 +219,7 @@ You can still pass `limit` and `offset` in the URL:
 GET /users?qb=QB["age"].gt(18)&limit=20&offset=40
 ```
 
-List-style endpoints are paginated by default. The startup default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable, and you can still override it per request with an explicit limit.
+List-style endpoints are paginated by default. The startup default comes from the SPECSTAR_DEFAULT_QUERY_LIMIT environment variable, and you can still override it per request with an explicit limit.
 
 If both are present, the URL values override any `.limit()`, `.offset()`, or `.page()` settings defined inside the QB expression.
 

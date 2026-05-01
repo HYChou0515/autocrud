@@ -86,12 +86,12 @@ If that command prints a version string, the installation is ready.
 ## Configure the default list limit
 
 List-style endpoints are paginated by default. You can control the startup default
-with the `AUTOCRUD_DEFAULT_QUERY_LIMIT` environment variable.
+with the `SPECSTAR_DEFAULT_QUERY_LIMIT` environment variable.
 
 Example:
 
 ```bash
-export AUTOCRUD_DEFAULT_QUERY_LIMIT=1000
+export SPECSTAR_DEFAULT_QUERY_LIMIT=1000
 uvicorn main:app --reload
 ```
 

@@ -109,7 +109,7 @@ class QueryInputs(BaseModel):
         DEFAULT_QUERY_LIMIT,
         description=(
             "Maximum number of results. Default comes from the "
-            "AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; "
+            "SPECSTAR_DEFAULT_QUERY_LIMIT environment variable at startup; "
             "set limit explicitly or use the /count endpoint if you need the full total."
         ),
     )

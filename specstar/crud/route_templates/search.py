@@ -98,7 +98,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Example: `[{{"type": "meta", "key": "created_time", "direction": "+"}}, {{"type": "data", "field_path": "name", "direction": "-"}}]`
 
                 **Pagination:**
-                - `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
+                - `limit`: Maximum number of results to return (default comes from `SPECSTAR_DEFAULT_QUERY_LIMIT` at startup)
                 - `offset`: Number of results to skip for pagination (default: 0)
                 - If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
@@ -199,7 +199,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Example: `[{{"type": "meta", "key": "updated_time", "direction": "-"}}, {{"type": "data", "field_path": "department", "direction": "+"}}]`
 
                 **Pagination:**
-                - `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
+                - `limit`: Maximum number of results to return (default comes from `SPECSTAR_DEFAULT_QUERY_LIMIT` at startup)
                 - `offset`: Number of results to skip for pagination (default: 0)
                 - If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
@@ -296,7 +296,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Example: `[{{"field_path": "status", "operator": "eq", "value": "active"}}]`
 
                 **Pagination:**
-                - `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
+                - `limit`: Maximum number of results to return (default comes from `SPECSTAR_DEFAULT_QUERY_LIMIT` at startup)
                 - `offset`: Number of results to skip for pagination (default: 0)
                 - If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 

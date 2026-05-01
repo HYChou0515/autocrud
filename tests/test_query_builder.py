@@ -2742,7 +2742,9 @@ class TestQueryLimitConfiguration:
     """
 
     @staticmethod
-    def _run_with_env(env_value: str | None) -> dict:
+    def _run_with_env(
+        env_value: str | None, *, var_name: str = "SPECSTAR_DEFAULT_QUERY_LIMIT"
+    ) -> dict:
         """Spawn a subprocess that imports query_types and reports the result.
 
         Returns a dict with ``limit``, ``fallback`` and ``warnings`` keys.
@@ -2772,9 +2774,10 @@ class TestQueryLimitConfiguration:
             "}))"
         )
         env = dict(os.environ)
+        env.pop("SPECSTAR_DEFAULT_QUERY_LIMIT", None)
         env.pop("AUTOCRUD_DEFAULT_QUERY_LIMIT", None)
         if env_value is not None:
-            env["AUTOCRUD_DEFAULT_QUERY_LIMIT"] = env_value
+            env[var_name] = env_value
         result = subprocess.run(
             [sys.executable, "-c", snippet],
             env=env,
@@ -2803,7 +2806,7 @@ class TestQueryLimitConfiguration:
         out = self._run_with_env("not-a-number")
         assert out["limit"] == out["fallback"]
         assert any(
-            cat == "RuntimeWarning" and "AUTOCRUD_DEFAULT_QUERY_LIMIT" in msg
+            cat == "RuntimeWarning" and "SPECSTAR_DEFAULT_QUERY_LIMIT" in msg
             for cat, msg in out["warnings"]
         )
 
@@ -2811,7 +2814,7 @@ class TestQueryLimitConfiguration:
         out = self._run_with_env("0")
         assert out["limit"] == out["fallback"]
         assert any(
-            cat == "RuntimeWarning" and "AUTOCRUD_DEFAULT_QUERY_LIMIT" in msg
+            cat == "RuntimeWarning" and "SPECSTAR_DEFAULT_QUERY_LIMIT" in msg
             for cat, msg in out["warnings"]
         )
 
@@ -2819,6 +2822,58 @@ class TestQueryLimitConfiguration:
         out = self._run_with_env("-5")
         assert out["limit"] == out["fallback"]
         assert any(
-            cat == "RuntimeWarning" and "AUTOCRUD_DEFAULT_QUERY_LIMIT" in msg
+            cat == "RuntimeWarning" and "SPECSTAR_DEFAULT_QUERY_LIMIT" in msg
             for cat, msg in out["warnings"]
+        )
+
+    def test_legacy_env_var_warns_and_works(self):
+        """``AUTOCRUD_DEFAULT_QUERY_LIMIT`` is read for backward compatibility,
+        but emits a ``DeprecationWarning`` pointing at the new name."""
+        out = self._run_with_env(
+            "777", var_name="AUTOCRUD_DEFAULT_QUERY_LIMIT"
+        )
+        assert out["limit"] == 777
+        assert out["default_limit"] == 777
+        assert any(
+            cat == "DeprecationWarning"
+            and "AUTOCRUD_DEFAULT_QUERY_LIMIT" in msg
+            and "SPECSTAR_DEFAULT_QUERY_LIMIT" in msg
+            for cat, msg in out["warnings"]
+        )
+
+    def test_new_env_var_takes_precedence_over_legacy(self):
+        """If both env vars are set, the new ``SPECSTAR_*`` name wins and the
+        legacy var triggers no deprecation warning (it isn't read)."""
+        import json
+        import subprocess
+        import sys
+
+        env = dict(os.environ)
+        env["SPECSTAR_DEFAULT_QUERY_LIMIT"] = "100"
+        env["AUTOCRUD_DEFAULT_QUERY_LIMIT"] = "999"
+        snippet = (
+            "import json, warnings;"
+            "warnings.simplefilter('always');"
+            "captured = [];"
+            "warnings.showwarning = ("
+            "  lambda message, category, filename, lineno, file=None, line=None:"
+            "  captured.append((category.__name__, str(message)))"
+            ");"
+            "from specstar.query_types import DEFAULT_QUERY_LIMIT;"
+            "print(json.dumps({"
+            "  'limit': DEFAULT_QUERY_LIMIT,"
+            "  'warnings': captured,"
+            "}))"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", snippet],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        out = json.loads(result.stdout)
+        assert out["limit"] == 100
+        assert not any(
+            cat == "DeprecationWarning" for cat, _ in out["warnings"]
         )
