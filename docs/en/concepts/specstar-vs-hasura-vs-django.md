@@ -6,7 +6,7 @@ This page is a **decision guide** rather than a winner-takes-all comparison.
 
 It compares:
 
-- **SpecStar** – model-driven backend automation for FastAPI
+- **SpecStar** – spec-driven backend platform for FastAPI
 - **Hasura** – database-driven GraphQL engine
 - **Django** – full-stack web framework with ORM and admin interface
 
@@ -40,7 +40,7 @@ Use it to decide which tool best matches your architecture, team workflow, and p
 
 # SpecStar
 
-SpecStar is a **model-driven backend platform built for FastAPI**.
+SpecStar is a **spec-driven backend platform built for FastAPI**.
 
 Developers define data models in Python:
 
@@ -191,7 +191,7 @@ SpecStar explicitly models **revision history**.
 
 | Framework | API generation              |
 | --------- | --------------------------- |
-| SpecStar  | model-driven REST + GraphQL |
+| SpecStar  | spec-driven REST + GraphQL |
 | Hasura    | schema-driven GraphQL       |
 | Django    | manual views or DRF         |
 
@@ -282,7 +282,7 @@ Each framework targets a different architecture.
 
 | Framework | Best for |
 | --------- | -------- |
-| SpecStar  | model-driven FastAPI backends with built-in revision history |
+| SpecStar  | spec-driven FastAPI backends with built-in revision history |
 | Hasura    | GraphQL over PostgreSQL |
 | Django    | full-stack web applications |
 
@@ -291,7 +291,7 @@ In short:
 ```text
 GraphQL over PostgreSQL -> Hasura
 Full-stack web framework -> Django
-FastAPI + model-driven APIs + revision history -> SpecStar
+FastAPI + spec-driven APIs + revision history -> SpecStar
 ```
 
 If you want to continue exploring SpecStar specifically, read [Why SpecStar exists](/specstar/concepts/why-specstar), [Overview](/specstar/concepts/overview), or [Core Concepts](/specstar/concepts/core-concepts).

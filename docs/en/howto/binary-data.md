@@ -30,14 +30,14 @@ Add the blob route template before applying the app:
 ```python
 from fastapi import FastAPI
 
-from specstar import crud
+from specstar import spec
 from specstar.crud.route_templates.blob import BlobRouteTemplate
 
 app = FastAPI()
 
-crud.add_model(Avatar)
-crud.add_route_template(BlobRouteTemplate())
-crud.apply(app)
+spec.add_model(Avatar)
+spec.add_route_template(BlobRouteTemplate())
+spec.apply(app)
 ```
 
 This exposes the global blob endpoints.

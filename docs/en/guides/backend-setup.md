@@ -28,9 +28,9 @@ If you choose these four pieces deliberately at the start, the rest of the produ
 Configure your backend before registering models.
 
 ```python
-from specstar import BackendBinding, BackendConfig, ConnectionProfile, Schema, crud
+from specstar import BackendBinding, BackendConfig, ConnectionProfile, Schema, spec
 
-crud.configure(
+spec.configure(
     backend=BackendConfig(
         connections={
             "local": ConnectionProfile(
@@ -44,8 +44,8 @@ crud.configure(
     )
 )
 
-crud.add_model(Schema(User, "v1"))
-crud.apply(app)
+spec.add_model(Schema(User, "v1"))
+spec.apply(app)
 ```
 
 That order keeps metadata, resource data, blob behavior, and queue behavior aligned from the beginning. The lower-level `storage_factory=` and `message_queue_factory=` arguments still work well when you want more explicit composition in Python.
@@ -56,8 +56,8 @@ That order keeps metadata, resource data, blob behavior, and queue behavior alig
 
 | Level | Entry point | Best for | Tradeoff |
 | --- | --- | --- | --- |
-| higher-level | `crud.configure(backend=...)` | most projects, shared config files, easier onboarding | less explicit low-level wiring in user code |
-| lower-level | `crud.configure(storage_factory=..., message_queue_factory=...)` | advanced deployments and precise backend composition | more setup detail and more concepts to manage |
+| higher-level | `spec.configure(backend=...)` | most projects, shared config files, easier onboarding | less explicit low-level wiring in user code |
+| lower-level | `spec.configure(storage_factory=..., message_queue_factory=...)` | advanced deployments and precise backend composition | more setup detail and more concepts to manage |
 
 ## Recommended starting points
 
@@ -118,9 +118,9 @@ If you want deployment-friendly backend setup, place the unified config in a JSO
 ```
 
 ```python
-from specstar import crud
+from specstar import spec
 
-crud.configure(backend="./backend.json")
+spec.configure(backend="./backend.json")
 ```
 
 This keeps connection information centralized and makes it easier to share the same backend setup across environments. JSON values also support environment-variable expansion such as `${POSTGRES_DSN}`.
@@ -135,7 +135,7 @@ This is the simplest durable setup for a single-node deployment using the higher
 from fastapi import FastAPI
 from msgspec import Struct
 
-from specstar import BackendBinding, BackendConfig, ConnectionProfile, Schema, crud
+from specstar import BackendBinding, BackendConfig, ConnectionProfile, Schema, spec
 
 
 class User(Struct):
@@ -145,7 +145,7 @@ class User(Struct):
 
 app = FastAPI()
 
-crud.configure(
+spec.configure(
     backend=BackendConfig(
         connections={
             "local": ConnectionProfile(
@@ -159,8 +159,8 @@ crud.configure(
     )
 )
 
-crud.add_model(Schema(User, "v1"))
-crud.apply(app)
+spec.add_model(Schema(User, "v1"))
+spec.apply(app)
 ```
 
 What this gives you:
@@ -189,7 +189,7 @@ import os
 from fastapi import FastAPI
 from msgspec import Struct
 
-from specstar import BackendBinding, BackendConfig, BackendDefaults, ConnectionProfile, Schema, crud
+from specstar import BackendBinding, BackendConfig, BackendDefaults, ConnectionProfile, Schema, spec
 
 
 class Document(Struct):
@@ -199,7 +199,7 @@ class Document(Struct):
 
 app = FastAPI()
 
-crud.configure(
+spec.configure(
     backend=BackendConfig(
         defaults=BackendDefaults(
             table_prefix="app_",
@@ -234,8 +234,8 @@ crud.configure(
     )
 )
 
-crud.add_model(Schema(Document, "v1"))
-crud.apply(app)
+spec.add_model(Schema(Document, "v1"))
+spec.apply(app)
 ```
 
 This production layout keeps:
@@ -254,11 +254,11 @@ If you prefer object storage for both resource payloads and blobs, use S3 for bo
 The factory-style configuration is still a strong option when you want explicit control over the storage and queue objects being wired into SpecStar.
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.message_queue import RabbitMQMessageQueueFactory
 from specstar.resource_manager import PostgresDiskS3StorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=PostgresDiskS3StorageFactory(
         connection_string="postgresql://user:pass@host:5432/appdb",
         rootdir="./data",
@@ -312,18 +312,18 @@ When jobs matter:
 A minimal local job setup looks like this:
 
 ```python
-from specstar import Schema, crud
+from specstar import Schema, spec
 from specstar.message_queue import SimpleMessageQueueFactory
 from specstar.resource_manager import DiskStorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=DiskStorageFactory("./data"),
     message_queue_factory=SimpleMessageQueueFactory(),
 )
 
-crud.add_model(Schema(TrainingJob, "v1"), job_handler=training)
+spec.add_model(Schema(TrainingJob, "v1"), job_handler=training)
 
-mgr = crud.get_resource_manager(TrainingJob)
+mgr = spec.get_resource_manager(TrainingJob)
 mgr.start_consume(block=False)
 ```
 
@@ -339,7 +339,7 @@ If jobs stay in `pending`, check that:
 
 Before calling your backend ready for adoption, verify all of the following:
 
-- the app uses `crud.configure(...)` before `add_model(...)`
+- the app uses `spec.configure(...)` before `add_model(...)`
 - restarts do not lose metadata or resource payloads
 - binary uploads still exist after restart or redeploy
 - any required worker process is running for job execution

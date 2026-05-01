@@ -113,7 +113,7 @@ SpecStar holds:
 When you call:
 
 ```python
-crud.apply(app)
+spec.apply(app)
 ```
 
 SpecStar will:

@@ -25,7 +25,7 @@ A key rule is that the internal resource manager still works with Struct-based s
 from pydantic import BaseModel, field_validator
 from fastapi import FastAPI
 
-from specstar import crud
+from specstar import spec
 
 
 class Character(BaseModel):
@@ -41,8 +41,8 @@ class Character(BaseModel):
 
 
 app = FastAPI()
-crud.add_model(Character)
-crud.apply(app)
+spec.add_model(Character)
+spec.apply(app)
 ```
 
 With this setup, create and update operations can use either:

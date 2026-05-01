@@ -163,14 +163,14 @@ Recommended workflow:
 2. Register it with SpecStar
 
 ```python
-crud.add_model(User)
+spec.add_model(User)
 ```
 
 If schema evolution is needed:
 
 ```python
 # Legacy style (IO[bytes])
-crud.add_model(
+spec.add_model(
     Schema(User, "v2").step("v1", migrate_v1_to_v2)
 )
 
@@ -178,7 +178,7 @@ crud.add_model(
 def migrate_v1_to_v2(data: UserV1) -> UserV2:
     return UserV2(name=data.name, age=data.age, role="user")
 
-crud.add_model(
+spec.add_model(
     Schema(UserV2, "v2").step("v1", migrate_v1_to_v2, source_type=UserV1)
 )
 ```

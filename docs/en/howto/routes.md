@@ -12,25 +12,25 @@ when you call `apply()`.
 
 ```python
 from fastapi import FastAPI
-from specstar import crud
+from specstar import spec
 
 app = FastAPI()
 
-crud.add_model(User)
-crud.apply(app)  # routes + OpenAPI schema generated automatically
+spec.add_model(User)
+spec.apply(app)  # routes + OpenAPI schema generated automatically
 ```
 
 ## Using a sub-router
 
 ```python
 from fastapi import APIRouter, FastAPI
-from specstar import crud
+from specstar import spec
 
 app = FastAPI()
 router = APIRouter(prefix="/api/v1")
 
-crud.add_model(User)
-crud.apply(app, router=router)  # auto include_router + auto openapi
+spec.add_model(User)
+spec.apply(app, router=router)  # auto include_router + auto openapi
 ```
 
 When `app` is a `FastAPI` instance, `apply()` automatically calls `openapi(app)` to
@@ -104,12 +104,12 @@ Use `create_action()` to add additional create endpoints for a resource:
 ```python
 from msgspec import Struct
 from fastapi import Body
-from specstar import crud
+from specstar import spec
 
 class ImportFromUrl(Struct):
     url: str
 
-@crud.create_action("article", label="Import from URL")
+@spec.create_action("article", label="Import from URL")
 async def import_from_url(body: ImportFromUrl = Body(...)):
     content = await fetch_and_parse(body.url)
     return Article(content=content)  # returning a resource triggers auto-create
@@ -126,12 +126,12 @@ and can optionally receive `RevisionInfo` and `ResourceMeta`.
 ```python
 from msgspec import Struct
 from fastapi import Body
-from specstar import crud
+from specstar import spec
 
 class LevelUpInput(Struct):
     levels: int = 1
 
-@crud.update_action("character", label="Level Up")
+@spec.update_action("character", label="Level Up")
 def level_up(existing: Character, body: LevelUpInput = Body(...)) -> Character:
     return Character(
         name=existing.name,
@@ -164,7 +164,7 @@ long-running operations:
 ```python
 from msgspec import Struct
 from fastapi import Body
-from specstar import crud
+from specstar import spec
 
 
 class TrainInput(Struct):
@@ -172,7 +172,7 @@ class TrainInput(Struct):
 
 
 # Job mode — creates a trackable Job resource
-@crud.update_action("character", label="Train", async_mode="job")
+@spec.update_action("character", label="Train", async_mode="job")
 def train(existing: Character, body: TrainInput = Body(...)) -> Character:
     import time
     time.sleep(body.hours * 10)  # long-running training
@@ -180,7 +180,7 @@ def train(existing: Character, body: TrainInput = Body(...)) -> Character:
 
 
 # Background mode — fire-and-forget
-@crud.update_action("character", label="Background Heal", async_mode="background")
+@spec.update_action("character", label="Background Heal", async_mode="background")
 def bg_heal(existing: Character) -> Character:
     import time
     time.sleep(5)

@@ -1,6 +1,6 @@
 # Architecture
 
-SpecStar is designed as a **model-driven API framework** built on top of FastAPI.
+SpecStar is designed as a **spec-driven backend platform** built on top of FastAPI.
 
 Instead of manually implementing storage, search, versioning, and routing logic,
 SpecStar provides a unified architecture that automatically generates these capabilities
@@ -295,7 +295,7 @@ This architecture aims to achieve several goals:
 
 | Goal                           | Solution              |
 | ------------------------------ | --------------------- |
-| eliminate repetitive CRUD code | model-driven APIs     |
+| eliminate repetitive CRUD code | spec-driven APIs     |
 | support version history        | immutable revisions   |
 | enable efficient search        | metadata indexing     |
 | allow multiple storage systems | storage abstraction   |

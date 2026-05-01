@@ -1,6 +1,8 @@
 # SpecStar
 
-**SpecStar** is a **model-driven FastAPI framework** with built-in **versioning, permissions, search, and API generation**.
+**SpecStar** is a **spec-driven backend platform for FastAPI** with built-in **versioning, permissions, search, and API generation**.
+
+What makes it different: every resource is a **versioned timeline by default** — rollback, audit, and time-travel come built in. If you don't need history, the same routes still work as plain CRUD.
 
 It helps you spend less time wiring repetitive infrastructure and more time on your domain logic.
 
@@ -70,13 +72,13 @@ Create a FastAPI app:
 
 ```python
 from fastapi import FastAPI
-from specstar import crud
+from specstar import spec
 
 app = FastAPI()
 
-crud.configure()
-crud.add_model(Schema(User, "v1"))
-crud.apply(app)
+spec.configure()
+spec.add_model(Schema(User, "v1"))
+spec.apply(app)
 ```
 
 SpecStar will generate the standard CRUD surface, OpenAPI documentation, validation handling, and revision tracking.

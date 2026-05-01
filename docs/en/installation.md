@@ -109,7 +109,7 @@ Notes:
 from fastapi import FastAPI
 from msgspec import Struct
 
-from specstar import crud, Schema
+from specstar import spec, Schema
 
 
 class User(Struct):
@@ -118,9 +118,9 @@ class User(Struct):
 
 
 app = FastAPI()
-crud.configure()
-crud.add_model(Schema(User, "v1"))
-crud.apply(app)
+spec.configure()
+spec.add_model(Schema(User, "v1"))
+spec.apply(app)
 ```
 
 Run the server:

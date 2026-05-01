@@ -433,6 +433,6 @@ Traditional CRUD focuses on **simplicity**.
 
 Event sourcing focuses on **event history and distributed systems**.
 
-SpecStar focuses on **model-driven APIs with built-in revision history**.
+SpecStar focuses on **spec-driven APIs with built-in revision history**.
 
 The goal is to remove repetitive infrastructure code and allow developers to focus on the domain logic of their applications.

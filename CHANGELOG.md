@@ -37,7 +37,7 @@ signatures or behaviors changed; this is a brand and identifier rename.
   releases ship as `specstar` only.
 - **Migration guide**: see [MIGRATION.md](MIGRATION.md) for the find /
   replace table and shim details.
-- **Logo**: text and mark variants in `branding/`.
+- **Logo**: text and mark variants in `docs/assets/`.
 
 ### Fixed
 

@@ -42,7 +42,7 @@ SpecStar supports three execution modes:
 You can define custom actions using decorators like `create_action` or `update_action`.
 
 ```python
-@crud.create_action(
+@spec.create_action(
     "character",
     label="Create Character",
 )
@@ -69,7 +69,7 @@ async_mode="background"
 ```
 
 ```python
-@crud.create_action(
+@spec.create_action(
     "character",
     label="Create Character (background)",
     async_mode="background",
@@ -104,7 +104,7 @@ async_mode="job"
 ```
 
 ```python
-@crud.create_action(
+@spec.create_action(
     "character",
     label="Create Character (job)",
     async_mode="job",
@@ -136,7 +136,7 @@ Use this when:
 ## 4. Example: update with background execution
 
 ```python
-@crud.update_action(
+@spec.update_action(
     "character",
     label="Update Name",
     async_mode="background",
@@ -164,7 +164,7 @@ This means:
 Example:
 
 ```python
-@crud.create_action(
+@spec.create_action(
     "character",
     label="Complex Input",
     async_mode="job",
@@ -192,7 +192,7 @@ Actions generate endpoints automatically.
 For example:
 
 ```python
-@crud.create_action("character", label="New Character")
+@spec.create_action("character", label="New Character")
 ```
 
 will generate:

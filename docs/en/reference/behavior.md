@@ -7,7 +7,7 @@ This page documents safe startup and runtime usage rules for `SpecStar`.
 
 ## Recommended initialization order
 
-1. Create `SpecStar` instance (or import global `crud`)
+1. Create `SpecStar` instance (or import global `spec`)
 2. `configure()` (optional) — configure defaults for the instance
 3. `add_model()` — register all models/schemas
 4. `apply()` — generate routes on a `FastAPI` / `APIRouter`

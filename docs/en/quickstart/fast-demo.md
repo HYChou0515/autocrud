@@ -44,15 +44,15 @@ Why `msgspec`? Check [here](/specstar/concepts/schema).
 Create a `main.py` and register the schema as a resource.
 
 ```python
-from specstar import crud, Schema
+from specstar import spec, Schema
 from fastapi import FastAPI
 
 app = FastAPI()
 
-crud.configure()
-crud.add_model(Schema(Issue, "v1"))
+spec.configure()
+spec.add_model(Schema(Issue, "v1"))
 
-crud.apply(app)
+spec.apply(app)
 ```
 
 Once registered, SpecStar can automatically:
@@ -144,7 +144,7 @@ def validate_and_finalize_issue(new: Issue, old: Issue | None = None) -> Issue:
 To enable this rule, update the schema registration in **Step 2**:
 
 ```python
-crud.add_model(
+spec.add_model(
     Schema(Issue, "v1", validator=validate_and_finalize_issue),
 )
 ```
@@ -184,7 +184,7 @@ from typing import Literal
 import msgspec
 from fastapi import FastAPI
 
-from specstar import crud, Schema
+from specstar import spec, Schema
 
 
 class Issue(msgspec.Struct):
@@ -220,12 +220,12 @@ def validate_and_finalize_issue(new: Issue, old: Issue | None = None) -> Issue:
 
 app = FastAPI()
 
-crud.configure()
-crud.add_model(
+spec.configure()
+spec.add_model(
     Schema(Issue, "v1", validator=validate_and_finalize_issue),
 )
 
-crud.apply(app)
+spec.apply(app)
 ```
 
 Run:

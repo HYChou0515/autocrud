@@ -23,10 +23,10 @@ For first-time setup, make the queue backend explicit.
 That removes ambiguity about where jobs are processed.
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.message_queue import SimpleMessageQueueFactory
 
-crud.configure(
+spec.configure(
     message_queue_factory=SimpleMessageQueueFactory(),
 )
 ```
@@ -100,14 +100,14 @@ Here:
 Once the schema and handler are ready, register them with SpecStar:
 
 ```python
-from specstar import Schema, crud
+from specstar import Schema, spec
 from specstar.message_queue import SimpleMessageQueueFactory
 
-crud.configure(
+spec.configure(
     message_queue_factory=SimpleMessageQueueFactory(),
 )
 
-crud.add_model(
+spec.add_model(
     Schema(TrainingJob, "v1"),
     job_handler=training,
 )
@@ -122,7 +122,7 @@ After this, SpecStar knows which resource type represents the job and which func
 Get the resource manager for the job model and start consuming messages:
 
 ```python
-mgr = crud.get_resource_manager(TrainingJob)
+mgr = spec.get_resource_manager(TrainingJob)
 mgr.start_consume(
     # block=False
 )
@@ -204,7 +204,7 @@ from typing import Any, Literal
 
 import msgspec
 
-from specstar import Job, Schema, TaskStatus, crud
+from specstar import Job, Schema, TaskStatus, spec
 from specstar.message_queue import SimpleMessageQueueFactory
 from specstar.types import Resource
 
@@ -251,16 +251,16 @@ def training(job: Resource[TrainingJob]) -> TrainingJob:
 
 
 def main() -> None:
-    crud.configure(
+    spec.configure(
         message_queue_factory=SimpleMessageQueueFactory(),
     )
 
-    crud.add_model(
+    spec.add_model(
         Schema(TrainingJob, "v1"),
         job_handler=training,
     )
 
-    mgr = crud.get_resource_manager(TrainingJob)
+    mgr = spec.get_resource_manager(TrainingJob)
     mgr.start_consume(block=False)
 
     job_info = mgr.create(

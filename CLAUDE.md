@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SpecStar is a model-driven backend platform for FastAPI. Define a `msgspec.Struct` model once; the framework generates REST APIs, GraphQL, search, version history, permissions, background jobs, and an admin UI automatically.
+SpecStar is a spec-driven backend platform for FastAPI. Define a `msgspec.Struct` model once; the framework generates REST APIs, GraphQL, search, version history, permissions, background jobs, and an admin UI automatically.
 
 ## Commands
 
