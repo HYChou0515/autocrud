@@ -23,7 +23,7 @@ classifiers = [
     "Framework :: FastAPI",
 ]
 dependencies = [
-    "fastapi>=0.115",
+    "fastapi>=0.115,<1",
     "jsonpatch>=1.33",
     "jsonpointer>=3.0.0",
     "more-itertools>=10.7.0",
