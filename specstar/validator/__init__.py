@@ -17,6 +17,7 @@ from specstar.validator.ast import (
     BLOCKED_BUILTINS,
     BLOCKED_IMPORTS,
     BLOCKED_STATEMENTS,
+    SAFE_DUNDERS,
     DeclarativeASTValidator,
     ValidationError,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "BLOCKED_BUILTINS",
     "BLOCKED_IMPORTS",
     "BLOCKED_STATEMENTS",
+    "SAFE_DUNDERS",
     "DeclarativeASTValidator",
     "ValidationError",
 ]

@@ -52,7 +52,30 @@ These top-level module names cause `import` and `from … import …` statements
 
 Direct calls to these names are blocked (they bypass the sandbox):
 
-`exec`, `eval`, `compile`, `open`, `__import__`, `input`, `breakpoint`
+`exec`, `eval`, `compile`, `open`, `__import__`, `input`, `breakpoint`,
+`getattr`, `setattr`, `delattr`
+
+`getattr` / `setattr` / `delattr` are blocked because runtime indirection
+defeats static analysis — `getattr(obj, "system")` would otherwise slip
+past the call-name check.
+
+### Dunder attributes
+
+Reading any attribute whose name starts and ends with two underscores
+(`__class__`, `__bases__`, `__subclasses__`, `__globals__`, `__builtins__`,
+`__dict__`, etc.) is blocked. These are the canonical Python sandbox-escape
+vectors:
+
+```python
+().__class__.__bases__[0].__subclasses__()  # rejected (multiple violations)
+some_func.__globals__["os"]                 # rejected (__globals__)
+```
+
+Two dunders are explicitly safe-listed because they appear in legitimate
+metadata reads:
+
+- `__name__`
+- `__doc__`
 
 ---
 

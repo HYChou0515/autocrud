@@ -75,9 +75,28 @@ BLOCKED_BUILTINS: frozenset[str] = frozenset(
         "__import__",
         "input",
         "breakpoint",
+        "getattr",
+        "setattr",
+        "delattr",
     }
 )
-"""Builtin call targets that bypass the AST sandbox if allowed."""
+"""Builtin call targets that bypass the AST sandbox if allowed.
+
+``exec`` / ``eval`` / ``compile`` execute arbitrary code at runtime.
+``open`` / ``input`` / ``breakpoint`` perform I/O.
+``__import__`` is a dynamic-import escape.
+``getattr`` / ``setattr`` / ``delattr`` enable runtime indirection that
+defeats static analysis (e.g. ``getattr(obj, "system")``); declarative
+wiring never needs them.
+"""
+
+SAFE_DUNDERS: frozenset[str] = frozenset({"__name__", "__doc__"})
+"""Dunder attribute names that may legitimately be read in declarative code.
+
+Any other dunder (``__class__``, ``__bases__``, ``__subclasses__``,
+``__globals__``, ``__builtins__``, ``__dict__``, etc.) is rejected because
+those are the canonical Python sandbox-escape vectors.
+"""
 
 BLOCKED_STATEMENTS: tuple[type[ast.AST], ...] = (
     ast.Try,
@@ -218,6 +237,28 @@ class DeclarativeASTValidator(ast.NodeVisitor):
                 kind="blocked_builtin",
                 message=f"call to builtin {node.func.id!r} is not allowed",
                 fix_hint=f"{node.func.id!r} bypasses the declarative sandbox.",
+            )
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        # Block dunder attribute access — the canonical sandbox-escape vector.
+        # ``().__class__.__bases__[0].__subclasses__()`` is the textbook
+        # example. We carve out a narrow safe-list (``__name__``, ``__doc__``)
+        # for legitimate metadata reads.
+        if (
+            node.attr.startswith("__")
+            and node.attr.endswith("__")
+            and node.attr not in SAFE_DUNDERS
+        ):
+            self._record(
+                node,
+                kind="dunder_access",
+                message=f"dunder attribute {node.attr!r} is not allowed",
+                fix_hint=(
+                    "Dunder attributes can be used to escape the declarative "
+                    "sandbox. If you need this in real logic, move it to a "
+                    "user module and reference it by string from spec.md."
+                ),
             )
         self.generic_visit(node)
 

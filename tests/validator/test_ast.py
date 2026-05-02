@@ -148,6 +148,76 @@ class TestBlockedBuiltins:
         errors = _validate(f"{builtin}('payload')")
         assert any(e.kind == "blocked_builtin" and builtin in e.message for e in errors)
 
+    def test_getattr_blocked(self) -> None:
+        errors = _validate("getattr(obj, 'system')")
+        assert any(
+            e.kind == "blocked_builtin" and "getattr" in e.message for e in errors
+        )
+
+    def test_setattr_blocked(self) -> None:
+        errors = _validate("setattr(obj, 'foo', 1)")
+        assert any(
+            e.kind == "blocked_builtin" and "setattr" in e.message for e in errors
+        )
+
+
+class TestDunderAttributeGuard:
+    """Block the canonical Python sandbox-escape vectors."""
+
+    def test_class_attribute_blocked(self) -> None:
+        errors = _validate("x = ().__class__")
+        assert any(
+            e.kind == "dunder_access" and "__class__" in e.message for e in errors
+        )
+
+    def test_bases_attribute_blocked(self) -> None:
+        errors = _validate("y = SomeClass.__bases__")
+        assert any(
+            e.kind == "dunder_access" and "__bases__" in e.message for e in errors
+        )
+
+    def test_subclasses_attribute_blocked(self) -> None:
+        errors = _validate("z = obj.__subclasses__")
+        assert any(
+            e.kind == "dunder_access" and "__subclasses__" in e.message for e in errors
+        )
+
+    def test_classic_sandbox_escape_caught(self) -> None:
+        # The textbook escape: ().__class__.__bases__[0].__subclasses__()
+        errors = _validate("x = ().__class__.__bases__[0].__subclasses__()")
+        # Should catch __class__, __bases__, and __subclasses__ — at least one.
+        assert any(e.kind == "dunder_access" for e in errors)
+
+    def test_globals_attribute_blocked(self) -> None:
+        errors = _validate("g = some_func.__globals__")
+        assert any(
+            e.kind == "dunder_access" and "__globals__" in e.message for e in errors
+        )
+
+    def test_builtins_attribute_blocked(self) -> None:
+        errors = _validate("b = m.__builtins__")
+        assert any(
+            e.kind == "dunder_access" and "__builtins__" in e.message for e in errors
+        )
+
+    def test_safe_dunder_name_allowed(self) -> None:
+        # ``__name__`` is in SAFE_DUNDERS — used in idiomatic patterns.
+        errors = _validate("n = obj.__name__")
+        assert all(e.kind != "dunder_access" for e in errors)
+
+    def test_safe_dunder_doc_allowed(self) -> None:
+        errors = _validate("d = obj.__doc__")
+        assert all(e.kind != "dunder_access" for e in errors)
+
+    def test_non_dunder_attribute_allowed(self) -> None:
+        errors = _validate("x = obj.normal_attr")
+        assert errors == []
+
+    def test_partial_dunder_not_blocked(self) -> None:
+        # ``__init`` (no trailing underscores) is not a dunder; allow.
+        errors = _validate("x = obj.__init")
+        assert all(e.kind != "dunder_access" for e in errors)
+
 
 class TestEscapeHatch:
     """``# specstar: allow`` comment suppresses violations on its line."""
