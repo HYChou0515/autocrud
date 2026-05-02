@@ -149,6 +149,70 @@ class TestBlockedBuiltins:
         assert any(e.kind == "blocked_builtin" and builtin in e.message for e in errors)
 
 
+class TestEscapeHatch:
+    """``# specstar: allow`` comment suppresses violations on its line."""
+
+    def test_same_line_allow_bypasses_blocked_import(self) -> None:
+        v = DeclarativeASTValidator()
+        errs = v.validate("import os  # specstar: allow needs env at startup\n")
+        assert errs == []
+        assert v.bypassed_lines == {1}
+
+    def test_allow_does_not_affect_other_lines(self) -> None:
+        v = DeclarativeASTValidator()
+        source = textwrap.dedent("""\
+            import os  # specstar: allow
+            import subprocess
+        """)
+        errs = v.validate(source)
+        # Line 1 is bypassed, line 2 still reports the blocked import.
+        assert len(errs) == 1
+        assert errs[0].line == 2
+        assert "subprocess" in errs[0].message
+        assert v.bypassed_lines == {1}
+
+    def test_case_insensitive_match(self) -> None:
+        v = DeclarativeASTValidator()
+        errs = v.validate("import os  # SpecStar: Allow\n")
+        assert errs == []
+        assert v.bypassed_lines == {1}
+
+    def test_allow_on_blocked_statement(self) -> None:
+        v = DeclarativeASTValidator()
+        source = textwrap.dedent("""\
+            try:  # specstar: allow legacy retry block
+                x = 1
+            except Exception:
+                x = 2
+        """)
+        errs = v.validate(source)
+        # Try is at line 1 with the comment; exempted.
+        try_errors = [e for e in errs if e.node == "Try"]
+        assert try_errors == []
+        assert 1 in v.bypassed_lines
+
+    def test_allow_without_offending_node_does_nothing(self) -> None:
+        v = DeclarativeASTValidator()
+        # No actual violation here; comment is harmless noise.
+        errs = v.validate("x = 1  # specstar: allow harmless\n")
+        assert errs == []
+        assert v.bypassed_lines == set()
+
+    def test_unrelated_comment_does_not_match(self) -> None:
+        v = DeclarativeASTValidator()
+        errs = v.validate("import os  # specstar wants this allowed maybe\n")
+        # Pattern requires "specstar: allow" together; this is just prose.
+        assert len(errs) == 1
+        assert v.bypassed_lines == set()
+
+    def test_bypassed_lines_reset_between_runs(self) -> None:
+        v = DeclarativeASTValidator()
+        v.validate("import os  # specstar: allow\n")
+        assert v.bypassed_lines == {1}
+        v.validate("x = 1\n")
+        assert v.bypassed_lines == set()
+
+
 class TestErrorShape:
     """:class:`ValidationError` carries the metadata downstream code expects."""
 

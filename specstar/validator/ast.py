@@ -20,9 +20,23 @@ written against a stable import path.
 from __future__ import annotations
 
 import ast
+import re
 from typing import Any
 
 from msgspec import Struct
+
+_ALLOW_PATTERN = re.compile(r"#\s*specstar:\s*allow\b", re.IGNORECASE)
+"""Recognises ``# specstar: allow`` (with optional reason after) anywhere in
+a source line. The match is case-insensitive and tolerates extra whitespace
+around the colon. Lines that match are exempted from validation; matched
+nodes still appear on the validator's :attr:`bypassed_lines` set so the
+manifest can record them.
+
+Same-line semantics only: the comment must sit on the same line as the AST
+node it exempts (typically the statement's header line). Above-line
+exemption is not supported in v0.11 — keeping the rule simple makes audit
+diffs unambiguous.
+"""
 
 BLOCKED_IMPORTS: frozenset[str] = frozenset(
     {
@@ -91,6 +105,15 @@ loop over a list of similar resources or branch on an environment flag.
 """
 
 
+def _find_allow_lines(source: str) -> frozenset[int]:
+    """Scan source for ``# specstar: allow`` comments; return their 1-based line numbers."""
+    return frozenset(
+        i
+        for i, line in enumerate(source.splitlines(), start=1)
+        if _ALLOW_PATTERN.search(line)
+    )
+
+
 class ValidationError(Struct, frozen=True):
     """A single AST validation failure.
 
@@ -131,6 +154,8 @@ class DeclarativeASTValidator(ast.NodeVisitor):
 
     def __init__(self) -> None:
         self.errors: list[ValidationError] = []
+        self.bypassed_lines: set[int] = set()
+        self._skip_lines: frozenset[int] = frozenset()
 
     # -- Public API --------------------------------------------------------
 
@@ -140,11 +165,20 @@ class DeclarativeASTValidator(ast.NodeVisitor):
         """Parse and validate a Python source string.
 
         Returns a list of :class:`ValidationError`. Empty list means the source
-        passed all currently-implemented checks.
+        passed all currently-implemented checks (after applying the
+        ``# specstar: allow`` escape hatch).
+
+        After calling :meth:`validate`, :attr:`bypassed_lines` holds the line
+        numbers where a violation **was** detected but suppressed by an
+        ``# specstar: allow`` comment. Callers writing the manifest's
+        ``validation`` block should record this set so reviewers can see what
+        was waived.
 
         Raises ``SyntaxError`` if the source is not valid Python.
         """
         self.errors = []
+        self.bypassed_lines = set()
+        self._skip_lines = _find_allow_lines(source)
         tree = ast.parse(source, filename=filename, mode="exec")
         self.visit(tree)
         return list(self.errors)
@@ -202,9 +236,13 @@ class DeclarativeASTValidator(ast.NodeVisitor):
     def _record(
         self, node: ast.AST, *, kind: str, message: str, fix_hint: str | None = None
     ) -> None:
+        line = getattr(node, "lineno", 0)
+        if line in self._skip_lines:
+            self.bypassed_lines.add(line)
+            return
         self.errors.append(
             ValidationError(
-                line=getattr(node, "lineno", 0),
+                line=line,
                 col=getattr(node, "col_offset", 0),
                 kind=kind,
                 node=type(node).__name__,
