@@ -2829,9 +2829,7 @@ class TestQueryLimitConfiguration:
     def test_legacy_env_var_warns_and_works(self):
         """``AUTOCRUD_DEFAULT_QUERY_LIMIT`` is read for backward compatibility,
         but emits a ``DeprecationWarning`` pointing at the new name."""
-        out = self._run_with_env(
-            "777", var_name="AUTOCRUD_DEFAULT_QUERY_LIMIT"
-        )
+        out = self._run_with_env("777", var_name="AUTOCRUD_DEFAULT_QUERY_LIMIT")
         assert out["limit"] == 777
         assert out["default_limit"] == 777
         assert any(
@@ -2874,6 +2872,4 @@ class TestQueryLimitConfiguration:
         )
         out = json.loads(result.stdout)
         assert out["limit"] == 100
-        assert not any(
-            cat == "DeprecationWarning" for cat, _ in out["warnings"]
-        )
+        assert not any(cat == "DeprecationWarning" for cat, _ in out["warnings"])
