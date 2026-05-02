@@ -13,14 +13,13 @@ Subcommands shipped in v0.11:
 
 - ``specstar init`` — bootstrap a starter project (spec.md + _generated.py
   + lock).
+- ``specstar gen`` — print the LLM prompt for the spec-driven authoring
+  call (dry-run only in v0.11; pipe to your own LLM client).
 - ``specstar lock`` — regenerate ``spec.lock.json`` from current sources
   (deterministic; closes the authoring loop after the skill edits files).
 - ``specstar verify`` — deterministic ``spec.lock.json`` consistency check
   (CI-friendly, exits non-zero on drift).
 - ``specstar status`` — informational read-only sync report (always exits 0).
-
-Future v0.11 follow-up: ``specstar gen`` (LLM-driven authoring for
-non-Claude-Code users) wraps ``lock`` plus prompt-driven editing.
 """
 
 from __future__ import annotations
@@ -29,6 +28,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+from specstar.cli._gen import add_gen_parser
 from specstar.cli._init import add_init_parser
 from specstar.cli._lock import add_lock_parser
 from specstar.cli._status import add_status_parser
@@ -46,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", metavar="<command>")
     add_init_parser(sub)
+    add_gen_parser(sub)
     add_lock_parser(sub)
     add_verify_parser(sub)
     add_status_parser(sub)
