@@ -135,6 +135,106 @@ class TestReferenceEdges:
 
 
 # ---------------------------------------------------------------------------
+# Routes / route templates
+# ---------------------------------------------------------------------------
+
+
+class TestRouteNodes:
+    def test_route_template_nodes_emitted(self, populated_spec: SpecStar) -> None:
+        d = build_descriptor(populated_spec)
+        template_ids = {n.id for n in d.nodes if n.type is NodeType.route_template}
+        # Default templates include create / read / list / update / patch /
+        # delete / switch — at least these.
+        assert any(tid.endswith(":create") for tid in template_ids)
+        assert any(tid.endswith(":read") for tid in template_ids)
+
+    def test_route_node_per_resource_template_pair(
+        self, populated_spec: SpecStar
+    ) -> None:
+        d = build_descriptor(populated_spec)
+        route_ids = {n.id for n in d.nodes if n.type is NodeType.route}
+        # 3 resources × N templates → all route_ids start with "route:<resource>."
+        assert any(rid.startswith("route:user.") for rid in route_ids)
+        assert any(rid.startswith("route:account.") for rid in route_ids)
+        assert any(rid.startswith("route:tag.") for rid in route_ids)
+
+    def test_exposes_edge_resource_to_route(self, populated_spec: SpecStar) -> None:
+        d = build_descriptor(populated_spec)
+        exposes = [e for e in d.edges if e.type is EdgeType.exposes]
+        assert any(
+            e.source_id == "resource:user" and e.target_id.startswith("route:user.")
+            for e in exposes
+        )
+
+    def test_generated_by_edge_route_to_template(
+        self, populated_spec: SpecStar
+    ) -> None:
+        d = build_descriptor(populated_spec)
+        generated_by = [e for e in d.edges if e.type is EdgeType.generated_by]
+        assert any(
+            e.source_id.startswith("route:")
+            and e.target_id.startswith("route_template:")
+            for e in generated_by
+        )
+
+    def test_short_name_strips_route_template_suffix(
+        self, populated_spec: SpecStar
+    ) -> None:
+        d = build_descriptor(populated_spec)
+        for n in d.nodes:
+            if n.type is NodeType.route_template:
+                assert n.properties["name"].endswith("RouteTemplate")
+                assert "RouteTemplate" not in n.properties["short_name"]
+
+
+# ---------------------------------------------------------------------------
+# Storage / permission
+# ---------------------------------------------------------------------------
+
+
+class TestStorageAndPermission:
+    def test_single_storage_backend_node(self, populated_spec: SpecStar) -> None:
+        d = build_descriptor(populated_spec)
+        storage_nodes = [n for n in d.nodes if n.type is NodeType.storage_backend]
+        assert len(storage_nodes) == 1
+        node = storage_nodes[0]
+        assert node.id == "storage_backend:default"
+        assert "factory" in node.properties
+
+    def test_stored_in_edge_per_resource(self, populated_spec: SpecStar) -> None:
+        d = build_descriptor(populated_spec)
+        stored_in = [e for e in d.edges if e.type is EdgeType.stored_in]
+        sources = {e.source_id for e in stored_in}
+        assert sources == {"resource:user", "resource:account", "resource:tag"}
+        assert all(e.target_id == "storage_backend:default" for e in stored_in)
+
+    def test_single_permission_policy_node(self, populated_spec: SpecStar) -> None:
+        d = build_descriptor(populated_spec)
+        policy_nodes = [n for n in d.nodes if n.type is NodeType.permission_policy]
+        assert len(policy_nodes) == 1
+        node = policy_nodes[0]
+        assert node.id == "permission_policy:global"
+        assert "checker" in node.properties
+
+    def test_gates_edge_per_resource(self, populated_spec: SpecStar) -> None:
+        d = build_descriptor(populated_spec)
+        gates = [e for e in d.edges if e.type is EdgeType.gates]
+        targets = {e.target_id for e in gates}
+        assert targets == {"resource:user", "resource:account", "resource:tag"}
+        assert all(e.source_id == "permission_policy:global" for e in gates)
+
+
+class TestEmptySpecstar:
+    """No resources → no route / storage / permission nodes either."""
+
+    def test_empty_yields_empty_graph(self) -> None:
+        spec = SpecStar()
+        d = build_descriptor(spec)
+        assert d.nodes == []
+        assert d.edges == []
+
+
+# ---------------------------------------------------------------------------
 # SpecStar.dump_descriptor() public entry point
 # ---------------------------------------------------------------------------
 
