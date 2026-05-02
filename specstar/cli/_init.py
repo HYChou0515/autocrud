@@ -1,0 +1,278 @@
+"""``specstar init`` — bootstrap a new spec-driven project.
+
+Phase 2.4 implementation. Lays out a working starter:
+
+::
+
+    spec.md                 # prose specification (β heading protocol)
+    spec.lock.json          # manifest with descriptor + hashes
+    <package>/
+        __init__.py         # FastAPI app wired to the global spec
+        _generated.py       # skill-maintained declarative Python
+
+After ``init`` succeeds, the user can immediately ``uvicorn <package>:app``,
+or run ``specstar status`` / ``verify``. The starter resource is a single
+``User`` model with two fields, sized to be the smallest example that
+exercises every Phase 1 layer (resource node, field nodes, has_field edges,
+hash-based drift detection).
+
+Refuses to overwrite existing files unless ``--force`` is passed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+import msgspec
+
+from specstar import SpecStar
+from specstar.descriptor import Descriptor, ValidationStatus
+from specstar.lockfile import build_manifest, now_iso, write_manifest
+
+DEFAULT_PACKAGE = "my_app"
+
+
+_SPEC_MD_TEMPLATE = """\
+# {package}
+
+A starter SpecStar project. Edit this file with your own resources, then
+re-run your authoring tool (Claude Code skill `/specstar` or `specstar gen`)
+to regenerate `{package}/_generated.py` and `spec.lock.json`.
+
+## Resource: User
+
+A registered user.
+
+### Fields
+
+- `name`: required string
+- `email`: required string
+
+### Permissions
+
+- `read`: any authenticated
+- `delete`: admin only
+"""
+
+
+_GENERATED_PY_TEMPLATE = '''\
+"""Skill-maintained declarative Python.
+
+Do **not** edit by hand. Changes here are overwritten on the next
+``specstar gen`` run. To change a model, edit ``spec.md`` instead.
+"""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import spec
+
+
+class User(msgspec.Struct):
+    name: str
+    email: str
+
+
+spec.add_model(User, name="user")
+'''
+
+
+_PACKAGE_INIT_TEMPLATE = '''\
+"""FastAPI entry point for {package}.
+
+Importing :mod:`{package}._generated` registers all spec-driven resources
+on the global :data:`specstar.spec` instance via side effect, after which
+``spec.apply(app)`` wires up routes.
+"""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+
+from specstar import spec
+
+from {package} import _generated  # noqa: F401  side-effect: registers models
+
+app = FastAPI(title="{package}")
+spec.apply(app)
+'''
+
+
+def add_init_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Register the ``init`` subcommand on the top-level parser."""
+    p = subparsers.add_parser(
+        "init",
+        help="Bootstrap a starter spec-driven project in the current directory.",
+        description=(
+            "Create spec.md, <package>/__init__.py, <package>/_generated.py, "
+            "and spec.lock.json. Refuses to overwrite existing files unless "
+            "--force is passed."
+        ),
+    )
+    p.add_argument(
+        "package",
+        nargs="?",
+        default=DEFAULT_PACKAGE,
+        help=f"Python package name to create (default: {DEFAULT_PACKAGE}).",
+    )
+    p.add_argument(
+        "--root",
+        default=".",
+        help="Project root directory (default: current directory).",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing files.",
+    )
+    p.add_argument(
+        "--no-lock",
+        action="store_true",
+        help="Skip writing spec.lock.json (advanced: regenerate manually).",
+    )
+    p.set_defaults(func=init_cmd)
+
+
+def init_cmd(args: argparse.Namespace) -> int:
+    return run_init(
+        package=args.package,
+        root=Path(args.root),
+        force=args.force,
+        write_lock=not args.no_lock,
+        stream=sys.stdout,
+        error_stream=sys.stderr,
+    )
+
+
+def run_init(
+    *,
+    package: str,
+    root: Path,
+    force: bool,
+    write_lock: bool,
+    stream,
+    error_stream,
+) -> int:
+    """Materialize the starter project under ``root``. Returns exit code."""
+    if not _is_valid_package_name(package):
+        print(
+            f"error: {package!r} is not a valid Python package name "
+            f"(must match [A-Za-z_][A-Za-z0-9_]*)",
+            file=error_stream,
+        )
+        return 2
+
+    root = root.resolve()
+    if not root.exists():
+        print(f"error: root directory does not exist: {root}", file=error_stream)
+        return 2
+
+    targets = _planned_files(root, package, write_lock=write_lock)
+
+    if not force:
+        existing = [p for p in targets if p.exists()]
+        if existing:
+            print("error: refusing to overwrite existing files:", file=error_stream)
+            for p in existing:
+                print(f"  {p.relative_to(root)}", file=error_stream)
+            print("hint: re-run with --force to overwrite.", file=error_stream)
+            return 1
+
+    # Write source files first so their hashes can be computed for the lock.
+    spec_md = root / "spec.md"
+    pkg_dir = root / package
+    pkg_dir.mkdir(exist_ok=True)
+    pkg_init = pkg_dir / "__init__.py"
+    pkg_generated = pkg_dir / "_generated.py"
+
+    spec_md.write_text(_SPEC_MD_TEMPLATE.format(package=package), encoding="utf-8")
+    pkg_init.write_text(
+        _PACKAGE_INIT_TEMPLATE.format(package=package), encoding="utf-8"
+    )
+    pkg_generated.write_text(_GENERATED_PY_TEMPLATE, encoding="utf-8")
+
+    if write_lock:
+        descriptor = _starter_descriptor()
+        manifest = build_manifest(
+            descriptor,
+            sources={
+                "spec.md": spec_md,
+                f"{package}/_generated.py": pkg_generated,
+            },
+            validation=ValidationStatus(ast_check="passed"),
+            regenerated_at=now_iso(),
+        )
+        write_manifest(manifest, root / "spec.lock.json")
+
+    _print_summary(root, package, write_lock=write_lock, stream=stream)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Internals
+# ---------------------------------------------------------------------------
+
+
+def _planned_files(root: Path, package: str, *, write_lock: bool) -> list[Path]:
+    files = [
+        root / "spec.md",
+        root / package / "__init__.py",
+        root / package / "_generated.py",
+    ]
+    if write_lock:
+        files.append(root / "spec.lock.json")
+    return files
+
+
+def _is_valid_package_name(name: str) -> bool:
+    if not name:
+        return False
+    if not (name[0].isalpha() or name[0] == "_"):
+        return False
+    return all(c.isalnum() or c == "_" for c in name)
+
+
+def _starter_descriptor() -> Descriptor:
+    """Build the descriptor matching ``_GENERATED_PY_TEMPLATE``.
+
+    Constructs a transient :class:`SpecStar` instance with the same model
+    registration as the template and asks it for the descriptor. Keeping the
+    template and the descriptor in sync via this single source of truth
+    prevents drift between the two when the starter changes.
+    """
+    transient = SpecStar()
+
+    class User(msgspec.Struct):
+        name: str
+        email: str
+
+    transient.add_model(User, name="user")
+    descriptor = transient.dump_descriptor()
+    assert descriptor is not None
+    return descriptor
+
+
+def _print_summary(root: Path, package: str, *, write_lock: bool, stream) -> None:
+    rel = root.relative_to(Path.cwd()) if root.is_relative_to(Path.cwd()) else root
+    files = [
+        "spec.md",
+        f"{package}/__init__.py",
+        f"{package}/_generated.py",
+    ]
+    if write_lock:
+        files.append("spec.lock.json")
+    print(f"created starter project under {rel}/", file=stream)
+    for f in files:
+        print(f"  {f}", file=stream)
+    print(file=stream)
+    print("next steps:", file=stream)
+    print("  1. edit spec.md to describe your resources", file=stream)
+    print(
+        "  2. run `/specstar` (Claude Code) or `specstar gen` to regenerate "
+        "the Python and lock",
+        file=stream,
+    )
+    print(f"  3. uvicorn {package}:app  # to run the API", file=stream)

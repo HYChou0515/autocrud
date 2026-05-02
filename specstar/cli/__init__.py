@@ -11,12 +11,14 @@ This package hosts two CLI surfaces that coexist:
 
 Subcommands shipped in v0.11:
 
+- ``specstar init`` — bootstrap a starter project (spec.md + _generated.py
+  + lock).
 - ``specstar verify`` — deterministic ``spec.lock.json`` consistency check
   (CI-friendly, exits non-zero on drift).
 - ``specstar status`` — informational read-only sync report (always exits 0).
 
-Future v0.11 follow-ups (``init``, ``gen``) hook into :func:`build_parser`
-in subsequent commits.
+Future v0.11 follow-up: ``specstar gen`` hooks into :func:`build_parser` in
+a subsequent commit.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+from specstar.cli._init import add_init_parser
 from specstar.cli._status import add_status_parser
 from specstar.cli._verify import add_verify_parser
 
@@ -39,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sub = parser.add_subparsers(dest="command", metavar="<command>")
+    add_init_parser(sub)
     add_verify_parser(sub)
     add_status_parser(sub)
     return parser
