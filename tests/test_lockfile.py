@@ -23,6 +23,7 @@ from specstar.lockfile import (
     build_manifest,
     build_source_file,
     compute_file_hash,
+    normalize_text,
     now_iso,
     read_manifest,
     write_manifest,
@@ -66,11 +67,12 @@ def sample_descriptor() -> Descriptor:
 
 
 class TestComputeFileHash:
-    def test_returns_sha256_and_size(self, tmp_md: Path) -> None:
+    def test_returns_normalized_sha256_and_size(self, tmp_md: Path) -> None:
         sha, size = compute_file_hash(tmp_md)
-        expected_sha = hashlib.sha256(tmp_md.read_bytes()).hexdigest()
+        normalized = normalize_text(tmp_md.read_bytes())
+        expected_sha = hashlib.sha256(normalized).hexdigest()
         assert sha == expected_sha
-        assert size == len(tmp_md.read_bytes())
+        assert size == len(normalized)
         assert len(sha) == 64
 
     def test_same_content_same_hash(self, tmp_path: Path) -> None:
@@ -92,6 +94,44 @@ class TestComputeFileHash:
             compute_file_hash(tmp_path / "nope.txt")
 
 
+class TestNormalizeText:
+    """Line-ending normalization makes files editor-portable for hashing."""
+
+    def test_crlf_becomes_lf(self) -> None:
+        assert normalize_text(b"a\r\nb\r\n") == b"a\nb\n"
+
+    def test_bare_cr_becomes_lf(self) -> None:
+        # Old-Mac line endings; ``\r`` alone, no following ``\n``.
+        assert normalize_text(b"a\rb\r") == b"a\nb\n"
+
+    def test_already_lf_unchanged(self) -> None:
+        text = b"# heading\n\nbody\n"
+        assert normalize_text(text) == text
+
+    def test_mixed_line_endings(self) -> None:
+        # CRLF + LF + bare CR mixed → all become LF.
+        assert normalize_text(b"a\r\nb\nc\rd\n") == b"a\nb\nc\nd\n"
+
+    def test_does_not_trim_trailing_whitespace(self) -> None:
+        # Markdown two-space hard-break must survive normalization.
+        text = b"line one  \nline two\n"
+        assert normalize_text(text) == text
+
+    def test_crlf_and_lf_files_share_hash(self, tmp_path: Path) -> None:
+        a = tmp_path / "a.md"
+        b = tmp_path / "b.md"
+        a.write_bytes(b"# Demo\r\n\r\nbody\r\n")
+        b.write_bytes(b"# Demo\n\nbody\n")
+        assert compute_file_hash(a) == compute_file_hash(b)
+
+    def test_size_reflects_normalized_length(self, tmp_path: Path) -> None:
+        crlf = tmp_path / "crlf.md"
+        crlf.write_bytes(b"a\r\nb\r\n")
+        _, size = compute_file_hash(crlf)
+        # Normalized form is "a\nb\n" → 4 bytes, not the raw 6.
+        assert size == 4
+
+
 # ---------------------------------------------------------------------------
 # build_source_file / build_manifest
 # ---------------------------------------------------------------------------
@@ -100,8 +140,9 @@ class TestComputeFileHash:
 class TestBuildSourceFile:
     def test_minimal_no_timestamp(self, tmp_md: Path) -> None:
         sf = build_source_file(tmp_md)
-        assert sf.sha256 == hashlib.sha256(tmp_md.read_bytes()).hexdigest()
-        assert sf.size == len(tmp_md.read_bytes())
+        normalized = normalize_text(tmp_md.read_bytes())
+        assert sf.sha256 == hashlib.sha256(normalized).hexdigest()
+        assert sf.size == len(normalized)
         assert sf.regenerated_at is None
 
     def test_with_explicit_timestamp(self, tmp_md: Path) -> None:
@@ -133,11 +174,11 @@ class TestBuildManifest:
         )
         assert (
             manifest.sources["spec.md"].sha256
-            == hashlib.sha256(tmp_md.read_bytes()).hexdigest()
+            == hashlib.sha256(normalize_text(tmp_md.read_bytes())).hexdigest()
         )
         assert (
             manifest.sources["my_app/_generated.py"].sha256
-            == hashlib.sha256(tmp_py.read_bytes()).hexdigest()
+            == hashlib.sha256(normalize_text(tmp_py.read_bytes())).hexdigest()
         )
 
     def test_validation_default_is_skipped(

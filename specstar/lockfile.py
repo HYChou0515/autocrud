@@ -33,18 +33,38 @@ from specstar.descriptor import (
 )
 
 
+def normalize_text(content: bytes) -> bytes:
+    """Apply line-ending normalization for stable hashing.
+
+    Replaces ``\\r\\n`` and bare ``\\r`` with ``\\n`` so that files identical
+    except for line endings hash to the same value. This is the minimum
+    normalization applied to every text source tracked in ``spec.lock.json``.
+
+    Phase 1.4 ships line-ending normalization only. Future phases may add
+    per-extension normalizers (e.g. ``ruff format`` for ``.py``, heading-spacing
+    for ``.md``) wrapped around this baseline. Callers should not assume the
+    output stays byte-equal to today's version across SpecStar releases —
+    hash stability is per-version.
+
+    Markdown's two-trailing-spaces hard-line-break is intentionally not
+    touched: trimming trailing whitespace changes that semantic and is
+    deferred until we have a real-world false-positive that justifies it.
+    """
+    return content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def compute_file_hash(path: str | Path) -> tuple[str, int]:
     """Return ``(sha256_hex, size_bytes)`` for the file at ``path``.
 
-    Phase 1.3 hashes raw bytes. Phase 1.4 will route through file-type-specific
-    normalizers so that line-ending and whitespace differences do not flip
-    the hash. Callers should treat this as "the canonical SpecStar hash" and
-    not assume it stays raw across versions.
+    Hash is computed over the **normalized** content (see
+    :func:`normalize_text`); ``size_bytes`` is the size of the normalized
+    content too, so the pair stays consistent. Callers comparing against
+    "raw bytes" SHA-256 must apply :func:`normalize_text` themselves first.
 
     Raises:
         FileNotFoundError: if ``path`` does not exist.
     """
-    data = Path(path).read_bytes()
+    data = normalize_text(Path(path).read_bytes())
     return hashlib.sha256(data).hexdigest(), len(data)
 
 
