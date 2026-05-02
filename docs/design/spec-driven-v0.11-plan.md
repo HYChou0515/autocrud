@@ -56,11 +56,14 @@ Phase 2 (CLI) ←─ 全部 phase 1 ─→ Phase 3 (Skill) ←─ 部分 phase 1
 - **版本**:`descriptor_version: 1` 寫進 manifest
 - **Acceptance**:hand-crafted example covers 所有節點/邊型別,JSON Schema validate 通過
 
-### 1.2 `spec.dump()` 實作
+### 1.2 `spec.dump_descriptor()` 實作
 
-- **產出**:`SpecStar.dump(path: str | None = None) -> dict | None` method on `specstar/crud/core.py`,內部 graph builder 模組
-- **行為**:走 in-memory state(`add_model` 註冊的 model、route templates、storage、permissions、Schema chains)→ 建 property graph → serialize 成 1.1 定義的格式
-- **Acceptance**:integration test 註冊 ~3 個 resources(含 ref、Schema chain、permission),`spec.dump()` 產出與 golden snapshot 一致
+- **命名注意**:`SpecStar.dump()` 已被既有 API 占用(資源資料 → msgpack 備份)。Spec-driven 用 **`dump_descriptor`** 避免衝突
+- **產出**:`SpecStar.dump_descriptor(path: str | Path | None = None) -> Descriptor | None` method on `specstar/crud/core.py`,delegate 到 `specstar/descriptor/builder.py`
+- **行為**:走 in-memory state(`add_model` 註冊的 model、route templates、storage、permissions、Schema chains)→ 建 property graph → 回傳 `Descriptor` 或寫 indented JSON 到 path
+- **v0.11 minimal coverage**(這 PR):`resource` / `field` 節點 + `has_field` / `references` 邊
+- **後續 v0.11 擴充**(同 task,分多個 PR):`schema_version` / `migrates_to` / `route` / `route_template` / `exposes` / `generated_by` / `storage_backend` / `stored_in` / `permission_policy` / `gates` / `granted_to`
+- **Acceptance**:integration test 註冊 ~3 個 resources(含 ref、Schema chain、permission),`dump_descriptor()` 產出與 golden snapshot 一致
 
 ### 1.3 `spec.lock.json` manifest format + I/O
 
