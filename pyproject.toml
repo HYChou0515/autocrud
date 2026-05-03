@@ -40,6 +40,9 @@ dependencies = [
 specstar = "specstar.cli:main"
 
 [project.optional-dependencies]
+gen = [
+    "litellm>=1.50",
+]
 docs = [
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.5.0",
