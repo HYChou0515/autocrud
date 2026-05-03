@@ -17,6 +17,20 @@ This module is internal to the v0.11 spec-driven layer.
 from __future__ import annotations
 
 from specstar.skill.llm import LLMClient, LLMError, ProviderConfig, build_client
+from specstar.skill.plan import (
+    ExecutionResult,
+    StepDecision,
+    apply_python_plan,
+    apply_result,
+    apply_spec_plan,
+    decide_steps,
+    execute_plan,
+    render_decision,
+    render_python_plan,
+    render_spec_plan,
+    run_step1,
+    run_step2,
+)
 from specstar.skill.prompts import (
     STEP1_SYSTEM_PROMPT,
     STEP2_SYSTEM_PROMPT,
@@ -42,6 +56,19 @@ __all__ = [
     "LLMError",
     "ProviderConfig",
     "build_client",
+    # plan orchestration
+    "ExecutionResult",
+    "StepDecision",
+    "apply_python_plan",
+    "apply_result",
+    "apply_spec_plan",
+    "decide_steps",
+    "execute_plan",
+    "render_decision",
+    "render_python_plan",
+    "render_spec_plan",
+    "run_step1",
+    "run_step2",
     # prompts
     "STEP1_SYSTEM_PROMPT",
     "STEP2_SYSTEM_PROMPT",
