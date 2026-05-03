@@ -26,7 +26,8 @@ def starter_project(tmp_path: Path) -> Path:
         error_stream=err,
     )
     assert rc == 0, err.getvalue()
-    # Lay down an intent.md by hand for now (until _init.py also scaffolds it).
+    # `specstar init` now scaffolds intent.md automatically; replace the
+    # default with a more recognisable string for assertions below.
     (tmp_path / "intent.md").write_text(
         "# my_app intent\n\nWe have users.\n", encoding="utf-8"
     )

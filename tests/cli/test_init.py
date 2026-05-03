@@ -36,30 +36,62 @@ class TestStarterLayout:
     def test_creates_all_expected_files(self, tmp_path: Path) -> None:
         rc, _, _ = _run(tmp_path)
         assert rc == 0
+        assert (tmp_path / "intent.md").exists()
         assert (tmp_path / "spec.md").exists()
         assert (tmp_path / "my_app" / "__init__.py").exists()
         assert (tmp_path / "my_app" / "_generated.py").exists()
         assert (tmp_path / "spec.lock.json").exists()
+
+    def test_intent_md_contains_package_name(self, tmp_path: Path) -> None:
+        _run(tmp_path, package="acme_api")
+        intent = (tmp_path / "intent.md").read_text()
+        assert "acme_api" in intent
+
+    def test_intent_md_invites_user_to_describe(self, tmp_path: Path) -> None:
+        _run(tmp_path)
+        intent = (tmp_path / "intent.md").read_text()
+        # The starter prose should hint at "your own words" / replace this.
+        assert "your own words" in intent
+
+    def test_spec_md_has_generated_header(self, tmp_path: Path) -> None:
+        _run(tmp_path)
+        spec = (tmp_path / "spec.md").read_text()
+        # Header marks the file as generated but editable.
+        assert "GENERATED" in spec
+        assert "may edit" in spec.lower()
+
+    def test_generated_py_has_generated_header(self, tmp_path: Path) -> None:
+        _run(tmp_path)
+        gen = (tmp_path / "my_app" / "_generated.py").read_text()
+        assert "GENERATED" in gen
+        assert "SSOT" in gen
 
     def test_custom_package_name(self, tmp_path: Path) -> None:
         rc, _, _ = _run(tmp_path, package="acme_api")
         assert rc == 0
         assert (tmp_path / "acme_api" / "__init__.py").exists()
         assert (tmp_path / "acme_api" / "_generated.py").exists()
-        # spec.md mentions the package name in headings.
+        # Both intent.md and spec.md mention the package name in headings.
+        assert "acme_api" in (tmp_path / "intent.md").read_text()
         assert "acme_api" in (tmp_path / "spec.md").read_text()
 
     def test_no_lock_skips_lock_file(self, tmp_path: Path) -> None:
         rc, _, _ = _run(tmp_path, write_lock=False)
         assert rc == 0
+        assert (tmp_path / "intent.md").exists()
         assert (tmp_path / "spec.md").exists()
         assert not (tmp_path / "spec.lock.json").exists()
 
     def test_summary_lists_created_files(self, tmp_path: Path) -> None:
         _, out, _ = _run(tmp_path)
+        assert "intent.md" in out
         assert "spec.md" in out
         assert "my_app/_generated.py" in out
         assert "spec.lock.json" in out
+
+    def test_summary_next_steps_point_to_intent_md(self, tmp_path: Path) -> None:
+        _, out, _ = _run(tmp_path)
+        assert "edit intent.md" in out
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +121,20 @@ class TestStarterLockContent:
     def test_lock_sources_match_disk_files(self, tmp_path: Path) -> None:
         _run(tmp_path)
         manifest = read_manifest(tmp_path / "spec.lock.json")
+        assert "intent.md" in manifest.sources
         assert "spec.md" in manifest.sources
         assert "my_app/_generated.py" in manifest.sources
+
+    def test_lock_intent_md_hash_matches_disk(self, tmp_path: Path) -> None:
+        import hashlib
+
+        from specstar.lockfile import normalize_text
+
+        _run(tmp_path)
+        manifest = read_manifest(tmp_path / "spec.lock.json")
+        on_disk = (tmp_path / "intent.md").read_bytes()
+        expected = hashlib.sha256(normalize_text(on_disk)).hexdigest()
+        assert manifest.sources["intent.md"].sha256 == expected
 
 
 # ---------------------------------------------------------------------------
