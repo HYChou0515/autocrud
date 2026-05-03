@@ -1,95 +1,74 @@
-"""Prompt builders for the spec-driven authoring LLM call.
+"""Prompt builders for the two-step spec-driven LLM pipeline.
 
-Both the Claude Code skill (`.claude/skills/specstar-spec/SKILL.md`) and the
-``specstar gen`` CLI delegate the actual rules to this module. Keeping the
-wording in one place prevents the two surfaces from drifting apart over
-release cycles.
+The pipeline:
 
-Design notes:
+::
 
-- The system prompt is a condensed restatement of the SKILL.md protocol —
-  hard rules (declarative-only Python, AST allow/block list, every
-  inferred decision listed explicitly, never improvise on failure) plus
-  the case 1-4 decision tree.
-- The user prompt embeds the current state (spec.md, _generated.py, lock
-  metadata) verbatim — within reason. For projects that grow large, a
-  later phase will add summarization; for v0.11 we expect spec.md to stay
-  under a few thousand tokens.
-- The output of :func:`build_messages` is a list of
-  ``{"role": ..., "content": ...}`` dicts compatible with the Anthropic
-  Python SDK ``messages.create`` API.
+    intent.md (user free prose)
+       │
+       │ STEP 1 — build_step1_prompts → SpecPlan
+       ▼
+    spec.md (structured β protocol)
+       │
+       │ STEP 2 — build_step2_prompts → PythonPlan
+       ▼
+    <package>/_generated.py (declarative Python)
+
+Each step has its own system prompt scoped to its task:
+
+- STEP 1 cares about prose-to-structure translation, β heading protocol,
+  and breaking-change detection between old and new spec.md.
+- STEP 2 cares about declarative-Python rules (AST allow / block list,
+  string references for I/O) and faithful translation from spec.md.
+
+System prompts are kept here so the Claude Code skill (SKILL.md) and the
+``specstar gen`` CLI use byte-identical wording.
 """
 
 from __future__ import annotations
 
 from msgspec import Struct
 
-from specstar.descriptor import Manifest
 
+class Step1Input(Struct, frozen=True):
+    """Input to STEP 1 (intent.md → spec.md)."""
 
-class AuthoringState(Struct, frozen=True):
-    """Snapshot of the project state passed to the LLM.
+    intent_md: str
+    """The user's free prose — the goal."""
 
-    All three sources are passed verbatim so the LLM can compute its own
-    diffs. ``manifest`` is supplied as a serialized JSON string for the
-    same reason — the LLM does not need msgspec types in scope.
-    """
-
-    spec_md: str
-    """Current contents of ``spec.md``."""
-
-    generated_py: str
-    """Current contents of ``<package>/_generated.py``."""
-
-    manifest_json: str
-    """Current ``spec.lock.json`` serialized as a JSON string."""
+    previous_spec_md: str
+    """The current spec.md content. Empty string on a brand-new project.
+    Used by the LLM to detect breaking changes (rename vs drop+add,
+    constraint changes, etc.)."""
 
     package_name: str
-    """The user's Python package (e.g. ``"my_app"``) — used to format
-    file paths in instructions."""
+    """The user's Python package, e.g. ``"my_app"``."""
 
 
-SYSTEM_PROMPT = """\
-You are the SpecStar spec-driven authoring engine. Your job is to translate \
-brief user prose into a curated edit of `spec.md` and the corresponding \
-declarative `_generated.py`. You do not write business logic.
+class Step2Input(Struct, frozen=True):
+    """Input to STEP 2 (spec.md → _generated.py)."""
 
-## Hard rules (never violate)
+    spec_md: str
+    """The structured spec to translate."""
 
-1. `_generated.py` must contain **declarative Python only**:
-   - `spec.add_model(...)` calls
-   - `Schema(...).step(...)` chains
-   - `msgspec.Struct` class definitions
-   - Pure-function migration bodies (input dict → output dict)
-   - String references for I/O / orchestration: `"my_app.logic.fn"`
+    previous_generated_py: str
+    """The current _generated.py content. Used for stability — the LLM
+    should preserve helper definitions, import order, and other
+    declarative idioms unless they need to change."""
 
-2. **Forbidden in `_generated.py`** — the AST validator will reject:
-   - imports of `os`, `subprocess`, `socket`, `requests`, `urllib*`, \
-`pathlib`, `shutil`, `tempfile`, `threading`, `multiprocessing`, \
-`asyncio`, `ctypes`, `httpx`, `aiohttp`, `http`
-   - statements: `Try`, `With`, `Raise`, `While`, `AsyncFunctionDef`, \
-`Await`, `Yield`, `Global`, `Nonlocal`
-   - calls to `exec`, `eval`, `compile`, `open`, `__import__`, \
-`input`, `breakpoint`, `getattr`, `setattr`, `delattr`
-   - dunder attribute reads (`__class__`, `__bases__`, `__globals__`, \
-`__builtins__`, ...) except `__name__` / `__doc__`
-   - `import` of any user module — use string references instead
+    package_name: str
 
-3. **Every inferred decision must be listed explicitly** in the plan you \
-present to the user. Never silently fill in a default.
 
-4. **Breaking changes** (rename, drop, type change, add-required) trigger \
-a migration prompt. Choose declarative migration via `Schema(...).step(...)`\
- when possible; scaffold a `(β) ref` to a user module otherwise.
+STEP1_SYSTEM_PROMPT = """\
+You are SpecStar's intent-to-spec translator.
 
-5. **Never improvise on failure.** If you don't understand the user's \
-prose, ask. If the AST validator would reject your output, explain what \
-failed and ask the user how to proceed. Do not retry blindly.
+Your job: convert the user's free-prose intent (intent.md) into a structured spec.md \
+that follows SpecStar's β heading protocol.
 
-## spec.md format (β heading protocol)
+## β heading protocol
 
 ```
-# <Project>
+# <Project Title>
 
 ## Resource: <Name>
 <prose description>
@@ -100,136 +79,147 @@ failed and ask the user how to proceed. Do not retry blindly.
 ### Permissions
 - `<action>`: <rule>
 
-### Storage
-<optional>
-
-### Workflows
-- `<event>`: <description> → `my_app.logic.fn_name`
-
-### Schema versions
-<optional, only when versioned migrations exist>
+### Storage          (optional — omit to use project default)
+### Workflows        (optional)
+### Schema versions  (only when versioned migrations exist)
 ```
 
-## Decision tree by hash state
+Heading levels: `# Project` (one per file), `## Resource: X` (one per resource), \
+`### Fields | Permissions | Storage | Workflows | Schema versions` (fixed five \
+sub-sections, omit any not used).
 
-| Case | spec.md | _generated.py | Action |
-|------|---------|---------------|--------|
-| 1 | match | match | Ask user for new intent |
-| 2 | changed | match | Translate spec.md → updated _generated.py |
-| 3 | match | changed | Drift warning. Ask user: revert generated, or promote to spec.md |
-| 4 | both changed | both changed | Reconcile mode — list both diffs, ask which side wins |
+## Hard rules
 
-## Output format
+1. **Preserve structure.** Every resource is a `## Resource:` heading. Every \
+field lives under a `### Fields` bullet.
 
-Respond with two clearly labelled sections:
+2. **Detect breaking changes.** Compare your new spec.md against the previous \
+spec.md (provided in the user message). Breaking changes include: field \
+renames, type changes, drops, adding a required field. For each, emit a \
+`BreakingChange` and add a `### Schema versions` entry to the new spec.md \
+describing the migration in prose.
 
-1. **Plan** — what you propose to do, with every inferred decision \
-listed explicitly under a `Inferred decisions:` sub-heading.
-2. **Confirmation request** — the literal text \
-`Reply with 'ok' to apply, or describe a correction.`
+3. **Surface every inferred decision.** Whenever you fill in a default the user \
+did not specify (permission rule, optional flag, storage backend, etc.), emit \
+an `InferredDecision`. Never silently fill defaults.
 
-Do **not** write the file edits in your response — that happens after \
-the user confirms.
+4. **Spec.md is reviewable prose.** Use clear English, complete sentences in \
+descriptions. The user reads this as documentation, not as a config file.
+
+5. **Practical stability.** Sections of the previous spec.md that the user did \
+not change should appear verbatim in the new spec.md. Do not rephrase, \
+reformat, or restructure unchanged content.
+
+## Output
+
+Pydantic schema `SpecPlan`:
+
+- `reasoning` (string, comes first — think step by step)
+- `summary` (one paragraph for the human)
+- `resources` (list of ResourceChange)
+- `inferred_decisions` (list of InferredDecision)
+- `breaking_changes` (list of BreakingChange)
+- `spec_md_after` (full new spec.md content)
 """
 
 
-def build_system_prompt() -> str:
-    """Return the system prompt verbatim. Pure function; cheap to call."""
-    return SYSTEM_PROMPT
+STEP2_SYSTEM_PROMPT = """\
+You are SpecStar's spec-to-Python translator.
+
+Your job: convert spec.md into declarative Python at \
+`<package>/_generated.py` that the SpecStar engine consumes.
+
+## Hard rules — declarative Python only
+
+1. **Allowed in `_generated.py`:**
+   - `spec.add_model(...)` calls
+   - `Schema(...).step(...)` chains
+   - `msgspec.Struct` class definitions
+   - Pure-function migration bodies (input dict → output dict)
+   - String references to user logic: `"my_app.logic.fn_name"`
+   - Imports of: `specstar`, `msgspec`, `typing`, `enum`, `datetime`, `decimal`
+
+2. **Forbidden imports** (AST validator rejects):
+   `os`, `subprocess`, `socket`, `requests`, `urllib*`, `pathlib`, `shutil`, \
+`tempfile`, `threading`, `multiprocessing`, `asyncio`, `ctypes`, \
+`httpx`, `aiohttp`, `http`. Also: any user package — use string references.
+
+3. **Forbidden statements:**
+   `Try`, `With`, `Raise`, `While`, `AsyncFunctionDef`, `Await`, `Yield`, \
+`YieldFrom`, `Global`, `Nonlocal`.
+
+4. **Forbidden builtins:**
+   `exec`, `eval`, `compile`, `open`, `__import__`, `input`, `breakpoint`, \
+`getattr`, `setattr`, `delattr`.
+
+5. **Forbidden dunder reads:**
+   `__class__`, `__bases__`, `__subclasses__`, `__globals__`, \
+`__builtins__`, `__dict__`, etc. Only `__name__` and `__doc__` are allowed.
+
+6. **For I/O / orchestration / external calls:** emit a **string reference** \
+to a user module (e.g. `"my_app.logic.process_order"`). Do NOT `import` \
+user modules.
+
+7. **Faithful translation.** Field names, types, ref targets, permission \
+rules in `_generated.py` must match spec.md exactly. Do not rename, \
+re-type, or reinterpret.
+
+8. **Practical stability.** When spec.md is mostly unchanged, regenerate \
+`_generated.py` to be byte-similar to the previous version. Preserve \
+helper function names, import order, comment positions.
+
+## Output
+
+Pydantic schema `PythonPlan`:
+
+- `reasoning` (string, first — think before writing)
+- `summary` (one paragraph)
+- `inferred_decisions` (list — decisions made during Python translation)
+- `generated_py_after` (full new `_generated.py` content)
+
+The schema does not have a `spec_md_after` field. STEP 2 cannot modify \
+spec.md by construction.
+"""
 
 
-def build_user_prompt(brief: str, state: AuthoringState) -> str:
-    """Construct the user message embedding the brief plus current state.
-
-    Format:
-
-    ```
-    BRIEF:
-    <brief>
-
-    PACKAGE: <package_name>
-
-    spec.md:
-    ```
-    <contents>
-    ```
-
-    <package>/_generated.py:
-    ```
-    <contents>
-    ```
-
-    spec.lock.json (manifest):
-    ```
-    <contents>
-    ```
-
-    Produce a plan per the system prompt. Do not write files yet.
-    ```
-    """
-    parts = [
-        f"BRIEF:\n{brief.strip()}",
+def build_step1_user_prompt(state: Step1Input) -> str:
+    """Construct the STEP 1 user message embedding intent + previous spec."""
+    return _join(
         f"PACKAGE: {state.package_name}",
-        "spec.md:",
-        f"```markdown\n{state.spec_md}\n```",
-        f"{state.package_name}/_generated.py:",
-        f"```python\n{state.generated_py}\n```",
-        "spec.lock.json (manifest):",
-        f"```json\n{state.manifest_json}\n```",
-        "Produce a plan per the system prompt. Do not write files yet.",
-    ]
-    return "\n\n".join(parts)
-
-
-def build_messages(
-    brief: str,
-    state: AuthoringState,
-) -> list[dict[str, str]]:
-    """Return Anthropic-API-compatible messages for the planning call.
-
-    The system prompt is **not** included here — pass it via the SDK's
-    ``system=`` parameter alongside this messages list. Splitting them
-    matches Anthropic's prompt-caching boundaries (the system prompt is
-    long-lived; user messages are per-turn).
-    """
-    return [
-        {
-            "role": "user",
-            "content": build_user_prompt(brief, state),
-        }
-    ]
-
-
-def state_from_paths(
-    *,
-    spec_md_path,
-    generated_py_path,
-    manifest: Manifest | None,
-    package_name: str,
-) -> AuthoringState:
-    """Convenience constructor that reads the three sources from disk.
-
-    Pass ``manifest=None`` when no lock file exists yet (e.g. a freshly
-    initialised project where the user invokes ``specstar gen`` before
-    the first lock has been built). The manifest section will be replaced
-    with an explanatory placeholder.
-    """
-    from pathlib import Path
-
-    import msgspec.json
-
-    spec_md = Path(spec_md_path).read_text(encoding="utf-8")
-    generated_py = Path(generated_py_path).read_text(encoding="utf-8")
-    if manifest is not None:
-        manifest_blob = msgspec.json.format(
-            msgspec.json.encode(manifest), indent=2
-        ).decode("utf-8")
-    else:
-        manifest_blob = '{"note": "no spec.lock.json exists yet"}'
-
-    return AuthoringState(
-        spec_md=spec_md,
-        generated_py=generated_py,
-        manifest_json=manifest_blob,
-        package_name=package_name,
+        "intent.md (your goal):",
+        f"```markdown\n{state.intent_md}\n```",
+        "Previous spec.md (for breaking-change detection — may be empty on a fresh project):",
+        f"```markdown\n{state.previous_spec_md}\n```",
+        "Produce SpecPlan with the new spec.md content.",
     )
+
+
+def build_step2_user_prompt(state: Step2Input) -> str:
+    """Construct the STEP 2 user message embedding spec + previous python."""
+    return _join(
+        f"PACKAGE: {state.package_name}",
+        "spec.md (the structured spec to translate):",
+        f"```markdown\n{state.spec_md}\n```",
+        "Previous _generated.py (for stability — preserve idioms unless they need to change):",
+        f"```python\n{state.previous_generated_py}\n```",
+        f"Produce PythonPlan with the new {state.package_name}/_generated.py content.",
+    )
+
+
+def build_step1_messages(state: Step1Input) -> list[dict[str, str]]:
+    """Anthropic-API-shape messages for STEP 1.
+
+    System prompt is **not** included — pass it via the SDK's ``system=``
+    parameter (or as ``messages[0]`` for OpenAI). Splitting them matches
+    Anthropic's prompt-cache boundaries.
+    """
+    return [{"role": "user", "content": build_step1_user_prompt(state)}]
+
+
+def build_step2_messages(state: Step2Input) -> list[dict[str, str]]:
+    """Anthropic-API-shape messages for STEP 2."""
+    return [{"role": "user", "content": build_step2_user_prompt(state)}]
+
+
+def _join(*parts: str) -> str:
+    return "\n\n".join(parts)

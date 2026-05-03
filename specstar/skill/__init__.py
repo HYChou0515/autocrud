@@ -1,27 +1,61 @@
-"""Prompt-engineering primitives shared by the Claude Code skill and the
-``specstar gen`` CLI.
+"""Spec-driven authoring layer for SpecStar.
 
-The Claude Code skill ships as ``.claude/skills/specstar-spec/SKILL.md``
-(human-readable instructions). The ``specstar gen`` CLI calls Anthropic's
-API directly with a system prompt + user message constructed by this
-module. Both surfaces use the **same** rules — this module is the
-single source of truth for the wording.
+The two-step pipeline:
+
+::
+
+    intent.md  ──[STEP 1: prose → structured spec]──>  spec.md
+    spec.md    ──[STEP 2: structured spec → Python]──>  <package>/_generated.py
+
+Both steps are LLM-driven. The transport (litellm by default) is pluggable
+via :mod:`specstar.skill.llm`. The structured outputs are typed via
+:mod:`specstar.skill.schemas`.
 
 This module is internal to the v0.11 spec-driven layer.
 """
 
 from __future__ import annotations
 
+from specstar.skill.llm import LLMClient, LLMError, ProviderConfig, build_client
 from specstar.skill.prompts import (
-    AuthoringState,
-    build_messages,
-    build_system_prompt,
-    build_user_prompt,
+    STEP1_SYSTEM_PROMPT,
+    STEP2_SYSTEM_PROMPT,
+    Step1Input,
+    Step2Input,
+    build_step1_messages,
+    build_step1_user_prompt,
+    build_step2_messages,
+    build_step2_user_prompt,
+)
+from specstar.skill.schemas import (
+    BreakingChange,
+    FieldChange,
+    InferredDecision,
+    PythonPlan,
+    ResourceChange,
+    SpecPlan,
 )
 
 __all__ = [
-    "AuthoringState",
-    "build_messages",
-    "build_system_prompt",
-    "build_user_prompt",
+    # llm
+    "LLMClient",
+    "LLMError",
+    "ProviderConfig",
+    "build_client",
+    # prompts
+    "STEP1_SYSTEM_PROMPT",
+    "STEP2_SYSTEM_PROMPT",
+    "Step1Input",
+    "Step2Input",
+    "build_step1_messages",
+    "build_step1_user_prompt",
+    "build_step2_messages",
+    "build_step2_user_prompt",
+    # schemas
+    "BreakingChange",
+    "FieldChange",
+    "InferredDecision",
+    "PythonPlan",
+    "ResourceChange",
+    "SpecPlan",
 ]

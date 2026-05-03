@@ -1,129 +1,161 @@
-"""Tests for the shared prompt builders.
+"""Tests for the two-step prompt builders.
 
-Anchors the wording that both the Claude Code skill and ``specstar gen``
-will eventually use. Tests are content-checks, not deep behavior tests:
-the actual LLM behavior is exercised via ``specstar gen`` integration
-tests once that command lands.
+Content checks anchor the wording shared by the Claude Code skill and the
+upcoming ``specstar gen`` CLI. Real LLM behavior is exercised separately.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from specstar.descriptor import Descriptor, ValidationStatus
-from specstar.lockfile import build_manifest
 from specstar.skill import (
-    AuthoringState,
-    build_messages,
-    build_system_prompt,
-    build_user_prompt,
+    STEP1_SYSTEM_PROMPT,
+    STEP2_SYSTEM_PROMPT,
+    Step1Input,
+    Step2Input,
+    build_step1_messages,
+    build_step1_user_prompt,
+    build_step2_messages,
+    build_step2_user_prompt,
 )
-from specstar.skill.prompts import state_from_paths
 
 
 @pytest.fixture()
-def sample_state() -> AuthoringState:
-    return AuthoringState(
-        spec_md="# my_app\n\n## Resource: User\n",
-        generated_py="from specstar import spec\n",
-        manifest_json='{"specstar_version": "0.11.0"}',
+def step1_input() -> Step1Input:
+    return Step1Input(
+        intent_md="I want a User resource with name and email.",
+        previous_spec_md="# my_app\n",
+        package_name="my_app",
+    )
+
+
+@pytest.fixture()
+def step2_input() -> Step2Input:
+    return Step2Input(
+        spec_md="# my_app\n\n## Resource: User\n\n### Fields\n- `name`: str\n",
+        previous_generated_py="from specstar import spec\n",
         package_name="my_app",
     )
 
 
 # ---------------------------------------------------------------------------
-# System prompt
+# STEP 1 system prompt
 # ---------------------------------------------------------------------------
 
 
-class TestSystemPrompt:
-    def test_includes_declarative_python_rule(self) -> None:
-        sp = build_system_prompt()
-        assert (
-            "declarative Python only" in sp.lower()
-            or "declarative python only" in sp.lower()
-        )
+class TestStep1SystemPrompt:
+    def test_describes_beta_protocol(self) -> None:
+        assert "β heading protocol" in STEP1_SYSTEM_PROMPT
+        assert "## Resource:" in STEP1_SYSTEM_PROMPT
+        assert "### Fields" in STEP1_SYSTEM_PROMPT
 
-    def test_lists_blocked_imports(self) -> None:
-        sp = build_system_prompt()
-        # Spot-check a few high-risk modules.
-        for module in ["os", "subprocess", "socket", "requests"]:
-            assert module in sp
-
-    def test_lists_blocked_statements(self) -> None:
-        sp = build_system_prompt()
-        for stmt in ["Try", "While", "Raise", "AsyncFunctionDef"]:
-            assert stmt in sp
-
-    def test_lists_blocked_builtins(self) -> None:
-        sp = build_system_prompt()
-        for builtin in ["exec", "eval", "open", "__import__", "getattr"]:
-            assert builtin in sp
-
-    def test_mentions_dunder_guard(self) -> None:
-        sp = build_system_prompt()
-        assert "__class__" in sp or "dunder" in sp
-
-    def test_lists_case_decision_tree(self) -> None:
-        sp = build_system_prompt()
-        assert "Case" in sp or "case" in sp
-        assert "1" in sp and "2" in sp and "3" in sp and "4" in sp
+    def test_requires_breaking_change_detection(self) -> None:
+        assert "breaking change" in STEP1_SYSTEM_PROMPT.lower()
 
     def test_requires_inferred_decisions_listed(self) -> None:
-        sp = build_system_prompt()
-        assert "inferred" in sp.lower()
+        assert "inferred" in STEP1_SYSTEM_PROMPT.lower()
+        assert "InferredDecision" in STEP1_SYSTEM_PROMPT
 
-    def test_forbids_silent_fallback(self) -> None:
-        sp = build_system_prompt()
-        assert "improvise" in sp.lower() or "never" in sp.lower()
-
-    def test_describes_beta_string_reference(self) -> None:
-        sp = build_system_prompt()
-        # Either β/beta vocabulary or the literal pattern of a string ref.
+    def test_requires_practical_stability(self) -> None:
         assert (
-            "string reference" in sp.lower()
-            or "string ref" in sp.lower()
-            or "my_app.logic" in sp
+            "stability" in STEP1_SYSTEM_PROMPT.lower()
+            or "verbatim" in STEP1_SYSTEM_PROMPT.lower()
         )
 
+    def test_specifies_specplan_output(self) -> None:
+        assert "SpecPlan" in STEP1_SYSTEM_PROMPT
+        assert "spec_md_after" in STEP1_SYSTEM_PROMPT
+
 
 # ---------------------------------------------------------------------------
-# User prompt
+# STEP 2 system prompt
 # ---------------------------------------------------------------------------
 
 
-class TestUserPrompt:
-    def test_includes_brief(self, sample_state: AuthoringState) -> None:
-        up = build_user_prompt("add a Phone field to User", sample_state)
-        assert "add a Phone field to User" in up
+class TestStep2SystemPrompt:
+    def test_states_declarative_only_rule(self) -> None:
+        assert "declarative" in STEP2_SYSTEM_PROMPT.lower()
 
-    def test_strips_brief_whitespace(self, sample_state: AuthoringState) -> None:
-        up = build_user_prompt("  trimmed  \n", sample_state)
-        # Stripped — leading/trailing whitespace gone.
-        assert "BRIEF:\ntrimmed" in up
+    def test_lists_blocked_imports(self) -> None:
+        for module in ["os", "subprocess", "socket", "requests"]:
+            assert module in STEP2_SYSTEM_PROMPT
 
-    def test_embeds_spec_md(self, sample_state: AuthoringState) -> None:
-        up = build_user_prompt("change", sample_state)
-        assert sample_state.spec_md in up
+    def test_lists_blocked_statements(self) -> None:
+        for stmt in ["Try", "While", "Raise", "AsyncFunctionDef"]:
+            assert stmt in STEP2_SYSTEM_PROMPT
 
-    def test_embeds_generated_py(self, sample_state: AuthoringState) -> None:
-        up = build_user_prompt("change", sample_state)
-        assert sample_state.generated_py in up
+    def test_lists_blocked_builtins(self) -> None:
+        for bi in ["exec", "eval", "open", "__import__", "getattr"]:
+            assert bi in STEP2_SYSTEM_PROMPT
 
-    def test_embeds_manifest_json(self, sample_state: AuthoringState) -> None:
-        up = build_user_prompt("change", sample_state)
-        assert sample_state.manifest_json in up
+    def test_mentions_dunder_guard(self) -> None:
+        assert "__class__" in STEP2_SYSTEM_PROMPT or "dunder" in STEP2_SYSTEM_PROMPT
 
-    def test_mentions_package_name(self, sample_state: AuthoringState) -> None:
-        up = build_user_prompt("change", sample_state)
-        assert sample_state.package_name in up
+    def test_describes_string_reference_for_io(self) -> None:
+        assert "string reference" in STEP2_SYSTEM_PROMPT.lower()
+        # Concrete example included
+        assert "my_app.logic" in STEP2_SYSTEM_PROMPT
 
-    def test_asks_for_plan_not_files(self, sample_state: AuthoringState) -> None:
-        up = build_user_prompt("change", sample_state)
-        assert "plan" in up.lower()
-        assert "do not write" in up.lower()
+    def test_specifies_pythonplan_output(self) -> None:
+        assert "PythonPlan" in STEP2_SYSTEM_PROMPT
+        assert "generated_py_after" in STEP2_SYSTEM_PROMPT
+
+    def test_states_step2_cannot_modify_spec_md(self) -> None:
+        # Important invariant: STEP 2 must not touch spec.md
+        assert "spec_md_after" in STEP2_SYSTEM_PROMPT
+        assert "cannot modify spec.md" in STEP2_SYSTEM_PROMPT.lower()
+
+
+# ---------------------------------------------------------------------------
+# Step 1 user prompt
+# ---------------------------------------------------------------------------
+
+
+class TestStep1UserPrompt:
+    def test_embeds_intent(self, step1_input: Step1Input) -> None:
+        up = build_step1_user_prompt(step1_input)
+        assert step1_input.intent_md in up
+
+    def test_embeds_previous_spec(self, step1_input: Step1Input) -> None:
+        up = build_step1_user_prompt(step1_input)
+        assert step1_input.previous_spec_md in up
+
+    def test_mentions_package_name(self, step1_input: Step1Input) -> None:
+        up = build_step1_user_prompt(step1_input)
+        assert step1_input.package_name in up
+
+    def test_asks_for_specplan(self, step1_input: Step1Input) -> None:
+        up = build_step1_user_prompt(step1_input)
+        assert "SpecPlan" in up
+
+
+# ---------------------------------------------------------------------------
+# Step 2 user prompt
+# ---------------------------------------------------------------------------
+
+
+class TestStep2UserPrompt:
+    def test_embeds_spec_md(self, step2_input: Step2Input) -> None:
+        up = build_step2_user_prompt(step2_input)
+        assert step2_input.spec_md in up
+
+    def test_embeds_previous_generated_py(self, step2_input: Step2Input) -> None:
+        up = build_step2_user_prompt(step2_input)
+        assert step2_input.previous_generated_py in up
+
+    def test_mentions_package_name(self, step2_input: Step2Input) -> None:
+        up = build_step2_user_prompt(step2_input)
+        assert step2_input.package_name in up
+
+    def test_asks_for_pythonplan(self, step2_input: Step2Input) -> None:
+        up = build_step2_user_prompt(step2_input)
+        assert "PythonPlan" in up
+
+    def test_includes_generated_py_path_with_package(
+        self, step2_input: Step2Input
+    ) -> None:
+        up = build_step2_user_prompt(step2_input)
+        assert f"{step2_input.package_name}/_generated.py" in up
 
 
 # ---------------------------------------------------------------------------
@@ -132,61 +164,14 @@ class TestUserPrompt:
 
 
 class TestBuildMessages:
-    def test_returns_list_of_role_content_dicts(
-        self, sample_state: AuthoringState
-    ) -> None:
-        msgs = build_messages("brief", sample_state)
-        assert isinstance(msgs, list)
-        assert len(msgs) >= 1
-        assert all("role" in m and "content" in m for m in msgs)
-
-    def test_first_message_is_user_role(self, sample_state: AuthoringState) -> None:
-        msgs = build_messages("brief", sample_state)
+    def test_step1_returns_one_user_message(self, step1_input: Step1Input) -> None:
+        msgs = build_step1_messages(step1_input)
+        assert len(msgs) == 1
         assert msgs[0]["role"] == "user"
+        assert msgs[0]["content"] == build_step1_user_prompt(step1_input)
 
-    def test_user_message_body_matches_user_prompt(
-        self, sample_state: AuthoringState
-    ) -> None:
-        msgs = build_messages("brief", sample_state)
-        assert msgs[0]["content"] == build_user_prompt("brief", sample_state)
-
-
-# ---------------------------------------------------------------------------
-# state_from_paths convenience
-# ---------------------------------------------------------------------------
-
-
-class TestStateFromPaths:
-    def test_reads_files_and_serializes_manifest(self, tmp_path: Path) -> None:
-        spec_md = tmp_path / "spec.md"
-        spec_md.write_text("# demo\n", encoding="utf-8")
-        gen = tmp_path / "_generated.py"
-        gen.write_text("x = 1\n", encoding="utf-8")
-        manifest = build_manifest(
-            Descriptor(nodes=[], edges=[]),
-            sources={"spec.md": spec_md},
-            validation=ValidationStatus(ast_check="passed"),
-        )
-        state = state_from_paths(
-            spec_md_path=spec_md,
-            generated_py_path=gen,
-            manifest=manifest,
-            package_name="my_app",
-        )
-        assert state.spec_md == "# demo\n"
-        assert state.generated_py == "x = 1\n"
-        assert "specstar_version" in state.manifest_json
-        assert state.package_name == "my_app"
-
-    def test_handles_missing_manifest(self, tmp_path: Path) -> None:
-        spec_md = tmp_path / "spec.md"
-        spec_md.write_text("# demo\n", encoding="utf-8")
-        gen = tmp_path / "_generated.py"
-        gen.write_text("x = 1\n", encoding="utf-8")
-        state = state_from_paths(
-            spec_md_path=spec_md,
-            generated_py_path=gen,
-            manifest=None,
-            package_name="my_app",
-        )
-        assert "no spec.lock.json" in state.manifest_json
+    def test_step2_returns_one_user_message(self, step2_input: Step2Input) -> None:
+        msgs = build_step2_messages(step2_input)
+        assert len(msgs) == 1
+        assert msgs[0]["role"] == "user"
+        assert msgs[0]["content"] == build_step2_user_prompt(step2_input)

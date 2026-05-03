@@ -1,24 +1,28 @@
-"""``specstar gen`` — print the spec-driven LLM prompt for non-Claude-Code users.
+"""``specstar gen`` — print the spec-driven LLM prompts (dry-run only).
 
-Phase 2.5 ships a **dry-run-only** version: ``specstar gen`` reads the
-current project state plus the user's brief prose, builds the system +
-user prompts via :mod:`specstar.skill.prompts`, and prints them. Users
-pipe the output into their own LLM tooling (Anthropic SDK script, Claude
-desktop, OpenAI-compatible local model, etc.) and apply the resulting
-plan manually — typically via subsequent ``specstar lock`` + ``specstar
-verify`` invocations.
+v0.11 transitional state:
 
-A future release will add a ``--call`` flag that invokes the Anthropic API
-directly; the prompt building stays in :mod:`specstar.skill.prompts` so
-both surfaces stay aligned.
+This command builds and prints the system + user prompts for the
+**two-step** spec-driven pipeline (intent.md → spec.md, spec.md →
+_generated.py). It does not yet invoke an LLM directly — that lands in
+a follow-up commit when the orchestration layer (`specstar.skill.plan`)
+arrives. Pipe the printed prompts into your own LLM client for now:
+
+::
+
+    specstar gen --step 1 --format json | <your-LLM-tool>
+    specstar gen --step 2 --format json | <your-LLM-tool>
 
 Output formats:
 
-- **text** (default): the prompts in human-readable form, sectioned
-  ``=== system ===`` / ``=== user ===``
-- **json** (``--format json``): the messages list shaped for the
-  Anthropic ``messages.create`` API (system as a top-level field,
-  ``messages`` as the conversation array)
+- **text** (default): human-readable, sectioned ``=== system ===`` /
+  ``=== user ===``
+- **json** (``--format json``): Anthropic-API shape with system as a
+  top-level field
+
+The Claude Code skill does the full two-step flow interactively. This
+CLI exists for users without Claude Code who want to plug their own
+LLM toolchain (any provider, including self-hosted) into SpecStar.
 """
 
 from __future__ import annotations
@@ -32,9 +36,12 @@ import msgspec
 
 from specstar.lockfile import read_manifest
 from specstar.skill.prompts import (
-    build_messages,
-    build_system_prompt,
-    state_from_paths,
+    STEP1_SYSTEM_PROMPT,
+    STEP2_SYSTEM_PROMPT,
+    Step1Input,
+    Step2Input,
+    build_step1_messages,
+    build_step2_messages,
 )
 
 
@@ -42,26 +49,35 @@ def add_gen_parser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``gen`` subcommand on the top-level parser."""
     p = subparsers.add_parser(
         "gen",
-        help="Print the spec-driven LLM prompt (v0.11: dry-run only).",
+        help="Print the spec-driven LLM prompts (v0.11: dry-run only).",
         description=(
-            "Build and print the system + user prompts for the spec-driven "
-            "authoring LLM call. Pipe into your own LLM client. A future "
-            "release will add direct Anthropic API integration via --call."
+            "Build and print the system + user prompts for the two-step "
+            "spec-driven authoring pipeline. Pipe into your own LLM client. "
+            "Direct API integration via litellm lands in a follow-up commit."
         ),
     )
     p.add_argument(
-        "brief",
-        nargs="?",
-        default=None,
-        help="Brief prose describing the change. If omitted, read from stdin.",
+        "--step",
+        type=int,
+        choices=[1, 2],
+        default=1,
+        help=(
+            "Which step to print: 1 = intent.md → spec.md, "
+            "2 = spec.md → _generated.py. Default 1."
+        ),
     )
     p.add_argument(
         "--package",
         default=None,
         help=(
-            "Python package name (e.g. my_app). Auto-detected from existing "
+            "Python package name (e.g. my_app). Auto-detected from "
             "spec.lock.json when omitted."
         ),
+    )
+    p.add_argument(
+        "--intent",
+        default="intent.md",
+        help="Path to intent.md (default: ./intent.md).",
     )
     p.add_argument(
         "--spec",
@@ -86,20 +102,20 @@ def add_gen_parser(subparsers: argparse._SubParsersAction) -> None:
         choices=["text", "json"],
         default="text",
         help="Output format. ``text`` for human reading; ``json`` for the "
-        "Anthropic API messages list.",
+        "Anthropic API shape.",
     )
     p.set_defaults(func=gen_cmd)
 
 
 def gen_cmd(args: argparse.Namespace) -> int:
     return run_gen(
-        brief=args.brief,
+        step=args.step,
         package=args.package,
+        intent_path=Path(args.intent),
         spec_path=Path(args.spec),
         generated_path=Path(args.generated) if args.generated else None,
         lock_path=Path(args.lock),
         output_format=args.format,
-        stdin=sys.stdin,
         stream=sys.stdout,
         error_stream=sys.stderr,
     )
@@ -107,40 +123,28 @@ def gen_cmd(args: argparse.Namespace) -> int:
 
 def run_gen(
     *,
-    brief: str | None,
+    step: int,
     package: str | None,
+    intent_path: Path,
     spec_path: Path,
     generated_path: Path | None,
     lock_path: Path,
     output_format: str,
-    stdin,
     stream,
     error_stream,
 ) -> int:
-    """Build prompts and print them. Returns process exit code."""
-    if brief is None:
-        brief = stdin.read()
-    if not brief.strip():
-        print(
-            "error: brief prose is required (positional arg or stdin)",
-            file=error_stream,
-        )
+    """Build prompts for ``step`` and print them. Returns process exit code."""
+    if step not in (1, 2):
+        print(f"error: unknown step {step}", file=error_stream)
         return 2
 
-    if not spec_path.exists():
-        print(f"error: spec file not found: {spec_path}", file=error_stream)
-        return 2
-
-    # Auto-detect package and generated path from lock if available.
+    # Auto-detect package and generated path from existing lock.
     manifest = None
     if lock_path.exists():
         try:
             manifest = read_manifest(lock_path)
         except msgspec.DecodeError as exc:
-            print(
-                f"error: cannot parse {lock_path}: {exc}",
-                file=error_stream,
-            )
+            print(f"error: cannot parse {lock_path}: {exc}", file=error_stream)
             return 2
 
     if package is None or generated_path is None:
@@ -160,40 +164,58 @@ def run_gen(
             file=error_stream,
         )
         return 2
-    if generated_path is None:
-        generated_path = Path(package) / "_generated.py"
-    if not generated_path.exists():
-        print(
-            f"error: generated file not found: {generated_path}",
-            file=error_stream,
-        )
-        return 2
 
-    state = state_from_paths(
-        spec_md_path=spec_path,
-        generated_py_path=generated_path,
-        manifest=manifest,
-        package_name=package,
-    )
+    if step == 1:
+        if not intent_path.exists():
+            print(f"error: intent file not found: {intent_path}", file=error_stream)
+            return 2
+        previous_spec_md = (
+            spec_path.read_text(encoding="utf-8") if spec_path.exists() else ""
+        )
+        step_input = Step1Input(
+            intent_md=intent_path.read_text(encoding="utf-8"),
+            previous_spec_md=previous_spec_md,
+            package_name=package,
+        )
+        system_prompt = STEP1_SYSTEM_PROMPT
+        messages = build_step1_messages(step_input)
+        step_label = "STEP 1 (intent.md → spec.md)"
+    else:
+        if not spec_path.exists():
+            print(f"error: spec file not found: {spec_path}", file=error_stream)
+            return 2
+        if generated_path is None:
+            generated_path = Path(package) / "_generated.py"
+        previous_generated_py = (
+            generated_path.read_text(encoding="utf-8")
+            if generated_path.exists()
+            else ""
+        )
+        step_input = Step2Input(
+            spec_md=spec_path.read_text(encoding="utf-8"),
+            previous_generated_py=previous_generated_py,
+            package_name=package,
+        )
+        system_prompt = STEP2_SYSTEM_PROMPT
+        messages = build_step2_messages(step_input)
+        step_label = "STEP 2 (spec.md → _generated.py)"
 
     if output_format == "json":
-        payload = {
-            "system": build_system_prompt(),
-            "messages": build_messages(brief, state),
-        }
+        payload = {"step": step, "system": system_prompt, "messages": messages}
         print(json.dumps(payload, indent=2), file=stream)
     else:
+        print(f"=== {step_label} ===", file=stream)
+        print(file=stream)
         print("=== system ===", file=stream)
-        print(build_system_prompt(), file=stream)
+        print(system_prompt, file=stream)
         print(file=stream)
         print("=== user ===", file=stream)
-        print(build_messages(brief, state)[0]["content"], file=stream)
+        print(messages[0]["content"], file=stream)
         print(file=stream)
         print(
-            "(specstar gen v0.11: dry-run only. Pipe the prompts above into "
-            "your own LLM client, then apply the plan manually via edits + "
-            "`specstar lock` + `specstar verify`. Direct API integration is "
-            "coming in a future release.)",
+            "(specstar gen v0.11: dry-run only. Pipe these prompts into your LLM "
+            "client; apply the resulting Plan via edits + `specstar lock` + "
+            "`specstar verify`. Direct API integration coming in a follow-up release.)",
             file=stream,
         )
     return 0
