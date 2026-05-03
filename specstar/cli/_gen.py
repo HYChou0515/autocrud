@@ -469,6 +469,52 @@ def _run_call(
         print(f"error: LLM call failed: {exc}", file=error_stream)
         return 1
 
+    # Pre-write AST validation. The LLM output may contain forbidden
+    # patterns (`import os`, `Try` blocks, dunder access). Catching
+    # them BEFORE writing means: (a) no broken file ever lands on disk,
+    # (b) no subprocess gets to execute module-top malicious code, and
+    # (c) the user sees a clean AST-attributed error instead of a late
+    # subprocess failure plus rollback.
+    if result.python_plan is not None:
+        from specstar.validator import DeclarativeASTValidator
+
+        validator = DeclarativeASTValidator()
+        try:
+            ast_errors = validator.validate(
+                result.python_plan.generated_py_after,
+                filename=str(generated_path),
+            )
+        except SyntaxError as exc:
+            print(
+                f"error: LLM produced invalid Python (syntax error at line "
+                f"{exc.lineno}): {exc.msg}",
+                file=error_stream,
+            )
+            print("aborted before write — no files modified.", file=error_stream)
+            return 1
+        if ast_errors:
+            print(
+                "\nerror: LLM output rejected by AST validator (no files written):",
+                file=error_stream,
+            )
+            for e in ast_errors[:10]:
+                print(
+                    f"  line {e.line}:{e.col} [{e.kind}] {e.message}",
+                    file=error_stream,
+                )
+            if len(ast_errors) > 10:
+                print(
+                    f"  ... and {len(ast_errors) - 10} more",
+                    file=error_stream,
+                )
+            print(
+                "\nrefine intent.md (perhaps the LLM hallucinated; "
+                "see SpecStar API reference in the system prompt) "
+                "and re-run.",
+                file=error_stream,
+            )
+            return 1
+
     # Render plans for the user.
     if result.spec_plan is not None:
         print(render_spec_plan(result.spec_plan), file=stream)
@@ -482,6 +528,13 @@ def _run_call(
             print("aborted — no files written.", file=stream)
             return 1
 
+    # Capture before-state so we can roll back if the post-write
+    # lock/verify pipeline fails (LLM produced syntactically valid but
+    # semantically broken code, or AST validator rejects).
+    backup_spec = spec_path.read_bytes() if spec_path.exists() else None
+    backup_gen = generated_path.read_bytes() if generated_path.exists() else None
+    backup_lock = lock_path.read_bytes() if lock_path.exists() else None
+
     # Apply.
     written = apply_result(result, spec_path=spec_path, generated_path=generated_path)
     if written:
@@ -490,7 +543,7 @@ def _run_call(
             print(f"  {w}", file=stream)
 
     # Refresh lock + verify.
-    return _refresh_lock_and_verify(
+    rc = _refresh_lock_and_verify(
         package=package,
         generated_path=generated_path,
         spec_path=spec_path,
@@ -500,10 +553,67 @@ def _run_call(
         error_stream=error_stream,
     )
 
+    if rc != 0:
+        _rollback(
+            spec_path=spec_path,
+            generated_path=generated_path,
+            lock_path=lock_path,
+            backup_spec=backup_spec,
+            backup_gen=backup_gen,
+            backup_lock=backup_lock,
+            stream=stream,
+        )
+    return rc
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _rollback(
+    *,
+    spec_path: Path,
+    generated_path: Path,
+    lock_path: Path,
+    backup_spec: bytes | None,
+    backup_gen: bytes | None,
+    backup_lock: bytes | None,
+    stream,
+) -> None:
+    """Restore the working tree to its pre-apply state on pipeline failure.
+
+    Called when ``apply_result`` writes succeed but the subsequent
+    ``lock`` or ``verify`` step rejects the LLM output (TypeError on
+    import, AST violation, hash mismatch). Without rollback the user is
+    left holding broken files and a stale lock.
+    """
+    restored: list[str] = []
+    for path, backup in (
+        (spec_path, backup_spec),
+        (generated_path, backup_gen),
+        (lock_path, backup_lock),
+    ):
+        if backup is None:
+            if path.exists():
+                path.unlink()
+                restored.append(str(path) + " (deleted)")
+            continue
+        # Only rewrite if content actually differs to avoid touching mtime.
+        if not path.exists() or path.read_bytes() != backup:
+            path.write_bytes(backup)
+            restored.append(str(path))
+    if restored:
+        print(
+            "\nrolled back working tree to pre-apply state:",
+            file=stream,
+        )
+        for r in restored:
+            print(f"  {r}", file=stream)
+        print(
+            "(refine intent.md or re-run; nothing was permanently changed.)",
+            file=stream,
+        )
 
 
 def _stdin_confirm(prompt: str) -> bool:

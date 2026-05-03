@@ -484,3 +484,191 @@ class TestCliDispatchCall:
         assert "--call" in captured.out
         assert "--force" in captured.out
         assert "--from-spec" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Failure recovery: rollback when LLM-generated code breaks
+# ---------------------------------------------------------------------------
+
+
+_BAD_KWARG_GENERATED_PY = '''\
+"""GENERATED — but with a hallucinated kwarg."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import spec
+
+
+class User(msgspec.Struct):
+    name: str
+    email: str
+
+
+spec.add_model(User, name="user", permissions={"read": "any"})
+'''
+
+
+class TestRollbackOnBrokenLLMCode:
+    """When the LLM produces code that AST-validates but TypeErrors at
+    import, gen --call must restore the previous file content rather
+    than leave the user with a broken _generated.py.
+    """
+
+    @pytest.fixture()
+    def edited_intent_pristine(self, pristine_project: Path) -> Path:
+        # Edit intent.md so we're in case 2 (LLM call expected).
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nA tiny change to trigger STEP 1+2.\n",
+            encoding="utf-8",
+        )
+        return pristine_project
+
+    def test_broken_kwarg_triggers_rollback(self, edited_intent_pristine: Path) -> None:
+        gen_path = edited_intent_pristine / "my_app" / "_generated.py"
+        spec_path = edited_intent_pristine / "spec.md"
+        before_gen = gen_path.read_text()
+        before_spec = spec_path.read_text()
+
+        # Mock LLM that emits Python with a hallucinated `permissions=` kwarg.
+        client = _MockClient(generated_py_after=_BAD_KWARG_GENERATED_PY)
+        rc, out, err = _call(edited_intent_pristine, client=client)
+
+        # Failure must surface non-zero and rollback the files.
+        assert rc != 0, "broken LLM code must not return success"
+        assert gen_path.read_text() == before_gen, (
+            "broken _generated.py must be rolled back to its pre-write content"
+        )
+        assert spec_path.read_text() == before_spec, (
+            "spec.md must also be rolled back when the pipeline fails"
+        )
+
+    def test_rollback_message_surfaced_to_user(
+        self, edited_intent_pristine: Path
+    ) -> None:
+        client = _MockClient(generated_py_after=_BAD_KWARG_GENERATED_PY)
+        rc, out, err = _call(edited_intent_pristine, client=client)
+        assert rc != 0
+        # Combined output must mention rollback so the user understands
+        # why their working tree was reverted.
+        combined = out + err
+        assert "roll" in combined.lower() or "revert" in combined.lower()
+
+    def test_rollback_preserves_pre_call_lock(
+        self, edited_intent_pristine: Path
+    ) -> None:
+        from specstar.lockfile import read_manifest
+
+        lock_path = edited_intent_pristine / "spec.lock.json"
+        before_lock_bytes = lock_path.read_bytes()
+
+        client = _MockClient(generated_py_after=_BAD_KWARG_GENERATED_PY)
+        _call(edited_intent_pristine, client=client)
+
+        # Lock content must not be modified by a failed run.
+        assert lock_path.read_bytes() == before_lock_bytes, (
+            "lock must not be rewritten when apply+verify fail"
+        )
+        # And it must still be readable / valid.
+        manifest = read_manifest(lock_path)
+        assert "intent.md" in manifest.sources
+
+
+_MALICIOUS_GENERATED_PY = '''\
+"""LLM emitted forbidden import — would damage the host if executed."""
+
+from __future__ import annotations
+
+import os  # AST-blocked; would be malicious if it reached subprocess
+import msgspec
+
+from specstar import spec
+
+
+class User(msgspec.Struct):
+    name: str
+
+
+# This code at module top-level executes during subprocess import.
+# AST validator must catch the `import os` BEFORE we write the file,
+# so the subprocess never gets to load this module at all.
+spec.add_model(User, name="user")
+'''
+
+
+class TestAstValidationBeforeWrite:
+    """The AST validator must run on the LLM output **before** the file
+    is written and **before** the subprocess imports it.
+
+    Why: any malicious / forbidden code at module top-level executes
+    during ``import``. Catching it post-write means the damage is done
+    by the time the validator runs. Catching it pre-write means the
+    user's working tree is never even touched.
+    """
+
+    @pytest.fixture()
+    def edited_intent_pristine(self, pristine_project: Path) -> Path:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nA tiny change to trigger STEP 1+2.\n",
+            encoding="utf-8",
+        )
+        return pristine_project
+
+    def test_blocked_import_caught_before_write(
+        self, edited_intent_pristine: Path
+    ) -> None:
+        gen_path = edited_intent_pristine / "my_app" / "_generated.py"
+        before = gen_path.read_text()
+
+        client = _MockClient(generated_py_after=_MALICIOUS_GENERATED_PY)
+        rc, out, err = _call(edited_intent_pristine, client=client)
+
+        assert rc != 0, "blocked import must abort the run"
+        # The file content was never touched by this run.
+        assert gen_path.read_text() == before, (
+            "AST validation must run BEFORE writing — broken file must "
+            "never appear on disk"
+        )
+
+    def test_blocked_import_message_attributes_to_ast(
+        self, edited_intent_pristine: Path
+    ) -> None:
+        client = _MockClient(generated_py_after=_MALICIOUS_GENERATED_PY)
+        rc, _, err = _call(edited_intent_pristine, client=client)
+        assert rc != 0
+        # Surface the AST validator's specific complaint, not a generic
+        # subprocess import failure.
+        assert "blocked_import" in err or "ast" in err.lower(), (
+            "user must see an AST-attributed error, not a downstream subprocess failure"
+        )
+
+    def test_no_write_happens_for_pre_write_failure(
+        self, edited_intent_pristine: Path
+    ) -> None:
+        # Pre-write AST validation means we never execute the apply step.
+        # The success message "wrote N file(s):" only fires after a
+        # successful apply. If we see it for an AST-rejected plan, then
+        # AST ran post-write (and the rollback merely undid the damage).
+        # We want pre-write semantics: no write at all, ever.
+        client = _MockClient(generated_py_after=_MALICIOUS_GENERATED_PY)
+        rc, out, _ = _call(edited_intent_pristine, client=client)
+        assert rc != 0
+        assert "wrote" not in out, (
+            "AST validator must run BEFORE apply; no `wrote N file(s):` "
+            "line should appear when LLM output is AST-rejected"
+        )
+
+    def test_subprocess_never_runs_for_pre_write_failure(
+        self, edited_intent_pristine: Path
+    ) -> None:
+        # Defense-in-depth: malicious code at module top-level executes
+        # during subprocess import. Pre-write AST means the subprocess
+        # never runs at all, so any side effects in the malicious code
+        # never happen.
+        client = _MockClient(generated_py_after=_MALICIOUS_GENERATED_PY)
+        _, out, err = _call(edited_intent_pristine, client=client)
+        combined = out + err
+        assert "failed to import" not in combined, (
+            "subprocess must not run when AST validator already rejected the LLM output"
+        )
