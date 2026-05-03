@@ -672,3 +672,49 @@ class TestAstValidationBeforeWrite:
         assert "failed to import" not in combined, (
             "subprocess must not run when AST validator already rejected the LLM output"
         )
+
+
+# ---------------------------------------------------------------------------
+# Recreate-from-intent: missing or emptied spec.md must run STEP 1
+# ---------------------------------------------------------------------------
+
+
+class TestRecreateSpecFromIntent:
+    """When the user removes or empties spec.md, that is a 'recreate from
+    intent.md' signal. STEP 1 must run; we must NOT treat this as the
+    case-5 'user took over spec' path which would skip STEP 1 and leave
+    the user with no spec.md.
+    """
+
+    def test_removed_spec_md_triggers_step1(self, pristine_project: Path) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nA Book resource with title.\n",
+            encoding="utf-8",
+        )
+        (pristine_project / "spec.md").unlink()
+
+        client = _MockClient()
+        rc, _, err = _call(pristine_project, client=client)
+
+        assert rc == 0, f"removed spec.md should not error: {err}"
+        assert SpecPlan in client.calls, (
+            "removed spec.md must trigger STEP 1 (recreate from intent.md), "
+            "not skip to STEP 2 like the case-5 'user took over' path"
+        )
+        # spec.md must exist again after the run.
+        assert (pristine_project / "spec.md").exists()
+
+    def test_emptied_spec_md_also_triggers_step1(self, pristine_project: Path) -> None:
+        # User cleared spec.md to empty file — strong "recreate" signal.
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nA Book resource.\n", encoding="utf-8"
+        )
+        (pristine_project / "spec.md").write_text("", encoding="utf-8")
+
+        client = _MockClient()
+        rc, _, err = _call(pristine_project, client=client)
+
+        assert rc == 0, f"empty spec.md should not error: {err}"
+        assert SpecPlan in client.calls, (
+            "empty spec.md is a strong 'recreate' signal — STEP 1 must run"
+        )

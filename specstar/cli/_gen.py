@@ -396,12 +396,41 @@ def _run_call(
     if not intent_path.exists():
         print(f"error: intent file not found: {intent_path}", file=error_stream)
         return 2
-    if not spec_path.exists():
-        print(f"error: spec file not found: {spec_path}", file=error_stream)
-        return 2
-    if not generated_path.exists():
-        print(f"error: generated file not found: {generated_path}", file=error_stream)
-        return 2
+
+    # Missing or empty spec.md / _generated.py is a "recreate from upstream"
+    # signal, not an error. The user has explicitly removed the downstream
+    # artifact and expects regeneration.
+    spec_recreate = (
+        not spec_path.exists() or spec_path.read_text(encoding="utf-8").strip() == ""
+    )
+    if spec_recreate:
+        print(
+            "note: spec.md is missing or empty — forcing STEP 1 to recreate "
+            "from intent.md.",
+            file=stream,
+        )
+        # Ensure the file exists so downstream code (hashing, apply) has a
+        # path to read/write. Empty content is fine; STEP 1 will replace it.
+        if not spec_path.exists():
+            spec_path.write_text("", encoding="utf-8")
+        force = True
+
+    gen_recreate = (
+        not generated_path.exists()
+        or generated_path.read_text(encoding="utf-8").strip() == ""
+    )
+    if gen_recreate:
+        print(
+            f"note: {generated_path} is missing or empty — STEP 2 will recreate it.",
+            file=stream,
+        )
+        if not generated_path.exists():
+            generated_path.parent.mkdir(parents=True, exist_ok=True)
+            generated_path.write_text("", encoding="utf-8")
+        # If only py is missing, run STEP 2 from current spec; if both are
+        # missing, force already covers STEP 1 + STEP 2.
+        if not spec_recreate:
+            from_spec = True
 
     # Compute hash-vs-lock booleans.
     intent_changed, spec_changed, gen_changed = _hashes_vs_lock(
