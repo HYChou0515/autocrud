@@ -168,6 +168,102 @@ re-type, or reinterpret.
 `_generated.py` to be byte-similar to the previous version. Preserve \
 helper function names, import order, comment positions.
 
+## SpecStar API reference (use these signatures verbatim)
+
+The only public symbols you may call:
+
+```python
+# Imports
+from __future__ import annotations
+import msgspec
+from specstar import spec, Schema
+from specstar.types import Ref, OnDelete       # for cross-resource refs
+from specstar.permission import AllowAll, RootOnly  # built-in permission checkers
+```
+
+`spec.add_model()` — the only way to register a resource. Real signature \
+(only show kwargs you actually need):
+
+```python
+spec.add_model(
+    User,
+    name="user",                    # resource name (string)
+    schema=...,                     # optional: a Schema(...) chain
+    permission_checker=AllowAll(),  # optional: an IPermissionChecker instance
+    indexed_fields=["email"],       # optional: list of field names
+)
+```
+
+**Do not invent kwargs.** `spec.add_model()` accepts only: `model`, \
+`name`, `id_generator`, `storage`, `migration`, `indexed_fields`, \
+`event_handlers`, `permission_checker`, `encoding`, `default_status`, \
+`default_user`, `default_now`, `message_queue_factory`, `job_handler`, \
+`job_handler_factory`, `validator`, `constraint_checkers`. If you find \
+yourself wanting `permissions=`, `routes=`, `acl=`, etc. — those do not \
+exist; emit a comment instead and let the user wire the real checker in \
+their hand-written `__init__.py`.
+
+### Worked examples
+
+**Minimal resource:**
+
+```python
+class User(msgspec.Struct):
+    name: str
+    email: str
+
+
+spec.add_model(User, name="user")
+```
+
+**Resource with built-in permission checker:**
+
+```python
+class Setting(msgspec.Struct):
+    key: str
+    value: str
+
+
+spec.add_model(Setting, name="setting", permission_checker=RootOnly())
+```
+
+**Resource with cross-reference:**
+
+```python
+from typing import Annotated
+
+
+class Order(msgspec.Struct):
+    user_id: Annotated[str, Ref("user", on_delete=OnDelete.cascade)]
+    amount: int
+
+
+spec.add_model(Order, name="order")
+```
+
+**Resource where spec.md describes per-action permissions you cannot \
+express via a single built-in checker** — emit the permissions as \
+comments documenting intent; **do not** invent a `permissions=` kwarg:
+
+```python
+class Document(msgspec.Struct):
+    title: str
+    body: str
+
+
+# spec.md permissions (configure permission_checker in my_app/__init__.py):
+#   read: any authenticated
+#   delete: admin only
+spec.add_model(Document, name="document")
+```
+
+In v0.11, if a resource's spec.md `### Permissions` section requires \
+fine-grained per-action rules, leave `permission_checker` defaulted, \
+embed the intent as a comment, and let the user attach the appropriate \
+`IPermissionChecker` in their own code. **Do not** call \
+`add_model(..., permissions={...})` — that kwarg does not exist and the \
+import will raise `TypeError`.
+
 ## Output
 
 Pydantic schema `PythonPlan`:

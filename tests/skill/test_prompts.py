@@ -105,6 +105,58 @@ class TestStep2SystemPrompt:
         assert "spec_md_after" in STEP2_SYSTEM_PROMPT
         assert "cannot modify spec.md" in STEP2_SYSTEM_PROMPT.lower()
 
+    def test_includes_concrete_add_model_example_with_kwargs(self) -> None:
+        # Without a worked example, the LLM hallucinates kwargs that don't
+        # exist (e.g. `permissions={"read": "any auth"}`). The prompt must
+        # show a real, copy-pasteable spec.add_model() call so the LLM has
+        # ground truth instead of guessing.
+        # Pattern: spec.add_model(SomeClass, name="...") — a structural
+        # signature, not just the bare phrase "spec.add_model(...) calls".
+        import re
+
+        assert re.search(
+            r"spec\.add_model\(\s*\w+\s*,\s*name=",
+            STEP2_SYSTEM_PROMPT,
+        ), "prompt must contain a real spec.add_model(<Class>, name=...) example"
+
+    def test_teaches_real_permission_checker_kwarg_not_hallucinated(self) -> None:
+        # The bug we hit: LLM emitted spec.add_model(..., permissions={...})
+        # which raises TypeError because no such kwarg exists. The real API
+        # uses permission_checker= (taking an IPermissionChecker instance).
+        # The prompt must (a) mention the real kwarg with an example and
+        # (b) explicitly forbid the hallucinated permissions= form.
+        assert "permission_checker=" in STEP2_SYSTEM_PROMPT, (
+            "must mention the real `permission_checker=` kwarg"
+        )
+        assert "`permissions=`" in STEP2_SYSTEM_PROMPT or (
+            "permissions=" in STEP2_SYSTEM_PROMPT
+            and "does not exist" in STEP2_SYSTEM_PROMPT.lower()
+        ), "must explicitly call out that `permissions=` is hallucinated and forbidden"
+
+    def test_referenced_symbols_actually_exist_in_specstar(self) -> None:
+        # If the prompt's worked examples reference symbols that don't
+        # exist (typo / wishful thinking), the LLM will faithfully
+        # reproduce them and the user's _generated.py will ImportError.
+        # Anchor every public symbol the prompt mentions to real SpecStar.
+        # Note: msgspec is third-party; just verify SpecStar-side names.
+        from specstar import Schema, spec  # noqa: F401  (must be importable)
+        from specstar.permission import AllowAll, RootOnly  # noqa: F401
+        from specstar.types import OnDelete, Ref  # noqa: F401
+
+        # And make sure the prompt actually mentions each so a future
+        # rewrite of the prompt that drops one would be caught.
+        for symbol in (
+            "spec.add_model",
+            "Schema",
+            "AllowAll",
+            "RootOnly",
+            "Ref",
+            "OnDelete",
+        ):
+            assert symbol in STEP2_SYSTEM_PROMPT, (
+                f"prompt mentions {symbol} but symbol must also be present"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Step 1 user prompt
