@@ -614,6 +614,7 @@ def _refresh_lock_and_verify(
         spec_path=spec_path,
         generated_path=generated_path,
         out_path=lock_path,
+        intent_path=intent_path,
         stream=stream,
         error_stream=error_stream,
     )

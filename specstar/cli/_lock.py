@@ -65,6 +65,14 @@ def add_lock_parser(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     p.add_argument(
+        "--intent",
+        default="intent.md",
+        help=(
+            "Path to intent.md (default: ./intent.md). Included in lock sources "
+            "if it exists; silently skipped otherwise."
+        ),
+    )
+    p.add_argument(
         "--spec",
         default="spec.md",
         help="Path to spec.md (default: ./spec.md).",
@@ -87,6 +95,7 @@ def add_lock_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def lock_cmd(args: argparse.Namespace) -> int:
     return run_lock(
+        intent_path=Path(args.intent),
         module_name=args.module,
         spec_path=Path(args.spec),
         generated_path=Path(args.generated) if args.generated else None,
@@ -104,8 +113,15 @@ def run_lock(
     out_path: Path,
     stream,
     error_stream,
+    intent_path: Path | None = None,
 ) -> int:
-    """Regenerate the lock file. Returns process exit code."""
+    """Regenerate the lock file. Returns process exit code.
+
+    ``intent_path`` is included in lock sources only if it exists on
+    disk. Optional so that single-spec-only projects (no intent.md
+    layer) still work; in the canonical two-step pipeline ``init``
+    creates intent.md alongside spec.md and we want it tracked.
+    """
     if not spec_path.exists():
         print(f"error: spec file not found: {spec_path}", file=error_stream)
         return 2
@@ -147,12 +163,15 @@ def run_lock(
 
     validation = _run_ast_validator(generated_path, error_stream)
 
+    sources: dict[str, str | Path] = {}
+    if intent_path is not None and intent_path.exists():
+        sources[str(intent_path)] = intent_path
+    sources[str(spec_path)] = spec_path
+    sources[str(generated_path)] = generated_path
+
     manifest = build_manifest(
         descriptor,
-        sources={
-            str(spec_path): spec_path,
-            str(generated_path): generated_path,
-        },
+        sources=sources,
         validation=validation,
         regenerated_at=now_iso(),
     )
