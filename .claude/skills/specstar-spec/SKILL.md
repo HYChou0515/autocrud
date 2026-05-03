@@ -1,21 +1,27 @@
 ---
 name: specstar-spec
-description: Spec-driven authoring for SpecStar projects. Use when the user wants to add, modify, or regenerate spec-driven resources — e.g. "add a User resource", "I edited spec.md, regenerate", "/specstar", "/specstar regen", "my spec.md and _generated.py drifted". Translates brief prose into a curated `spec.md`, then into declarative `_generated.py` + `spec.lock.json`. Use it whenever spec.md, _generated.py, or spec.lock.json appear in the task. Do not use for runtime debugging of generated routes — that is the resource-manager / route-templates skill territory.
+description: Spec-driven authoring for SpecStar projects. Two-step pipeline — intent.md (user prose) → spec.md (structured β protocol) → _generated.py (declarative Python, runtime SSOT). Use when the user wants to add, modify, or regenerate spec-driven resources — e.g. "add a User resource", "I edited intent.md, regenerate", "/specstar", "/specstar regen", "spec.md and _generated.py drifted". Use whenever intent.md, spec.md, _generated.py, or spec.lock.json appear in the task. Do not use for runtime debugging of generated routes — that is the resource-manager / route-templates skill territory.
 ---
 
 # SpecStar Spec-Driven Authoring
 
-Translate user intent into the three artifacts of a spec-driven SpecStar project:
+Two-step LLM pipeline:
 
 ```
-brief prose (chat input)
-   ↓ this skill: expand + diff + confirm
-spec.md
-   ↓ this skill: write declarative Python (AST-validated)
-my_app/_generated.py
-   ↓ deterministic (no LLM)
-spec.lock.json
+intent.md (user free prose)
+   │
+   │ STEP 1 — translate prose to structured spec
+   ▼
+spec.md (β heading protocol — LLM-generated, human-reviewable)
+   │
+   │ STEP 2 — translate spec to declarative Python
+   ▼
+<package>/_generated.py (runtime SSOT)
 ```
+
+The user can edit **any** layer — SpecStar's edit-respect logic detects manual edits at each layer and skips the LLM step that would overwrite them.
+
+`_generated.py` is the **runtime source of truth**: the engine runs whatever this file declares. `intent.md` and `spec.md` are documentation/intent layers — they may lag in informal sessions, but `specstar verify` enforces alignment in CI.
 
 Authoritative design: [docs/design/spec-driven-architecture.md](../../../docs/design/spec-driven-architecture.md).
 
@@ -24,104 +30,132 @@ Authoritative design: [docs/design/spec-driven-architecture.md](../../../docs/de
 ## When to activate
 
 - User invokes `/specstar` or `/specstar regen`.
-- User describes a change to a resource ("add User", "rename email to email_address", "drop the deleted_at field on Order").
-- User says "I edited spec.md, regenerate Python" or similar.
-- User asks about drift between spec.md, _generated.py, or spec.lock.json.
+- User edits `intent.md` and wants the downstream files updated.
+- User edits `spec.md` directly and wants `_generated.py` updated.
+- User edits `_generated.py` directly and wants the lock refreshed.
+- User describes a change in chat ("add a User resource", "rename email to email_address").
+- User asks about drift between any of the four files.
 
-When activated, **always** read the three core files first (next section). Never propose changes without first knowing the current state.
+When activated, **always read** the four files (next section) before proposing anything.
 
 ---
 
 ## Inputs — read in this order, every run
 
-1. **`spec.md`** at project root. Authoritative human intent.
-2. **`<package>/_generated.py`** — current declarative Python. Find the package by reading the `[project.scripts]` or recent imports if not obvious. Conventional name: `my_app/_generated.py`.
-3. **`spec.lock.json`** — manifest with hashes + descriptor.
-4. Optional: run `specstar status` (or `Bash(uv run specstar status)`) for the case classification.
+1. **`intent.md`** at project root. The user's free prose.
+2. **`spec.md`** at project root. Structured β-protocol spec (current state).
+3. **`<package>/_generated.py`** — declarative Python. Find package via `[project.scripts]` or recent imports. Conventional name: `my_app/_generated.py`.
+4. **`spec.lock.json`** — manifest with per-source SHA-256 hashes plus the descriptor.
 
-If any of these is missing, the project may not be initialized. Suggest `specstar init` and stop.
-
----
-
-## Decision tree by hash state (case 1–4)
-
-After reading the three files (and ideally `specstar status`), classify:
-
-| Case | spec.md vs lock | _generated.py vs lock | Action |
-|---|---|---|---|
-| **1** | match | match | No drift. Ask user for new intent (brief prose). |
-| **2** | changed | match | Translate spec.md → updated `_generated.py`. Update lock. |
-| **3** | match | changed | **Drift warning**. Ask user: revert generated, or promote changes back to spec.md. Do **not** silently overwrite. |
-| **4** | both changed | both changed | **Reconcile mode**. List both diffs side-by-side, ask user which side wins per item. |
-
-You **must not** proceed past a case-3 or case-4 without explicit user confirmation on resolution.
+If any of these is missing, the project may not be initialised. Suggest `specstar init` and stop.
 
 ---
 
-## Plan synthesis protocol (case 2 — the common path)
+## Hash decision tree (which step to run)
 
-Given a brief prose request and the existing state, produce a plan in this exact format and present it to the user before writing anything:
+Compare each file's current hash to its entry in `spec.lock.json.sources[*].sha256`:
+
+| `intent.md` | `spec.md` | `_generated.py` | STEP 1 (intent→spec) | STEP 2 (spec→py) | Action |
+|---|---|---|---|---|---|
+| match | match | match | skip | skip | clean — ask user for new intent |
+| **changed** | match | match | run | run | both regenerate |
+| match | **changed** | match | skip | run | user took over spec — only regen py |
+| match | match | **changed** | skip | skip | user took over py (SSOT) — only refresh lock |
+| **changed** | **changed** | match | **skip** | run | user took over spec; respect it; regen py |
+| match | **changed** | **changed** | skip | **skip** | user took over both downstream — only refresh lock |
+| **changed** | match | **changed** | run | **prompt user** | spec changed via STEP 1 but py was hand-edited; conflict |
+| **changed** | **changed** | **changed** | skip | skip | full reconcile mode — list diffs and ask |
+
+**Hard invariant**: an LLM step never overwrites a downstream file the user has manually edited. Conflict cases require explicit user choice; never silently pick.
+
+`--force` flag (passed by the user) bypasses cache and edit-respect; STEP 1 + STEP 2 both run unconditionally.
+
+---
+
+## STEP 1 plan synthesis
+
+Inputs to the LLM call:
+- `intent.md` content (the user's goal)
+- previous `spec.md` content (for breaking-change detection)
+- package name
+
+Output schema: `SpecPlan` (Pydantic).
+
+Required fields in the plan you present to the user:
 
 ```
-Proposed changes:
+Proposed STEP 1 changes:
 
-  Resource: User
-    + field: phone (str, optional)            ← new
-    ~ field: email → unique=true              ← modified
+  Resources:
+    + Resource: User                 ← new
+      + field: name (str, required)
+      + field: email (str, required)
 
-  Permissions on Order:
-    + delete: role=admin                      ← inferred (no permission section in prose)
+  Inferred decisions:
+    - User.permissions.delete = role(admin)   (default for sensitive resources)
+    - User.permissions.read = any authenticated   (CRUD default)
 
-Inferred decisions (review carefully):
-  - phone is optional because prose did not mark it required
-  - delete=admin is the SpecStar default for sensitive resources
+  Breaking changes:
+    (none)
 
-Files to write:
-  - spec.md                  (add Resource: User > phone)
-  - my_app/_generated.py     (regenerate)
-  - spec.lock.json           (regenerate)
-
-Reply with `ok`, `confirm`, `yes`, or describe a correction.
+  Files to write: spec.md
 ```
 
-**Hard rules**:
+Wait for `ok` / `confirm`. Then write `spec.md`.
 
-- **Every inferred decision is listed explicitly**. Never silently fill in a default.
-- Breaking changes (rename, drop, type change, add-required) are flagged and require choosing a migration mechanism (declarative or scaffolded β-ref).
-- For non-trivial logic (workers, complex permissions with DB lookups, cross-resource migrations), propose a **β reference**: a string like `"my_app.logic.process_order"` that points to a hand-written module. Scaffold the module with a `TODO: implement` body if it doesn't exist.
+If breaking changes are detected, your plan must include a `### Schema versions` entry in the proposed `spec.md` describing the migration in prose.
+
+---
+
+## STEP 2 plan synthesis
+
+Inputs to the LLM call:
+- current `spec.md` content (the structured spec to translate)
+- previous `_generated.py` content (for stability — preserve helper names, import order)
+- package name
+
+Output schema: `PythonPlan` (Pydantic). Note: `PythonPlan` has no `spec_md_after` field — STEP 2 cannot modify spec.md by construction.
+
+Required fields in the plan:
+
+```
+Proposed STEP 2 changes:
+
+  my_app/_generated.py
+    + class User(msgspec.Struct)
+    + spec.add_model(User, name="user")
+    + permission setup ...
+
+  Inferred decisions (during Python translation):
+    (none — direct mapping from spec.md)
+
+  Files to write: my_app/_generated.py
+```
+
+Wait for `ok`. Then write `_generated.py`.
 
 ---
 
 ## Confirmation protocol
 
-After presenting the plan, **wait for the user**. Acceptable approvals: `ok`, `yes`, `confirm`, `proceed`.
+After presenting either step's plan, **wait for the user**. Acceptable approvals: `ok`, `yes`, `confirm`, `proceed`.
 
-Anything else — `wait`, `but`, `no`, a question, a counter-proposal — sends you back to the plan stage. **Do not write files** until the user explicitly approves.
+Anything else (`wait`, `but`, `no`, a question, a counter-proposal) sends you back to the plan stage. **Do not write files** until the user explicitly approves.
 
-If the user says "use defaults" or "you decide", that is **not** approval to invent — it is a request to default the inferred decisions. List them explicitly anyway (so they're visible in the chat / commit) and await final `ok`.
+If the user says "use defaults" or "you decide", that is **not** approval to invent — it is a request to default the inferred decisions. List them explicitly anyway and await final `ok`.
 
 ---
 
 ## Write protocol
 
-Once approved, in this order:
+After approval:
 
-1. **Edit `spec.md`** to its new content. Preserve user prose; modify only the section being changed.
-2. **Edit `<package>/_generated.py`** with declarative Python only. The body must be:
-   - `spec.add_model(...)` calls
-   - `Schema(...).step(...)` chains for migrations
-   - `msgspec.Struct` class definitions
-   - Pure-function migration bodies (input dict → output dict) when needed
-   - References to user logic via **string identifiers** only (`"my_app.logic.fn"`), not `import`s of user modules
-3. Run `Bash(uv run specstar lock)` to regenerate `spec.lock.json` from the new sources. This:
-   - imports `_generated.py` in a subprocess
-   - snapshots the descriptor via `spec.dump_descriptor()`
-   - re-hashes spec.md and `_generated.py`
-   - runs the AST validator and records the result in the manifest
-4. Run `Bash(uv run specstar verify)` to confirm everything is in sync.
-5. If `lock` or `verify` reports issues, **stop and report** — do not iterate without showing the user what failed.
+1. **STEP 1 only**: write the new `spec.md`. (Don't yet touch `_generated.py`.)
+2. **STEP 2 only**: write the new `_generated.py`. (Don't yet touch `spec.md`.)
+3. After all writes for the run are done, run `Bash(uv run specstar lock)` to refresh `spec.lock.json` (re-hash every source, re-snapshot descriptor, re-run AST validator).
+4. Run `Bash(uv run specstar verify)` to confirm green.
 
-`specstar lock` returns exit code 0 only when the AST validator passes. If it returns 1 with `ast_check=failed` in the lock, surface the validator errors verbatim and ask the user how to proceed (typically: move the offending code into a hand-written module and reference it by string).
+If `lock` reports `ast_check=failed`, surface the validator errors verbatim and ask the user how to proceed (typically: move offending code into a hand-written module and reference it by string from spec.md).
 
 ---
 
@@ -129,13 +163,12 @@ Once approved, in this order:
 
 The AST validator (`specstar.validator.DeclarativeASTValidator`) **will reject**:
 
-- `import os` / `subprocess` / `socket` / `requests` / `urllib*` / `pathlib` / `shutil` / `threading` / `asyncio` / `ctypes` etc.
-- `Try` / `With` / `Raise` / `While` / `Async*` / `Yield` / `Global` / `Nonlocal` statements
-- Direct calls to `exec` / `eval` / `compile` / `open` / `__import__` / `input` / `breakpoint`
+- Imports of `os`, `subprocess`, `socket`, `requests`, `urllib*`, `pathlib`, `shutil`, `tempfile`, `threading`, `multiprocessing`, `asyncio`, `ctypes`, `httpx`, `aiohttp`, `http`. Also: any user package — use string references instead.
+- Statements: `Try`, `With`, `Raise`, `While`, `AsyncFunctionDef`, `Await`, `Yield`, `Global`, `Nonlocal`.
+- Direct calls to: `exec`, `eval`, `compile`, `open`, `__import__`, `input`, `breakpoint`, `getattr`, `setattr`, `delattr`.
+- Dunder attribute reads except `__name__` and `__doc__`.
 
-The validator **allows**: any non-blocked import, `If` / `For`, `Lambda`, comprehensions, attribute access, operator overloading, function and class definitions, basic builtins (`len`, `min`, `max`, `sorted`, `tuple`, `list`, `dict`, `set`, `range`, `enumerate`, `zip`, `bool`, `int`, `float`, `str`).
-
-For a user-supplied behaviour that needs anything blocked (I/O, retry, orchestration), **do not write inline code** — emit a string `ref:` to a user module and scaffold the file separately.
+For I/O / orchestration / external calls, emit a string reference like `"my_app.logic.process_order"` — do NOT `import` user modules.
 
 If a generated function legitimately needs an exception you cannot avoid, append `# specstar: allow <reason>` on the same line. Use sparingly; every bypass is recorded in `spec.lock.json` for review.
 
@@ -145,96 +178,113 @@ If a generated function legitimately needs an exception you cannot avoid, append
 
 | Failure | Action |
 |---|---|
-| `specstar verify` reports AST errors | Show errors verbatim. Ask user how to proceed. Do **not** retry blind. |
+| `specstar lock` reports AST errors | Show errors verbatim. Ask user how to proceed. Do **not** retry blind. |
 | User says "no" / "wait" / corrects you | Discard plan; re-read state; propose new plan. |
-| Drift detected (case 3 or 4) | List both sides; require explicit choice. |
+| Drift conflict (case 6/7/8) | List the two sides; require explicit choice. Default in non-interactive mode: respect downstream (SSOT). |
 | Lock seems corrupted / unparseable | Stop. Tell user. Suggest `specstar init --force` only if they confirm starting over. |
-| Brief prose is ambiguous (e.g. field type unclear) | **Ask**. Never guess silently — guesses defeat the entire reliability story. |
+| User prose ambiguous | **Ask**. Never guess silently — guesses defeat the entire reliability story. |
 
 ---
 
-## Worked example 1 — adding a resource
+## Worked example 1 — fresh project, user describes intent
 
-**User**: `add a User resource with name and email`
+**User**: edits `intent.md` to add: "We have orders that belong to users."
 
-**Skill**:
+**Skill** (after `/specstar regen`):
 
 ```
-Reading spec.md, my_app/_generated.py, spec.lock.json (case 1, clean).
+Reading inputs...
+  intent.md hash CHANGED (vs lock)
+  spec.md hash matches lock
+  my_app/_generated.py hash matches lock
+→ STEP 1 + STEP 2 will run.
 
-Proposed changes:
+Proposed STEP 1 changes:
 
-  Resource: User                              ← new
-    fields:
-      - name: str (required)
-      - email: str (required)
+  Resources:
+    + Resource: Order              ← new
+      + field: user_id (str, ref to user, required)
+      + field: amount (int, required)
 
-  Permissions:
-    - read: any authenticated                 ← inferred (default)
-    - delete: admin                           ← inferred (default for sensitive)
-    - update: self or admin                   ← inferred
-    - create: any authenticated               ← inferred
+  Inferred decisions:
+    - Order.permissions.delete = role(admin)         (default)
+    - Order.permissions.create = any authenticated    (CRUD default)
+    - user_id field type is str (consistent with User's id)
 
-  Storage: project default                    ← inferred
+  Breaking changes: (none)
 
-Inferred (4 items): read/delete/update/create permissions.
-No breaking changes.
-
-Files to write: spec.md, my_app/_generated.py, spec.lock.json.
+  Files to write: spec.md
 
 ok? (yes / no / refine)
 ```
 
-User replies `yes`. Skill edits the three files, runs verify. If green, reports `done`.
+User: `yes`. Skill writes spec.md.
+
+```
+Proposed STEP 2 changes:
+
+  my_app/_generated.py:
+    + class Order(msgspec.Struct):
+    +     user_id: Annotated[str, Ref("user")]
+    +     amount: int
+    + spec.add_model(Order, name="order")
+
+  Files to write: my_app/_generated.py
+
+ok?
+```
+
+User: `yes`. Skill writes _generated.py, then runs `specstar lock` + `specstar verify`. Both green → reports `done`.
 
 ---
 
-## Worked example 2 — breaking change (rename)
+## Worked example 2 — user edited spec.md directly
 
-**User**: `rename email to email_address on User`
+**State**: user added a section to spec.md by hand. `intent.md` unchanged.
+
+**Skill** (on `/specstar regen`):
+
+```
+Reading inputs...
+  intent.md hash matches lock
+  spec.md hash CHANGED (vs lock)
+  my_app/_generated.py hash matches lock
+→ STEP 1 SKIPPED (you took control of spec.md).
+→ STEP 2 will run.
+
+Proposed STEP 2 changes:
+  ...
+
+ok?
+```
+
+STEP 1 is skipped by design — intent.md unchanged, but more importantly **the user's manual spec.md edit is preserved**.
+
+---
+
+## Worked example 3 — drift conflict (case 7)
+
+**State**: user edited intent.md AND _generated.py. spec.md unchanged.
 
 **Skill**:
 
 ```
-Reading inputs (case 2: spec.md unchanged, you'd like to edit it).
+Reading inputs...
+  intent.md hash CHANGED
+  spec.md hash matches lock
+  my_app/_generated.py hash CHANGED
+→ STEP 1 will run (intent changed, spec unchanged → safe to regen spec).
+   But STEP 2 conflicts: spec will change, but _generated.py was
+   hand-edited.
 
-Proposed changes:
+Conflict: STEP 1 will produce a new spec.md, but you've also edited
+_generated.py. Two options:
 
-  Resource: User
-    ~ rename field: email → email_address     ← BREAKING
-
-This is a breaking change; existing data needs migration.
-
-Migration options:
-  [A] declarative rename (Schema(...).step(version, rename={"email": "email_address"}))
-      ↑ recommended for pure renames
-  [B] custom row-transform Python (I scaffold my_app/migrations/user_v1_to_v2.py
-      with a TODO body; you implement it)
-  [C] no versioning (existing data with field "email" will fail after this lands)
-
-Choose [A]: ...
-```
-
-Wait for choice. After `[A]`, generate the Schema chain step in `_generated.py` and update spec.md `### Schema versions` section.
-
----
-
-## Worked example 3 — drift reconcile (case 3)
-
-**User**: (no message, but the user invoked `/specstar` and you find `_generated.py` modified without spec.md changes)
-
-**Skill**:
-
-```
-Drift detected (case 3): you edited my_app/_generated.py without changing spec.md.
-
-Differences in _generated.py vs lock:
-  + new field: User.phone: str
-
-This change is not reflected in spec.md. Two options:
-
-  [A] revert _generated.py to match spec.md (I overwrite your edit)
-  [B] promote your edit into spec.md (I edit spec.md to add User.phone)
+  [A] Run STEP 1 + STEP 2; STEP 2 will overwrite your _generated.py
+      changes with translation from the new spec.md.
+  [B] Skip STEP 2; keep your _generated.py edits. spec.md regenerates
+      but _generated.py stays as you wrote it. (You'll need to manually
+      reconcile drift later.)
 
 Choose [A] or [B]:
 ```
@@ -245,9 +295,10 @@ Wait for choice. Never silently pick.
 
 ## Reference
 
-- [docs/design/spec-driven-architecture.md](../../../docs/design/spec-driven-architecture.md) — strategic design (β heading protocol, descriptor schema, AST trust model, hash detection table)
-- [docs/design/spec-driven-v0.11-plan.md](../../../docs/design/spec-driven-v0.11-plan.md) — implementation phases and acceptance criteria
+- [docs/design/spec-driven-architecture.md](../../../docs/design/spec-driven-architecture.md) — strategic design (β heading protocol, descriptor schema, AST trust model, two-step pipeline rationale)
+- `specstar.skill.prompts` — STEP1_SYSTEM_PROMPT and STEP2_SYSTEM_PROMPT verbatim (also used by `specstar gen` CLI)
+- `specstar.skill.schemas` — SpecPlan and PythonPlan Pydantic models
 - `specstar.validator.ast` — AST allow / block list
 - `specstar.descriptor.types` — node / edge / manifest schemas
 - `specstar.lockfile` — hash + manifest I/O
-- CLI: `specstar init`, `specstar verify`, `specstar status`
+- CLI: `specstar init`, `specstar gen`, `specstar lock`, `specstar verify`, `specstar status`
