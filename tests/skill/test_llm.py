@@ -116,3 +116,105 @@ class TestLiteLLMClientStructure:
             )
         )
         assert c._litellm_model_id() == "openai/llama3.1"
+
+
+class TestOpenAIStrictSchemaPatch:
+    """Verify the OpenAI-strict schema rewriter."""
+
+    def test_adds_additional_properties_false_to_top_object(self) -> None:
+        from specstar.skill._litellm_impl import _make_openai_strict
+
+        schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        out = _make_openai_strict(schema)
+        assert out["additionalProperties"] is False
+
+    def test_adds_all_properties_to_required(self) -> None:
+        from specstar.skill._litellm_impl import _make_openai_strict
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "a": {"type": "string"},
+                "b": {"type": "integer"},
+                "c": {"type": "boolean"},
+            },
+        }
+        out = _make_openai_strict(schema)
+        assert sorted(out["required"]) == ["a", "b", "c"]
+
+    def test_recurses_into_defs(self) -> None:
+        from specstar.skill._litellm_impl import _make_openai_strict
+
+        schema = {
+            "type": "object",
+            "properties": {"item": {"$ref": "#/$defs/Inner"}},
+            "$defs": {
+                "Inner": {
+                    "type": "object",
+                    "properties": {"y": {"type": "string"}},
+                }
+            },
+        }
+        out = _make_openai_strict(schema)
+        assert out["$defs"]["Inner"]["additionalProperties"] is False
+        assert out["$defs"]["Inner"]["required"] == ["y"]
+
+    def test_recurses_into_array_items(self) -> None:
+        from specstar.skill._litellm_impl import _make_openai_strict
+
+        schema = {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+            },
+        }
+        out = _make_openai_strict(schema)
+        assert out["items"]["additionalProperties"] is False
+        assert out["items"]["required"] == ["name"]
+
+    def test_real_specplan_schema_becomes_openai_strict(self) -> None:
+        """End-to-end: a real SpecPlan schema should become OpenAI-strict."""
+        from specstar.skill._litellm_impl import _make_openai_strict
+        from specstar.skill.schemas import SpecPlan
+
+        schema = SpecPlan.model_json_schema()
+        patched = _make_openai_strict(schema)
+        # Top-level: every property in required, additionalProperties=false.
+        assert patched["additionalProperties"] is False
+        expected_props = {
+            "reasoning",
+            "summary",
+            "resources",
+            "inferred_decisions",
+            "breaking_changes",
+            "spec_md_after",
+        }
+        assert set(patched["required"]) == expected_props
+        # Every nested $defs entry also patched.
+        for defname, defschema in patched.get("$defs", {}).items():
+            if "properties" in defschema:
+                assert defschema["additionalProperties"] is False, (
+                    f"{defname} missing additionalProperties=false"
+                )
+
+    def test_non_object_passes_through(self) -> None:
+        from specstar.skill._litellm_impl import _make_openai_strict
+
+        # Primitive schemas don't get touched.
+        out = _make_openai_strict({"type": "string"})
+        assert "additionalProperties" not in out
+        assert "required" not in out
+
+    def test_handles_anyof(self) -> None:
+        from specstar.skill._litellm_impl import _make_openai_strict
+
+        schema = {
+            "anyOf": [
+                {"type": "object", "properties": {"x": {"type": "string"}}},
+                {"type": "null"},
+            ]
+        }
+        out = _make_openai_strict(schema)
+        assert out["anyOf"][0]["additionalProperties"] is False
+        assert out["anyOf"][0]["required"] == ["x"]

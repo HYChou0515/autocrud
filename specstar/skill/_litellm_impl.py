@@ -13,7 +13,50 @@ we implement that here in ~30 lines.
 
 from __future__ import annotations
 
+from copy import deepcopy
+from typing import Any
+
 from specstar.skill.llm import LLMError, ProviderConfig
+
+
+def _make_openai_strict(schema: Any) -> Any:
+    """Patch a JSON schema in place to satisfy OpenAI strict structured outputs.
+
+    OpenAI's ``response_format={"strict": True}`` requires every object
+    schema to have ``additionalProperties: false`` and every property to
+    appear in the ``required`` list, even those Pydantic considers
+    optional (i.e. with default values).
+
+    Recurses through ``properties``, ``$defs`` / ``definitions``,
+    ``items``, and ``anyOf`` / ``oneOf`` / ``allOf``.
+
+    Anthropic and most self-hosted providers do not have this
+    requirement; the patch is gated on provider in :class:`LiteLLMClient`.
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    is_object = schema.get("type") == "object" or "properties" in schema
+    if is_object:
+        schema["additionalProperties"] = False
+        if "properties" in schema:
+            schema["required"] = list(schema["properties"].keys())
+
+    if "properties" in schema:
+        for v in schema["properties"].values():
+            _make_openai_strict(v)
+    for key in ("$defs", "definitions"):
+        if key in schema:
+            for v in schema[key].values():
+                _make_openai_strict(v)
+    if "items" in schema:
+        _make_openai_strict(schema["items"])
+    for key in ("anyOf", "oneOf", "allOf"):
+        if key in schema:
+            for v in schema[key]:
+                _make_openai_strict(v)
+
+    return schema
 
 
 class LiteLLMClient:
@@ -39,6 +82,11 @@ class LiteLLMClient:
             )
 
         schema_json = response_model.model_json_schema()
+        # OpenAI's strict structured-outputs has stricter requirements than
+        # Pydantic emits by default. Patch the schema only for OpenAI-family
+        # providers; Anthropic accepts the original.
+        if self._config.provider in ("openai", "openai-compatible"):
+            schema_json = _make_openai_strict(deepcopy(schema_json))
         messages: list[dict[str, str]] = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
