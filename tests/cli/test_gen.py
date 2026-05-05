@@ -319,6 +319,7 @@ def _call(project: Path, **kwargs) -> tuple[int, str, str]:
             yes=kwargs.pop("yes", True),
             force=kwargs.pop("force", False),
             from_spec=kwargs.pop("from_spec", False),
+            feedback_retries=kwargs.pop("feedback_retries", 0),
             client=kwargs.pop("client", None),
             confirm=kwargs.pop("confirm", None),
             env=kwargs.pop("env", None),
@@ -718,3 +719,174 @@ class TestRecreateSpecFromIntent:
         assert SpecPlan in client.calls, (
             "empty spec.md is a strong 'recreate' signal — STEP 1 must run"
         )
+
+
+# ---------------------------------------------------------------------------
+# Feedback retry loop: re-call STEP 2 with captured stderr on lock failure
+# ---------------------------------------------------------------------------
+
+
+_BAD_SCHEMA_GENERATED_PY = '''\
+"""GENERATED — Schema is missing the required version arg."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import Schema, spec
+
+
+class User(msgspec.Struct):
+    name: str
+
+
+# Hallucinated: Schema(User) without the required `version` positional.
+# AST passes (it's a normal call); import raises TypeError.
+schema = Schema(User)
+spec.add_model(User, name="user", schema=schema)
+'''
+
+
+_GOOD_GENERATED_PY = '''\
+"""GENERATED — valid."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import spec
+
+
+class User(msgspec.Struct):
+    name: str
+
+
+spec.add_model(User, name="user")
+'''
+
+
+class _SequencingMockClient:
+    """LLMClient mock that returns a different ``generated_py_after`` per
+    PythonPlan call. Used to simulate the LLM self-correcting on retry.
+    """
+
+    def __init__(
+        self,
+        *,
+        spec_md_after: str | None = None,
+        py_sequence: list[str],
+    ):
+        self._spec_md_after = spec_md_after
+        self._py_sequence = list(py_sequence)
+        self._py_idx = 0
+        self.calls: list[type] = []
+        self.user_prompts: list[str] = []
+
+    def call(self, *, system, user, response_model):
+        self.calls.append(response_model)
+        self.user_prompts.append(user)
+        if response_model is SpecPlan:
+            return SpecPlan(
+                reasoning="r",
+                summary="s",
+                spec_md_after=self._spec_md_after
+                or (
+                    "<!-- GENERATED -->\n"
+                    "# my_app\n\n"
+                    "## Resource: User\n\n"
+                    "### Fields\n"
+                    "- `name`: str\n"
+                ),
+            )
+        if response_model is PythonPlan:
+            idx = min(self._py_idx, len(self._py_sequence) - 1)
+            content = self._py_sequence[idx]
+            self._py_idx += 1
+            return PythonPlan(
+                reasoning="r",
+                summary=f"attempt {self._py_idx}",
+                generated_py_after=content,
+            )
+        raise RuntimeError(f"unexpected: {response_model}")
+
+
+class TestFeedbackRetryLoop:
+    """When ``specstar lock`` fails to import the LLM-generated
+    ``_generated.py`` (e.g. ``TypeError`` from a hallucinated kwarg or
+    a missing positional arg on ``Schema``), gen --call must capture
+    that error, feed it back to STEP 2 as additional context, and let
+    the LLM self-correct — up to ``feedback_retries`` times.
+    """
+
+    @pytest.fixture()
+    def edited_intent(self, pristine_project: Path) -> Path:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nA tiny change.\n", encoding="utf-8"
+        )
+        return pristine_project
+
+    def test_retry_succeeds_on_second_attempt(self, edited_intent: Path) -> None:
+        # First STEP 2 emits broken code (Schema missing version).
+        # Second STEP 2 emits valid code. Pipeline must end rc=0 with
+        # the good code on disk and no rollback.
+        gen_path = edited_intent / "my_app" / "_generated.py"
+        client = _SequencingMockClient(
+            py_sequence=[_BAD_SCHEMA_GENERATED_PY, _GOOD_GENERATED_PY],
+        )
+        rc, out, err = _call(edited_intent, client=client, feedback_retries=2)
+        assert rc == 0, f"retry should succeed; out={out!r} err={err!r}"
+        # STEP 2 was called twice — first + retry.
+        assert client.calls.count(PythonPlan) == 2
+        # Final on-disk content must be the good output.
+        assert gen_path.read_text() == _GOOD_GENERATED_PY
+
+    def test_retry_user_prompt_carries_captured_stderr(
+        self, edited_intent: Path
+    ) -> None:
+        client = _SequencingMockClient(
+            py_sequence=[_BAD_SCHEMA_GENERATED_PY, _GOOD_GENERATED_PY],
+        )
+        _call(edited_intent, client=client, feedback_retries=2)
+        # Calls in order: SpecPlan, PythonPlan(first), PythonPlan(retry).
+        assert client.calls == [SpecPlan, PythonPlan, PythonPlan]
+        retry_user_prompt = client.user_prompts[2]
+        assert "previous attempt" in retry_user_prompt.lower()
+        # The captured stderr should contain the actual TypeError text
+        # (or at least the symbol name that triggered it).
+        assert "Schema" in retry_user_prompt
+        assert "TypeError" in retry_user_prompt or "version" in retry_user_prompt
+
+    def test_retry_budget_exhausted_rolls_back(self, edited_intent: Path) -> None:
+        gen_path = edited_intent / "my_app" / "_generated.py"
+        before = gen_path.read_text()
+        # Every attempt produces broken code.
+        client = _SequencingMockClient(
+            py_sequence=[_BAD_SCHEMA_GENERATED_PY] * 5,
+        )
+        rc, out, err = _call(edited_intent, client=client, feedback_retries=2)
+        assert rc != 0
+        # 1 first attempt + 2 retries = 3 STEP 2 calls.
+        assert client.calls.count(PythonPlan) == 3
+        # Working tree restored.
+        assert gen_path.read_text() == before
+        combined = out + err
+        assert "roll" in combined.lower(), (
+            "exhausted-retries path must still roll back the working tree"
+        )
+
+    def test_feedback_retries_zero_disables_retry_loop(
+        self, edited_intent: Path
+    ) -> None:
+        # feedback_retries=0 keeps the legacy behavior: rollback on the
+        # first lock failure with no LLM retry.
+        gen_path = edited_intent / "my_app" / "_generated.py"
+        before = gen_path.read_text()
+        client = _SequencingMockClient(
+            py_sequence=[_BAD_SCHEMA_GENERATED_PY, _GOOD_GENERATED_PY],
+        )
+        rc, out, err = _call(edited_intent, client=client, feedback_retries=0)
+        assert rc != 0
+        assert client.calls.count(PythonPlan) == 1, (
+            "with feedback_retries=0 there must be no second STEP 2 call"
+        )
+        assert gen_path.read_text() == before

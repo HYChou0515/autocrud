@@ -133,6 +133,22 @@ class TestStep2SystemPrompt:
             and "does not exist" in STEP2_SYSTEM_PROMPT.lower()
         ), "must explicitly call out that `permissions=` is hallucinated and forbidden"
 
+    def test_includes_schema_example_with_required_version(self) -> None:
+        # Bug we hit: LLM emitted `Schema(Book)` and the import raised
+        # `TypeError: Schema.__init__() missing 1 required positional
+        # argument: 'version'`. The prompt must show a real
+        # `Schema(<Class>, "<version>")` call so the LLM doesn't drop
+        # the version arg.
+        import re
+
+        assert re.search(
+            r"Schema\(\s*\w+\s*,\s*['\"]\w+['\"]",
+            STEP2_SYSTEM_PROMPT,
+        ), (
+            'prompt must contain a real Schema(<Class>, "<version>") '
+            "example so the LLM doesn't drop the required `version` arg"
+        )
+
     def test_referenced_symbols_actually_exist_in_specstar(self) -> None:
         # If the prompt's worked examples reference symbols that don't
         # exist (typo / wishful thinking), the LLM will faithfully
@@ -208,6 +224,43 @@ class TestStep2UserPrompt:
     ) -> None:
         up = build_step2_user_prompt(step2_input)
         assert f"{step2_input.package_name}/_generated.py" in up
+
+    def test_no_error_feedback_section_when_empty(
+        self, step2_input: Step2Input
+    ) -> None:
+        # Default: error_feedback is "" and the user prompt should not
+        # mention any "previous attempt failed" framing — that would
+        # confuse the LLM on a fresh first call.
+        up = build_step2_user_prompt(step2_input)
+        assert "previous attempt" not in up.lower()
+        assert "error" not in up.lower() or "errors" in up.lower(), (
+            "the bare prompt must not introduce an error-feedback frame"
+        )
+
+    def test_embeds_error_feedback_when_provided(self) -> None:
+        # When the previous LLM output failed at import-time, the caller
+        # passes the captured stderr back via Step2Input.error_feedback.
+        # The user prompt must surface it under a clear "previous attempt
+        # failed" header so the LLM understands what went wrong.
+        state = Step2Input(
+            spec_md="# my_app\n",
+            previous_generated_py="from specstar import spec\n",
+            package_name="my_app",
+            error_feedback=(
+                "TypeError: Schema.__init__() missing 1 required "
+                "positional argument: 'version'"
+            ),
+        )
+        up = build_step2_user_prompt(state)
+        assert "previous attempt" in up.lower()
+        assert "Schema.__init__()" in up
+        assert "version" in up
+
+    def test_error_feedback_is_optional_default_empty(self) -> None:
+        # Backwards compatibility: existing callers must not need to
+        # provide error_feedback.
+        state = Step2Input(spec_md="x", previous_generated_py="y", package_name="z")
+        assert state.error_feedback == ""
 
 
 # ---------------------------------------------------------------------------

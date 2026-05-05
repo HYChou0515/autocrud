@@ -187,6 +187,39 @@ class TestRunSteps:
         assert client.calls[0]["system"] == STEP2_SYSTEM_PROMPT
         assert client.calls[0]["response_model"] is PythonPlan
 
+    def test_run_step2_propagates_error_feedback_into_user_prompt(self) -> None:
+        # When the caller provides error_feedback (e.g. captured stderr
+        # from a previous failing import), run_step2 must thread it
+        # through to the user prompt so the LLM sees the actual error
+        # and can self-correct.
+        client = _RecordingClient()
+        feedback = (
+            "TypeError: Schema.__init__() missing 1 required "
+            "positional argument: 'version'"
+        )
+        run_step2(
+            client,
+            spec_md="# spec\n",
+            previous_generated_py="x = 1\n",
+            package_name="my_app",
+            error_feedback=feedback,
+        )
+        user_msg = client.calls[0]["user"]
+        assert "previous attempt" in user_msg.lower()
+        assert "Schema.__init__()" in user_msg
+
+    def test_run_step2_default_error_feedback_omitted(self) -> None:
+        # When error_feedback is omitted, the user prompt must look
+        # exactly like the no-feedback case (no leftover header).
+        client = _RecordingClient()
+        run_step2(
+            client,
+            spec_md="# spec\n",
+            previous_generated_py="x = 1\n",
+            package_name="my_app",
+        )
+        assert "previous attempt" not in client.calls[0]["user"].lower()
+
 
 # ---------------------------------------------------------------------------
 # apply_*  — file write

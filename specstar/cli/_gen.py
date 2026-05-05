@@ -24,6 +24,7 @@ for users without Claude Code (any provider, including self-hosted).
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import sys
@@ -36,12 +37,14 @@ from specstar.descriptor import Manifest
 from specstar.lockfile import compute_file_hash, read_manifest
 from specstar.skill.llm import LLMClient, LLMError, ProviderConfig, build_client
 from specstar.skill.plan import (
+    apply_python_plan,
     apply_result,
     decide_steps,
     execute_plan,
     render_decision,
     render_python_plan,
     render_spec_plan,
+    run_step2,
 )
 from specstar.skill.prompts import (
     STEP1_SYSTEM_PROMPT,
@@ -152,6 +155,18 @@ def add_gen_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Schema-validation retries (default 3).",
     )
     p.add_argument(
+        "--feedback-retries",
+        type=int,
+        default=2,
+        help=(
+            "After STEP 2 lands a syntactically valid file that the lock "
+            "step refuses to import (TypeError, etc.), capture the error "
+            "and re-call STEP 2 up to N times feeding the captured stderr "
+            "back into the user prompt for self-correction. 0 disables "
+            "(rollback on first failure). Default: 2."
+        ),
+    )
+    p.add_argument(
         "--temperature",
         type=float,
         default=0.0,
@@ -179,6 +194,7 @@ def gen_cmd(args: argparse.Namespace) -> int:
         api_key=args.api_key,
         max_tokens=args.max_tokens,
         max_retries=args.max_retries,
+        feedback_retries=args.feedback_retries,
         temperature=args.temperature,
         stream=sys.stdout,
         error_stream=sys.stderr,
@@ -209,6 +225,7 @@ def run_gen(
     api_key: str | None = None,
     max_tokens: int = 8000,
     max_retries: int = 3,
+    feedback_retries: int = 2,
     temperature: float = 0.0,
     stream,
     error_stream,
@@ -237,6 +254,7 @@ def run_gen(
             api_key=api_key,
             max_tokens=max_tokens,
             max_retries=max_retries,
+            feedback_retries=feedback_retries,
             temperature=temperature,
             stream=stream,
             error_stream=error_stream,
@@ -362,6 +380,7 @@ def _run_call(
     api_key: str | None,
     max_tokens: int,
     max_retries: int,
+    feedback_retries: int,
     temperature: float,
     stream,
     error_stream,
@@ -571,16 +590,23 @@ def _run_call(
         for w in written:
             print(f"  {w}", file=stream)
 
-    # Refresh lock + verify.
-    rc = _refresh_lock_and_verify(
+    # Refresh lock + verify, with feedback-retry loop on failure.
+    rc, captured_err = _try_lock_with_feedback_retry(
+        client=client,
         package=package,
-        generated_path=generated_path,
-        spec_path=spec_path,
         intent_path=intent_path,
+        spec_path=spec_path,
+        generated_path=generated_path,
         lock_path=lock_path,
+        feedback_retries=feedback_retries,
         stream=stream,
         error_stream=error_stream,
     )
+    # Always surface whatever the final attempt printed to its captured
+    # stderr, so the user sees the actual failure mode (or nothing on
+    # success).
+    if captured_err:
+        error_stream.write(captured_err)
 
     if rc != 0:
         _rollback(
@@ -593,6 +619,105 @@ def _run_call(
             stream=stream,
         )
     return rc
+
+
+def _try_lock_with_feedback_retry(
+    *,
+    client: LLMClient,
+    package: str,
+    intent_path: Path,
+    spec_path: Path,
+    generated_path: Path,
+    lock_path: Path,
+    feedback_retries: int,
+    stream,
+    error_stream,
+) -> tuple[int, str]:
+    """Run lock+verify; on failure, optionally re-call STEP 2 with the
+    captured stderr embedded in the prompt, until success or budget
+    exhausted.
+
+    Returns ``(rc, last_captured_stderr)``. The caller is responsible for
+    rolling back if ``rc != 0``. Each retry only re-runs STEP 2 (spec.md
+    is left alone — STEP 1 already produced a structurally valid spec).
+    """
+    attempts_remaining = feedback_retries
+    while True:
+        captured = io.StringIO()
+        rc = _refresh_lock_and_verify(
+            package=package,
+            generated_path=generated_path,
+            spec_path=spec_path,
+            intent_path=intent_path,
+            lock_path=lock_path,
+            stream=stream,
+            error_stream=captured,
+        )
+        if rc == 0:
+            return rc, captured.getvalue()
+        captured_text = captured.getvalue()
+        if attempts_remaining <= 0:
+            return rc, captured_text
+
+        # Self-correction round: re-call STEP 2 with the captured stderr.
+        attempts_remaining -= 1
+        attempt_idx = feedback_retries - attempts_remaining
+        print(
+            f"\nfeedback retry {attempt_idx}/{feedback_retries}: "
+            "re-running STEP 2 with captured error...",
+            file=stream,
+        )
+        # Surface the captured stderr to the user too — they should see
+        # what the LLM is being asked to fix.
+        error_stream.write(captured_text)
+
+        try:
+            retry_plan = run_step2(
+                client,
+                spec_md=spec_path.read_text(encoding="utf-8"),
+                previous_generated_py=generated_path.read_text(encoding="utf-8"),
+                package_name=package,
+                error_feedback=captured_text,
+            )
+        except LLMError as exc:
+            print(
+                f"error during feedback retry: {exc}",
+                file=error_stream,
+            )
+            return 1, captured_text
+
+        # AST-validate the retry output before writing — same defense as
+        # the first attempt.
+        from specstar.validator import DeclarativeASTValidator
+
+        validator = DeclarativeASTValidator()
+        try:
+            ast_errors = validator.validate(
+                retry_plan.generated_py_after,
+                filename=str(generated_path),
+            )
+        except SyntaxError as exc:
+            print(
+                f"error: retry produced invalid Python (syntax error at "
+                f"line {exc.lineno}): {exc.msg}",
+                file=error_stream,
+            )
+            return 1, captured_text
+        if ast_errors:
+            print(
+                "error: retry rejected by AST validator:",
+                file=error_stream,
+            )
+            for e in ast_errors[:10]:
+                print(
+                    f"  line {e.line}:{e.col} [{e.kind}] {e.message}",
+                    file=error_stream,
+                )
+            return 1, captured_text
+
+        apply_python_plan(retry_plan, generated_path)
+        print(render_python_plan(retry_plan), file=stream)
+        # Loop back to lock+verify.
 
 
 # ---------------------------------------------------------------------------

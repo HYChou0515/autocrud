@@ -58,6 +58,14 @@ class Step2Input(Struct, frozen=True):
 
     package_name: str
 
+    error_feedback: str = ""
+    """Captured stderr from a previous failed attempt at applying the
+    LLM-generated _generated.py (typically a TypeError or ImportError
+    from `specstar lock`'s subprocess import). When non-empty, the user
+    prompt embeds it under a 'previous attempt failed' header so the LLM
+    can self-correct. Empty on the first call.
+    """
+
 
 STEP1_SYSTEM_PROMPT = """\
 You are SpecStar's intent-to-spec translator.
@@ -241,6 +249,37 @@ class Order(msgspec.Struct):
 spec.add_model(Order, name="order")
 ```
 
+**Resource with versioned schema (migration chain):**
+
+`Schema` requires **both** the resource class **and** a version string. \
+Dropping the version raises `TypeError: Schema.__init__() missing 1 \
+required positional argument: 'version'` at import. Always pair them:
+
+```python
+def _migrate_v1_to_v2(d: dict) -> dict:
+    return {**d, "title": d.pop("name", "")}
+
+
+class BookV2(msgspec.Struct):
+    title: str
+    author: str
+
+
+schema = Schema(BookV2, "v2").step("v1", _migrate_v1_to_v2)
+spec.add_model(BookV2, name="book", schema=schema)
+```
+
+For a brand-new resource that does not yet need migrations, just **omit \
+`schema=` entirely** — do not pass a bare `Schema(Cls)`:
+
+```python
+class Book(msgspec.Struct):
+    title: str
+
+
+spec.add_model(Book, name="book")  # no schema= → fine
+```
+
 **Resource where spec.md describes per-action permissions you cannot \
 express via a single built-in checker** — emit the permissions as \
 comments documenting intent; **do not** invent a `permissions=` kwarg:
@@ -291,15 +330,33 @@ def build_step1_user_prompt(state: Step1Input) -> str:
 
 
 def build_step2_user_prompt(state: Step2Input) -> str:
-    """Construct the STEP 2 user message embedding spec + previous python."""
-    return _join(
+    """Construct the STEP 2 user message embedding spec + previous python.
+
+    When ``state.error_feedback`` is non-empty, the prompt also includes
+    a 'previous attempt failed' section so the LLM can read the actual
+    runtime error and self-correct on the retry.
+    """
+    parts = [
         f"PACKAGE: {state.package_name}",
         "spec.md (the structured spec to translate):",
         f"```markdown\n{state.spec_md}\n```",
         "Previous _generated.py (for stability — preserve idioms unless they need to change):",
         f"```python\n{state.previous_generated_py}\n```",
-        f"Produce PythonPlan with the new {state.package_name}/_generated.py content.",
+    ]
+    if state.error_feedback:
+        parts.append(
+            "Your previous attempt failed when SpecStar tried to import "
+            "the generated file. Read the captured error carefully, find "
+            "the line that triggered it, and fix it in the new output. "
+            "Do not repeat the same construct."
+        )
+        parts.append(
+            f"Captured stderr from the failed import:\n```\n{state.error_feedback}\n```"
+        )
+    parts.append(
+        f"Produce PythonPlan with the new {state.package_name}/_generated.py content."
     )
+    return _join(*parts)
 
 
 def build_step1_messages(state: Step1Input) -> list[dict[str, str]]:

@@ -180,12 +180,20 @@ def run_step2(
     spec_md: str,
     previous_generated_py: str,
     package_name: str,
+    error_feedback: str = "",
 ) -> PythonPlan:
-    """Invoke STEP 2: spec.md → PythonPlan."""
+    """Invoke STEP 2: spec.md → PythonPlan.
+
+    ``error_feedback`` is captured stderr from a previous failed import
+    of an LLM-generated _generated.py. When non-empty, it is embedded in
+    the user prompt under a 'previous attempt failed' header so the LLM
+    can see the runtime error and self-correct.
+    """
     state = Step2Input(
         spec_md=spec_md,
         previous_generated_py=previous_generated_py,
         package_name=package_name,
+        error_feedback=error_feedback,
     )
     return client.call(
         system=STEP2_SYSTEM_PROMPT,
