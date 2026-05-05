@@ -890,3 +890,83 @@ class TestFeedbackRetryLoop:
             "with feedback_retries=0 there must be no second STEP 2 call"
         )
         assert gen_path.read_text() == before
+
+
+# ---------------------------------------------------------------------------
+# Removing spec.lock.json = "rebuild from scratch" signal
+# ---------------------------------------------------------------------------
+
+
+class TestMissingLockRebuilds:
+    """When the user deletes spec.lock.json, gen --call must treat it as
+    "no recorded baseline" and rebuild from intent.md (equivalent to
+    --force). This mirrors the missing-spec.md / missing-_generated.py
+    semantics: a missing tracked artifact = "please regenerate it".
+    """
+
+    def test_missing_lock_does_not_error_out(self, pristine_project: Path) -> None:
+        # Tracer bullet: removing spec.lock.json must not return rc=2
+        # with "lock file not found". It must run the pipeline and end
+        # with rc=0 + a fresh lock on disk.
+        lock_path = pristine_project / "spec.lock.json"
+        lock_path.unlink()
+
+        client = _MockClient()
+        rc, out, err = _call(pristine_project, client=client)
+
+        assert rc == 0, (
+            f"missing lock must not be a hard error (got rc={rc!r}, err={err!r})"
+        )
+        assert lock_path.exists(), "missing lock must be regenerated"
+
+    def test_missing_lock_runs_step1_and_step2(self, pristine_project: Path) -> None:
+        # The whole point of the rebuild semantics: missing lock must
+        # actually invoke the LLM to regenerate from intent.md, not
+        # silently rebuild the lock from current files (which would be
+        # case-8 "freeze current state").
+        (pristine_project / "spec.lock.json").unlink()
+
+        client = _MockClient()
+        rc, _, _ = _call(pristine_project, client=client)
+        assert rc == 0
+        assert SpecPlan in client.calls, (
+            "missing lock = rebuild from intent.md → STEP 1 must run"
+        )
+        assert PythonPlan in client.calls, (
+            "missing lock = rebuild from intent.md → STEP 2 must run"
+        )
+
+    def test_missing_lock_with_from_spec_skips_step1(
+        self, pristine_project: Path
+    ) -> None:
+        # Escape hatch: user has hand-edited spec.md and wants the
+        # rebuild to start from STEP 2, not from intent.md. --from-spec
+        # must override the implicit force triggered by the missing lock.
+        (pristine_project / "spec.lock.json").unlink()
+
+        client = _MockClient()
+        rc, _, _ = _call(pristine_project, client=client, from_spec=True)
+        assert rc == 0
+        assert SpecPlan not in client.calls, (
+            "--from-spec must skip STEP 1 even when the lock is missing"
+        )
+        assert PythonPlan in client.calls, (
+            "--from-spec still runs STEP 2 from current spec.md"
+        )
+
+    def test_missing_lock_and_missing_intent_still_errors(
+        self, pristine_project: Path
+    ) -> None:
+        # Sanity: rebuild semantics need intent.md as the ground truth.
+        # If both the lock AND intent.md are gone, there is no signal
+        # to rebuild from — must error rather than silently produce an
+        # empty / hallucinated spec.
+        (pristine_project / "spec.lock.json").unlink()
+        (pristine_project / "intent.md").unlink()
+
+        client = _MockClient()
+        rc, _, err = _call(pristine_project, client=client)
+        assert rc != 0
+        assert "intent" in err.lower(), (
+            "error must point at the missing intent.md, not at the lock"
+        )

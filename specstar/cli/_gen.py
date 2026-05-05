@@ -388,22 +388,42 @@ def _run_call(
     confirm: Callable[[str], bool] | None,
     env: dict[str, str] | None,
 ) -> int:
-    if not lock_path.exists():
+    manifest: Manifest | None
+    if lock_path.exists():
+        try:
+            manifest = read_manifest(lock_path)
+        except msgspec.DecodeError as exc:
+            print(f"error: cannot parse {lock_path}: {exc}", file=error_stream)
+            return 2
+    else:
+        # Missing lock = "rebuild from scratch" signal. Mirror the
+        # missing-spec / missing-_generated semantics: no recorded
+        # baseline → regenerate everything from intent.md (force).
+        # `--from-spec` still takes precedence for users who want to
+        # skip STEP 1 and treat their hand-edited spec.md as authority.
         print(
-            f"error: lock file not found: {lock_path}. Run `specstar init` first.",
-            file=error_stream,
+            f"note: {lock_path} is missing — rebuilding baseline from intent.md.",
+            file=stream,
         )
-        return 2
-    try:
-        manifest = read_manifest(lock_path)
-    except msgspec.DecodeError as exc:
-        print(f"error: cannot parse {lock_path}: {exc}", file=error_stream)
-        return 2
+        manifest = None
+        if not from_spec:
+            force = True
 
     # Resolve package + paths from the lock when omitted.
-    detected_pkg, detected_gen = _detect_package_and_generated(manifest)
-    package = package or detected_pkg
-    generated_path = generated_path or detected_gen
+    if manifest is not None:
+        detected_pkg, detected_gen = _detect_package_and_generated(manifest)
+        package = package or detected_pkg
+        generated_path = generated_path or detected_gen
+    if package is None and generated_path is None:
+        # No manifest to consult — scan cwd for a single `<pkg>/_generated.py`
+        # so that `rm spec.lock.json && specstar gen --call` Just Works
+        # without requiring the user to remember --package.
+        scanned_pkg, scanned_gen = _scan_package_from_cwd()
+        package = scanned_pkg
+        generated_path = scanned_gen
+    if generated_path is None and package is not None:
+        # Fall back to the conventional layout.
+        generated_path = Path(package) / "_generated.py"
     if package is None or generated_path is None:
         print(
             "error: could not determine package or _generated.py path; "
@@ -451,13 +471,18 @@ def _run_call(
         if not spec_recreate:
             from_spec = True
 
-    # Compute hash-vs-lock booleans.
-    intent_changed, spec_changed, gen_changed = _hashes_vs_lock(
-        manifest,
-        intent_path=intent_path,
-        spec_path=spec_path,
-        generated_path=generated_path,
-    )
+    # Compute hash-vs-lock booleans. With no manifest (lock was missing),
+    # treat all three as "changed" — there is no recorded baseline to
+    # diff against. The decision is then dominated by force/from_spec.
+    if manifest is None:
+        intent_changed = spec_changed = gen_changed = True
+    else:
+        intent_changed, spec_changed, gen_changed = _hashes_vs_lock(
+            manifest,
+            intent_path=intent_path,
+            spec_path=spec_path,
+            generated_path=generated_path,
+        )
 
     try:
         decision = decide_steps(
@@ -832,6 +857,30 @@ def _detect_package_and_generated(
         if relpath.endswith("_generated.py"):
             p = Path(relpath)
             return p.parent.name, p
+    return None, None
+
+
+def _scan_package_from_cwd() -> tuple[str | None, Path | None]:
+    """Find a `<pkg>/_generated.py` under the cwd when no lock exists.
+
+    Used by the missing-lock recovery path. If exactly one such file is
+    present, return its package and path. Zero or multiple matches → no
+    inference; the caller falls through to "pass --package explicitly".
+    Hidden / dunder dirs are ignored to avoid stumbling over `.venv`,
+    `__pycache__`, etc.
+    """
+    matches: list[Path] = []
+    for sub in Path(".").iterdir():
+        if not sub.is_dir():
+            continue
+        if sub.name.startswith(".") or sub.name.startswith("_"):
+            continue
+        candidate = sub / "_generated.py"
+        if candidate.is_file():
+            matches.append(candidate)
+    if len(matches) == 1:
+        only = matches[0]
+        return only.parent.name, only
     return None, None
 
 
