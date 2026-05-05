@@ -66,6 +66,15 @@ class Step2Input(Struct, frozen=True):
     can self-correct. Empty on the first call.
     """
 
+    enabled_features: tuple[str, ...] = ()
+    """Feature toggles that drive STEP 2 codegen scope (e.g.
+    ``("permissions", "workflows", "schema")``). The user prompt
+    surfaces these under an 'Enabled features' preamble so the LLM
+    only emits ``add_model`` kwargs for enabled features and leaves
+    disabled-feature spec.md content as comments. Empty tuple means
+    "caller is not gating features" — the LLM falls back to its full
+    pre-toggle behavior."""
+
 
 STEP1_SYSTEM_PROMPT = """\
 You are SpecStar's intent-to-spec translator.
@@ -338,11 +347,24 @@ def build_step2_user_prompt(state: Step2Input) -> str:
     """
     parts = [
         f"PACKAGE: {state.package_name}",
-        "spec.md (the structured spec to translate):",
-        f"```markdown\n{state.spec_md}\n```",
-        "Previous _generated.py (for stability — preserve idioms unless they need to change):",
-        f"```python\n{state.previous_generated_py}\n```",
     ]
+    if state.enabled_features:
+        feature_list = ", ".join(state.enabled_features)
+        parts.append(
+            "## Enabled features\n\n"
+            f"Generate `add_model` kwargs only for these features: {feature_list}.\n"
+            "For spec.md sections describing features NOT in this list, leave "
+            "the content as a Python comment in `_generated.py` (do not invent "
+            "kwargs)."
+        )
+    parts.extend(
+        [
+            "spec.md (the structured spec to translate):",
+            f"```markdown\n{state.spec_md}\n```",
+            "Previous _generated.py (for stability — preserve idioms unless they need to change):",
+            f"```python\n{state.previous_generated_py}\n```",
+        ]
+    )
     if state.error_feedback:
         parts.append(
             "Your previous attempt failed when SpecStar tried to import "

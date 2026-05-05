@@ -106,6 +106,20 @@ spec.add_model(User, name="user")
 '''
 
 
+_PYPROJECT_TOML_TEMPLATE = """\
+# Minimal pyproject.toml scaffolded by `specstar init`.
+# Extend with [project] / [build-system] etc. for real distribution.
+
+[tool.specstar]
+# Codegen feature toggles. The LLM only emits `add_model` kwargs for
+# features in this list; spec.md content for disabled features is
+# preserved as comments. Widen as you adopt more SpecStar surface:
+#   "permissions", "workflows", "schema",
+#   "indexes", "storage", "mq", "validators", "constraints", "defaults"
+features = ["permissions", "workflows", "schema"]
+"""
+
+
 _PACKAGE_INIT_TEMPLATE = '''\
 """FastAPI entry point for {package}.
 
@@ -217,6 +231,7 @@ def run_init(
 
     intent_md.write_text(_INTENT_MD_TEMPLATE.format(package=package), encoding="utf-8")
     spec_md.write_text(_SPEC_MD_TEMPLATE.format(package=package), encoding="utf-8")
+    (root / "pyproject.toml").write_text(_PYPROJECT_TOML_TEMPLATE, encoding="utf-8")
     pkg_init.write_text(
         _PACKAGE_INIT_TEMPLATE.format(package=package), encoding="utf-8"
     )
@@ -249,6 +264,7 @@ def _planned_files(root: Path, package: str, *, write_lock: bool) -> list[Path]:
     files = [
         root / "intent.md",
         root / "spec.md",
+        root / "pyproject.toml",
         root / package / "__init__.py",
         root / package / "_generated.py",
     ]

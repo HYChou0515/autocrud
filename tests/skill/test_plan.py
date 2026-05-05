@@ -208,6 +208,23 @@ class TestRunSteps:
         assert "previous attempt" in user_msg.lower()
         assert "Schema.__init__()" in user_msg
 
+    def test_run_step2_propagates_enabled_features(self) -> None:
+        # run_step2 must thread enabled_features through to the user
+        # prompt so the gen --call orchestrator can drive STEP 2's
+        # codegen scope.
+        client = _RecordingClient()
+        run_step2(
+            client,
+            spec_md="# spec\n",
+            previous_generated_py="x = 1\n",
+            package_name="my_app",
+            enabled_features=("permissions", "workflows"),
+        )
+        user_msg = client.calls[0]["user"]
+        assert "Enabled features" in user_msg
+        assert "permissions" in user_msg
+        assert "workflows" in user_msg
+
     def test_run_step2_default_error_feedback_omitted(self) -> None:
         # When error_feedback is omitted, the user prompt must look
         # exactly like the no-feedback case (no leftover header).

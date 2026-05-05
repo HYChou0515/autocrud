@@ -262,6 +262,29 @@ class TestStep2UserPrompt:
         state = Step2Input(spec_md="x", previous_generated_py="y", package_name="z")
         assert state.error_feedback == ""
 
+    def test_enabled_features_preamble_listed_in_user_prompt(self) -> None:
+        # Tracer for slice B: when the caller specifies enabled
+        # features, the user prompt must surface them so the LLM
+        # knows which add_model kwargs it is allowed to emit.
+        state = Step2Input(
+            spec_md="# x\n",
+            previous_generated_py="# y\n",
+            package_name="my_app",
+            enabled_features=("permissions", "schema"),
+        )
+        up = build_step2_user_prompt(state)
+        assert "Enabled features" in up
+        assert "permissions" in up
+        assert "schema" in up
+
+    def test_no_features_no_preamble(self, step2_input: Step2Input) -> None:
+        # Backwards compat: when enabled_features defaults to empty
+        # (existing callers), the user prompt must not introduce the
+        # preamble — that would force gating semantics on legacy
+        # callers and break their flow.
+        up = build_step2_user_prompt(step2_input)
+        assert "Enabled features" not in up
+
 
 # ---------------------------------------------------------------------------
 # build_messages — Anthropic API shape

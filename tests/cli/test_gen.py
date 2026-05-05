@@ -275,9 +275,11 @@ class _MockClient:
         self._spec_md_after = spec_md_after
         self._generated_py_after = generated_py_after or _GENERATED_PY_BODY
         self.calls: list[type] = []
+        self.user_prompts: list[str] = []
 
     def call(self, *, system, user, response_model):
         self.calls.append(response_model)
+        self.user_prompts.append(user)
         if response_model is SpecPlan:
             return SpecPlan(
                 reasoning="r",
@@ -320,6 +322,8 @@ def _call(project: Path, **kwargs) -> tuple[int, str, str]:
             force=kwargs.pop("force", False),
             from_spec=kwargs.pop("from_spec", False),
             feedback_retries=kwargs.pop("feedback_retries", 0),
+            cli_enable_features=kwargs.pop("cli_enable_features", []),
+            cli_disable_features=kwargs.pop("cli_disable_features", []),
             client=kwargs.pop("client", None),
             confirm=kwargs.pop("confirm", None),
             env=kwargs.pop("env", None),
@@ -970,3 +974,93 @@ class TestMissingLockRebuilds:
         assert "intent" in err.lower(), (
             "error must point at the missing intent.md, not at the lock"
         )
+
+
+# ---------------------------------------------------------------------------
+# Feature toggle wiring (Phase 1.0 infrastructure)
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureToggleWiring:
+    """gen --call must read [tool.specstar].features from pyproject.toml
+    and CLI overrides (--feature / --no-feature), then surface the
+    resolved list in the STEP 2 user prompt as the 'Enabled features'
+    preamble. This drives downstream codegen scope (which add_model
+    kwargs the LLM is instructed to emit).
+    """
+
+    @pytest.fixture()
+    def edited_intent(self, pristine_project: Path) -> Path:
+        # Force STEP 2 to run so we have a prompt to inspect.
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nA tiny change.\n", encoding="utf-8"
+        )
+        return pristine_project
+
+    def _step2_prompt(self, client: _MockClient) -> str:
+        # Pull the user prompt for the PythonPlan call.
+        idx = client.calls.index(PythonPlan)
+        return client.user_prompts[idx]
+
+    def test_pyproject_features_reach_step2_prompt(self, edited_intent: Path) -> None:
+        # Tracer: pyproject.toml [tool.specstar].features must flow
+        # through to the STEP 2 user prompt verbatim.
+        (edited_intent / "pyproject.toml").write_text(
+            '[tool.specstar]\nfeatures = ["permissions", "indexes"]\n',
+            encoding="utf-8",
+        )
+        client = _MockClient()
+        rc, _, _ = _call(edited_intent, client=client)
+        assert rc == 0
+        prompt = self._step2_prompt(client)
+        assert "Enabled features" in prompt
+        assert "permissions" in prompt
+        assert "indexes" in prompt
+
+    def test_default_features_when_no_pyproject(self, edited_intent: Path) -> None:
+        # No pyproject.toml = framework default
+        # ("permissions", "workflows", "schema") shows up in prompt.
+        client = _MockClient()
+        rc, _, _ = _call(edited_intent, client=client)
+        assert rc == 0
+        prompt = self._step2_prompt(client)
+        assert "Enabled features" in prompt
+        for name in ("permissions", "workflows", "schema"):
+            assert name in prompt
+
+    def test_cli_feature_flag_adds_to_pyproject_features(
+        self, edited_intent: Path
+    ) -> None:
+        # --feature storage on top of pyproject = ["permissions"]
+        # widens scope for this run only (pyproject untouched).
+        (edited_intent / "pyproject.toml").write_text(
+            '[tool.specstar]\nfeatures = ["permissions"]\n',
+            encoding="utf-8",
+        )
+        client = _MockClient()
+        rc, _, _ = _call(edited_intent, client=client, cli_enable_features=["storage"])
+        assert rc == 0
+        prompt = self._step2_prompt(client)
+        assert "permissions" in prompt
+        assert "storage" in prompt
+
+    def test_cli_no_feature_flag_removes_from_pyproject_features(
+        self, edited_intent: Path
+    ) -> None:
+        client = _MockClient()
+        rc, _, _ = _call(
+            edited_intent,
+            client=client,
+            cli_disable_features=["workflows"],
+        )
+        assert rc == 0
+        prompt = self._step2_prompt(client)
+        # workflows was in default, should now be absent from preamble
+        # (but it could still appear elsewhere in the prompt as part
+        # of the spec.md content; check the preamble line specifically).
+        # Find the preamble line:
+        preamble_start = prompt.index("Enabled features")
+        preamble_end = prompt.index("```", preamble_start)
+        preamble_block = prompt[preamble_start:preamble_end]
+        assert "workflows" not in preamble_block
+        assert "permissions" in preamble_block

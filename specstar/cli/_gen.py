@@ -35,6 +35,10 @@ import msgspec
 
 from specstar.descriptor import Manifest
 from specstar.lockfile import compute_file_hash, read_manifest
+from specstar.skill.features import (
+    load_features_from_pyproject,
+    resolve_features,
+)
 from specstar.skill.llm import LLMClient, LLMError, ProviderConfig, build_client
 from specstar.skill.plan import (
     apply_python_plan,
@@ -155,6 +159,29 @@ def add_gen_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Schema-validation retries (default 3).",
     )
     p.add_argument(
+        "--feature",
+        action="append",
+        default=[],
+        dest="cli_enable_features",
+        metavar="NAME",
+        help=(
+            "Enable a codegen feature for this run on top of "
+            "[tool.specstar].features in pyproject.toml. Repeatable. "
+            "E.g. --feature storage --feature mq."
+        ),
+    )
+    p.add_argument(
+        "--no-feature",
+        action="append",
+        default=[],
+        dest="cli_disable_features",
+        metavar="NAME",
+        help=(
+            "Disable a codegen feature for this run. Wins over --feature "
+            "when both reference the same name. Repeatable."
+        ),
+    )
+    p.add_argument(
         "--feedback-retries",
         type=int,
         default=2,
@@ -195,6 +222,8 @@ def gen_cmd(args: argparse.Namespace) -> int:
         max_tokens=args.max_tokens,
         max_retries=args.max_retries,
         feedback_retries=args.feedback_retries,
+        cli_enable_features=args.cli_enable_features,
+        cli_disable_features=args.cli_disable_features,
         temperature=args.temperature,
         stream=sys.stdout,
         error_stream=sys.stderr,
@@ -226,6 +255,8 @@ def run_gen(
     max_tokens: int = 8000,
     max_retries: int = 3,
     feedback_retries: int = 2,
+    cli_enable_features: list[str] | None = None,
+    cli_disable_features: list[str] | None = None,
     temperature: float = 0.0,
     stream,
     error_stream,
@@ -255,6 +286,8 @@ def run_gen(
             max_tokens=max_tokens,
             max_retries=max_retries,
             feedback_retries=feedback_retries,
+            cli_enable_features=cli_enable_features or [],
+            cli_disable_features=cli_disable_features or [],
             temperature=temperature,
             stream=stream,
             error_stream=error_stream,
@@ -381,6 +414,8 @@ def _run_call(
     max_tokens: int,
     max_retries: int,
     feedback_retries: int,
+    cli_enable_features: list[str],
+    cli_disable_features: list[str],
     temperature: float,
     stream,
     error_stream,
@@ -528,6 +563,14 @@ def _run_call(
             print(f"error: {exc}", file=error_stream)
             return 2
 
+    # Resolve feature toggles. pyproject.toml in cwd is conventional;
+    # CLI flags override.
+    enabled_features = resolve_features(
+        pyproject_value=load_features_from_pyproject(Path("pyproject.toml")),
+        cli_enable=cli_enable_features,
+        cli_disable=cli_disable_features,
+    )
+
     # Execute (LLM call, no file writes).
     try:
         result = execute_plan(
@@ -537,6 +580,7 @@ def _run_call(
             spec_path=spec_path,
             generated_path=generated_path,
             package_name=package,
+            enabled_features=enabled_features,
         )
     except LLMError as exc:
         print(f"error: LLM call failed: {exc}", file=error_stream)
@@ -624,6 +668,7 @@ def _run_call(
         generated_path=generated_path,
         lock_path=lock_path,
         feedback_retries=feedback_retries,
+        enabled_features=enabled_features,
         stream=stream,
         error_stream=error_stream,
     )
@@ -655,6 +700,7 @@ def _try_lock_with_feedback_retry(
     generated_path: Path,
     lock_path: Path,
     feedback_retries: int,
+    enabled_features: tuple[str, ...] = (),
     stream,
     error_stream,
 ) -> tuple[int, str]:
@@ -703,6 +749,7 @@ def _try_lock_with_feedback_retry(
                 previous_generated_py=generated_path.read_text(encoding="utf-8"),
                 package_name=package,
                 error_feedback=captured_text,
+                enabled_features=enabled_features,
             )
         except LLMError as exc:
             print(

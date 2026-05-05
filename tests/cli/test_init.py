@@ -205,3 +205,45 @@ class TestCliDispatch:
         captured = capsys.readouterr()
         assert rc == 0
         assert "init" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# pyproject.toml scaffolding (Phase 1.0 feature toggle infra)
+# ---------------------------------------------------------------------------
+
+
+class TestPyprojectScaffolding:
+    """`specstar init` must scaffold a minimal pyproject.toml carrying
+    `[tool.specstar].features` so the user discovers the toggle the
+    moment they bootstrap the project — and so subsequent gen --call
+    runs find the config in the conventional location.
+    """
+
+    def test_pyproject_toml_is_created(self, tmp_path: Path) -> None:
+        # Tracer: pyproject.toml exists after init.
+        rc, _, _ = _run(tmp_path)
+        assert rc == 0
+        assert (tmp_path / "pyproject.toml").exists()
+
+    def test_pyproject_carries_default_features_list(self, tmp_path: Path) -> None:
+        # The scaffolded toml must declare [tool.specstar].features
+        # with the framework default so users see exactly what's
+        # enabled and can edit it without guesswork.
+        _run(tmp_path)
+        content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+        assert "[tool.specstar]" in content
+        assert "features" in content
+        for name in ("permissions", "workflows", "schema"):
+            assert name in content
+
+    def test_existing_pyproject_is_not_overwritten(self, tmp_path: Path) -> None:
+        # If the user already has a pyproject.toml (say they ran
+        # `uv init` first), init must not stomp it. The standard
+        # init refuse-to-overwrite policy applies; --force overrides.
+        existing = tmp_path / "pyproject.toml"
+        existing.write_text('[project]\nname = "user_owned"\n', encoding="utf-8")
+        rc, _, err = _run(tmp_path)
+        # Refusal exits non-zero and leaves the pre-existing content.
+        assert rc != 0
+        assert existing.read_text() == '[project]\nname = "user_owned"\n'
+        assert "pyproject.toml" in err

@@ -181,6 +181,7 @@ def run_step2(
     previous_generated_py: str,
     package_name: str,
     error_feedback: str = "",
+    enabled_features: tuple[str, ...] = (),
 ) -> PythonPlan:
     """Invoke STEP 2: spec.md → PythonPlan.
 
@@ -188,12 +189,18 @@ def run_step2(
     of an LLM-generated _generated.py. When non-empty, it is embedded in
     the user prompt under a 'previous attempt failed' header so the LLM
     can see the runtime error and self-correct.
+
+    ``enabled_features`` lists the feature toggles in effect for this
+    gen run (typically the result of
+    :func:`specstar.skill.features.resolve_features`). Empty tuple means
+    "no gating" — the LLM falls back to its full pre-toggle behavior.
     """
     state = Step2Input(
         spec_md=spec_md,
         previous_generated_py=previous_generated_py,
         package_name=package_name,
         error_feedback=error_feedback,
+        enabled_features=enabled_features,
     )
     return client.call(
         system=STEP2_SYSTEM_PROMPT,
@@ -248,12 +255,17 @@ def execute_plan(
     spec_path: Path,
     generated_path: Path,
     package_name: str,
+    enabled_features: tuple[str, ...] = (),
 ) -> ExecutionResult:
     """Run whichever steps the decision says to run. Does not write files.
 
     Returns plans for the caller to present to the user. The caller is
     responsible for invoking :func:`apply_spec_plan` /
     :func:`apply_python_plan` after user confirmation.
+
+    ``enabled_features`` is the resolved feature toggle list (typically
+    from :func:`specstar.skill.features.resolve_features`). Threaded
+    through to STEP 2 so the LLM sees which kwargs it may emit.
     """
     spec_plan: SpecPlan | None = None
     python_plan: PythonPlan | None = None
@@ -287,6 +299,7 @@ def execute_plan(
             spec_md=spec_md,
             previous_generated_py=previous_generated_py,
             package_name=package_name,
+            enabled_features=enabled_features,
         )
 
     return ExecutionResult(
