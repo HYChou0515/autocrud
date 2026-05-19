@@ -363,10 +363,16 @@ def _run_dry(
             if generated_path.exists()
             else ""
         )
+        # Resolve features so the dry-run prompt matches what --call
+        # would actually send to the LLM. Reads pyproject.toml in cwd.
+        enabled_features = resolve_features(
+            pyproject_value=load_features_from_pyproject(Path("pyproject.toml")),
+        )
         step_input = Step2Input(
             spec_md=spec_path.read_text(encoding="utf-8"),
             previous_generated_py=previous_generated_py,
             package_name=package,
+            enabled_features=enabled_features,
         )
         system_prompt = STEP2_SYSTEM_PROMPT
         messages = build_step2_messages(step_input)
