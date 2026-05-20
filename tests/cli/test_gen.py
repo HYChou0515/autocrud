@@ -1229,6 +1229,46 @@ spec.add_model(
 '''
 
 
+_ENCODING_GENERATED_PY = '''\
+"""GENERATED with encoding= kwarg."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import spec
+from specstar.resource_manager import Encoding
+
+
+class Blob(msgspec.Struct):
+    name: str
+    payload: bytes
+
+
+spec.add_model(Blob, name="blob", encoding=Encoding.msgpack)
+'''
+
+
+class TestEncodingEndToEnd:
+    """Phase 2.6: ``encoding: msgpack`` in ### Defaults translates to
+    ``encoding=Encoding.msgpack`` on add_model.
+    """
+
+    def test_encoding_kwarg_survives_lock(self, pristine_project: Path) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nBlob resources use msgpack for compactness.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_ENCODING_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"encoding= must survive lock+verify; out={out!r} err={err!r}"
+        )
+        assert "encoding=Encoding.msgpack" in (
+            pristine_project / "my_app" / "_generated.py"
+        ).read_text()
+
+
 class TestDefaultsEndToEnd:
     """Phase 2.5: ``### Defaults`` translates to ``default_status=``,
     ``default_user=`` kwargs. The kwargs must survive import + lock +

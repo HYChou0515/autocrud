@@ -183,6 +183,11 @@ class TestStep2SystemPrompt:
         # enum value LLM should reach for.
         assert "default_status=RevisionStatus." in STEP2_SYSTEM_PROMPT
 
+    def test_includes_encoding_example(self) -> None:
+        # Phase 2.6: ### Defaults > encoding: msgpack translates to
+        # ``encoding=Encoding.msgpack``.
+        assert "encoding=Encoding." in STEP2_SYSTEM_PROMPT
+
     def test_includes_indexes_example_with_indexed_fields(self) -> None:
         # Phase 2.2: when "indexes" is enabled, spec.md ### Indexes
         # bullets translate to `indexed_fields=["email", ...]`.

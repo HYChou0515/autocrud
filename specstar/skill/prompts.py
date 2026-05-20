@@ -313,15 +313,17 @@ class Book(msgspec.Struct):
 spec.add_model(Book, name="book")  # no Schema needed → fine
 ```
 
-**Resource with default settings:**
+**Resource with default settings (and encoding):**
 
-When `defaults` is in the Enabled features list, translate `### Defaults` \
-bullets to the matching `default_*` kwargs:
+When `defaults` (or `encoding`) is in the Enabled features list, \
+translate `### Defaults` bullets to the matching kwargs:
 
 - `default_status: draft|stable` → `default_status=RevisionStatus.draft` \
 or `RevisionStatus.stable`
 - `default_user: <literal>` → `default_user="<literal>"`
 - `default_user: specstar.env("VAR")` → `default_user=specstar.env("VAR")`
+- `encoding: json|msgpack` → `encoding=Encoding.json` or \
+`encoding=Encoding.msgpack`
 
 Anything that requires a callable (like `default_now`) is too \
 opinionated for declarative `_generated.py`; leave it as a TODO \
@@ -329,6 +331,7 @@ comment pointing at `__init__.py` wiring.
 
 ```python
 from specstar.types import RevisionStatus
+from specstar.resource_manager import Encoding
 
 import specstar
 
@@ -341,11 +344,13 @@ class Article(msgspec.Struct):
 # spec.md ### Defaults
 # - default_status: draft
 # - default_user: specstar.env("DEFAULT_USER")
+# - encoding: msgpack
 spec.add_model(
     Article,
     name="article",
     default_status=RevisionStatus.draft,
     default_user=specstar.env("DEFAULT_USER", default="anonymous"),
+    encoding=Encoding.msgpack,
 )
 ```
 
