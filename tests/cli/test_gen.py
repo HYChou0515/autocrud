@@ -1229,6 +1229,53 @@ spec.add_model(
 '''
 
 
+_BLOB_GENERATED_PY = '''\
+"""GENERATED with project-level blob= binding."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import BackendBinding, BackendConfig, spec
+
+
+spec.configure(
+    backend=BackendConfig(
+        meta=BackendBinding(type="memory"),
+        resource=BackendBinding(type="memory"),
+        blob=BackendBinding(type="memory"),
+    ),
+)
+
+
+class Asset(msgspec.Struct):
+    name: str
+
+
+spec.add_model(Asset, name="asset")
+'''
+
+
+class TestBlobEndToEnd:
+    """Phase 2.10: ``### Blob`` extends ``spec.configure`` with
+    ``blob=BackendBinding(type=...)``.
+    """
+
+    def test_blob_binding_survives_lock(self, pristine_project: Path) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nAssets need a blob store for uploads.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_BLOB_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"blob=BackendBinding must survive lock+verify; "
+            f"out={out!r} err={err!r}"
+        )
+        text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert 'blob=BackendBinding(type="memory")' in text
+
+
 _MQ_GENERATED_PY = '''\
 """GENERATED with project-level mq= binding."""
 

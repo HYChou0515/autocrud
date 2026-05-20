@@ -425,6 +425,29 @@ For Job-typed resources that have a `job_handler`, wrap a dotted ref \
 the same way as `id_generator`: \
 `job_handler=specstar.string_ref("my_app.logic.process_job")`.
 
+**Project-level blob storage:**
+
+When `blob` is in the Enabled features list, extend \
+`spec.configure(backend=BackendConfig(...))` with a \
+`blob=BackendBinding(type="memory"|"disk"|"s3", options=...)` \
+argument. `s3` reads its bucket via \
+`specstar.env("S3_BUCKET")`; `disk` needs `options.rootdir`.
+
+```python
+# spec.md ### Blob
+# - backend: s3
+# - bucket: env S3_BUCKET
+spec.configure(
+    backend=BackendConfig(
+        # ... meta / resource bindings as above
+        blob=BackendBinding(
+            type="s3",
+            options={"bucket": specstar.env("S3_BUCKET")},
+        ),
+    ),
+)
+```
+
 **Resource with a custom ID generator (string ref to user code):**
 
 When `id_generator` is enabled and `### Defaults` includes a \
