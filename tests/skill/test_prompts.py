@@ -188,6 +188,12 @@ class TestStep2SystemPrompt:
         # ``encoding=Encoding.msgpack``.
         assert "encoding=Encoding." in STEP2_SYSTEM_PROMPT
 
+    def test_includes_id_generator_example_with_string_ref(self) -> None:
+        # Phase 2.7: id_generator is a callable; LLM must wrap a
+        # dotted ref via ``specstar.string_ref(...)`` rather than
+        # importing user code directly.
+        assert "id_generator=specstar.string_ref(" in STEP2_SYSTEM_PROMPT
+
     def test_includes_indexes_example_with_indexed_fields(self) -> None:
         # Phase 2.2: when "indexes" is enabled, spec.md ### Indexes
         # bullets translate to `indexed_fields=["email", ...]`.

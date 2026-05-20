@@ -1,4 +1,5 @@
-"""Thin env-var reader with lazy ``.env`` loading.
+"""Thin env-var reader with lazy ``.env`` loading + a lazy
+string-reference helper.
 
 Why: spec-driven ``_generated.py`` is gated by an AST validator that
 blocks ``import os``. ``specstar.env(...)`` is the sanctioned way for

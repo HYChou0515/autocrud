@@ -8,6 +8,7 @@ from specstar.backend import (
 from specstar.crud.core import LoadStats, SpecStar
 from specstar.env import env
 from specstar.query import QB
+from specstar.refs import string_ref
 from specstar.resource_manager.pydantic_converter import (
     pydantic_to_struct,
     struct_to_pydantic,
@@ -63,6 +64,7 @@ __all__ = [
     "Unique",
     "spec",
     "env",
+    "string_ref",
     "register_backend_provider",
     "pydantic_to_struct",
     "struct_to_pydantic",

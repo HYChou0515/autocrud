@@ -354,6 +354,32 @@ spec.add_model(
 )
 ```
 
+**Resource with a custom ID generator (string ref to user code):**
+
+When `id_generator` is enabled and `### Defaults` includes a \
+`id_generator: <dotted.path>` bullet, wrap the path with \
+`specstar.string_ref(...)`. This returns a lazy callable that \
+imports + caches the user function on first dispatch, so \
+`_generated.py` itself never imports the user package at module-top.
+
+```python
+import specstar
+
+
+class Order(msgspec.Struct):
+    user_id: str
+    amount: int
+
+
+# spec.md ### Defaults
+# - id_generator: my_app.logic.gen_order_id
+spec.add_model(
+    Order,
+    name="order",
+    id_generator=specstar.string_ref("my_app.logic.gen_order_id"),
+)
+```
+
 **Resource with indexed fields:**
 
 When `indexes` is in the Enabled features list, translate each \

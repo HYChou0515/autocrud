@@ -1229,6 +1229,54 @@ spec.add_model(
 '''
 
 
+_ID_GEN_GENERATED_PY = '''\
+"""GENERATED with id_generator via string_ref."""
+
+from __future__ import annotations
+
+import msgspec
+
+import specstar
+from specstar import spec
+
+
+class Order(msgspec.Struct):
+    user_id: str
+    amount: int
+
+
+spec.add_model(
+    Order,
+    name="order",
+    id_generator=specstar.string_ref("my_app.logic.gen_order_id"),
+)
+'''
+
+
+class TestIdGeneratorEndToEnd:
+    """Phase 2.7: id_generator= via specstar.string_ref(...) — lazy
+    callable that resolves the dotted path on first invocation. Must
+    survive import + lock + verify without the user logic module
+    being present at lock time.
+    """
+
+    def test_id_generator_string_ref_survives_lock(
+        self, pristine_project: Path
+    ) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nOrders use a custom ID generator.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_ID_GEN_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"id_generator=specstar.string_ref(...) must survive lock+verify; "
+            f"out={out!r} err={err!r}"
+        )
+        text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert 'string_ref("my_app.logic.gen_order_id")' in text
+
+
 _ENCODING_GENERATED_PY = '''\
 """GENERATED with encoding= kwarg."""
 
