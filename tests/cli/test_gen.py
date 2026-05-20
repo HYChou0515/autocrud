@@ -1204,6 +1204,55 @@ class TestSchemaEndToEnd:
         assert ".step(" in gen_text
 
 
+_DEFAULTS_GENERATED_PY = '''\
+"""GENERATED with default_status and default_user."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import spec
+from specstar.types import RevisionStatus
+
+
+class Article(msgspec.Struct):
+    title: str
+    body: str
+
+
+spec.add_model(
+    Article,
+    name="article",
+    default_status=RevisionStatus.draft,
+    default_user="anonymous",
+)
+'''
+
+
+class TestDefaultsEndToEnd:
+    """Phase 2.5: ``### Defaults`` translates to ``default_status=``,
+    ``default_user=`` kwargs. The kwargs must survive import + lock +
+    verify (RevisionStatus is a real enum; default_user accepts a
+    plain literal string).
+    """
+
+    def test_default_status_and_user_survive_lock(
+        self, pristine_project: Path
+    ) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nArticles default to draft status.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_DEFAULTS_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"defaults kwargs must survive lock+verify; out={out!r} err={err!r}"
+        )
+        text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert "default_status=RevisionStatus.draft" in text
+        assert 'default_user="anonymous"' in text
+
+
 class TestIndexesEndToEnd:
     """Phase 2.2: ``### Indexes`` translates to ``indexed_fields=`` in
     _generated.py. The kwarg is a plain list literal, so the only

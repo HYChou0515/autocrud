@@ -66,6 +66,10 @@ class TestStep1SystemPrompt:
         assert "SpecPlan" in STEP1_SYSTEM_PROMPT
         assert "spec_md_after" in STEP1_SYSTEM_PROMPT
 
+    def test_defaults_section_documented(self) -> None:
+        # Phase 2.5: STEP 1 lists ### Defaults as an optional section.
+        assert "### Defaults" in STEP1_SYSTEM_PROMPT
+
     def test_indexes_section_documented(self) -> None:
         # Phase 2.2: STEP 1 must mention the new ### Indexes section
         # so prose like "we'll often search by email" gets normalized
@@ -172,6 +176,12 @@ class TestStep2SystemPrompt:
             'prompt must contain a real Schema(<Class>, "<version>") '
             "example so the LLM doesn't drop the required `version` arg"
         )
+
+    def test_includes_defaults_example_with_default_status(self) -> None:
+        # Phase 2.5: ### Defaults bullets translate to default_status=
+        # / default_user= kwargs. Anchor on the explicit RevisionStatus
+        # enum value LLM should reach for.
+        assert "default_status=RevisionStatus." in STEP2_SYSTEM_PROMPT
 
     def test_includes_indexes_example_with_indexed_fields(self) -> None:
         # Phase 2.2: when "indexes" is enabled, spec.md ### Indexes

@@ -99,6 +99,7 @@ that follows SpecStar's β heading protocol.
 ### Storage          (optional — omit to use project default)
 ### Workflows        (optional)
 ### Indexes          (optional — list field names to be indexed for search)
+### Defaults         (optional — per-resource default user / status / etc.)
 ### Schema versions  (only when versioned migrations exist)
 ```
 
@@ -310,6 +311,42 @@ class Book(msgspec.Struct):
 
 
 spec.add_model(Book, name="book")  # no Schema needed → fine
+```
+
+**Resource with default settings:**
+
+When `defaults` is in the Enabled features list, translate `### Defaults` \
+bullets to the matching `default_*` kwargs:
+
+- `default_status: draft|stable` → `default_status=RevisionStatus.draft` \
+or `RevisionStatus.stable`
+- `default_user: <literal>` → `default_user="<literal>"`
+- `default_user: specstar.env("VAR")` → `default_user=specstar.env("VAR")`
+
+Anything that requires a callable (like `default_now`) is too \
+opinionated for declarative `_generated.py`; leave it as a TODO \
+comment pointing at `__init__.py` wiring.
+
+```python
+from specstar.types import RevisionStatus
+
+import specstar
+
+
+class Article(msgspec.Struct):
+    title: str
+    body: str
+
+
+# spec.md ### Defaults
+# - default_status: draft
+# - default_user: specstar.env("DEFAULT_USER")
+spec.add_model(
+    Article,
+    name="article",
+    default_status=RevisionStatus.draft,
+    default_user=specstar.env("DEFAULT_USER", default="anonymous"),
+)
 ```
 
 **Resource with indexed fields:**
