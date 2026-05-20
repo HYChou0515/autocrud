@@ -203,6 +203,12 @@ class TestStep2SystemPrompt:
         # And must show specstar.env() for the DSN.
         assert 'specstar.env("' in STEP2_SYSTEM_PROMPT
 
+    def test_includes_mq_example_with_backend_binding(self) -> None:
+        # Phase 2.9: ### Message queue extends spec.configure with
+        # mq=BackendBinding(type="simple_mq" | "rabbitmq", options=...).
+        assert "### Message queue" in STEP2_SYSTEM_PROMPT
+        assert "mq=BackendBinding(" in STEP2_SYSTEM_PROMPT
+
     def test_includes_indexes_example_with_indexed_fields(self) -> None:
         # Phase 2.2: when "indexes" is enabled, spec.md ### Indexes
         # bullets translate to `indexed_fields=["email", ...]`.

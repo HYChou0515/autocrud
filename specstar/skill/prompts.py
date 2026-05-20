@@ -398,6 +398,33 @@ spec.add_model(Book, name="book")
 
 For `memory` (the default), no `spec.configure(...)` call is needed.
 
+**Project-level message queue:**
+
+When `mq` is in the Enabled features list, extend the same \
+`spec.configure(backend=BackendConfig(...))` call with an \
+`mq=BackendBinding(type=..., options=...)` argument. Built-in MQ \
+provider types: `"simple"` (in-process, dev) and `"rabbitmq"` (needs \
+`options.amqp_url`).
+
+```python
+# spec.md ### Message queue
+# - backend: rabbitmq
+# - amqp_url: env AMQP_URL
+spec.configure(
+    backend=BackendConfig(
+        # ... meta / resource bindings as above
+        mq=BackendBinding(
+            type="rabbitmq",
+            options={"amqp_url": specstar.env("AMQP_URL")},
+        ),
+    ),
+)
+```
+
+For Job-typed resources that have a `job_handler`, wrap a dotted ref \
+the same way as `id_generator`: \
+`job_handler=specstar.string_ref("my_app.logic.process_job")`.
+
 **Resource with a custom ID generator (string ref to user code):**
 
 When `id_generator` is enabled and `### Defaults` includes a \

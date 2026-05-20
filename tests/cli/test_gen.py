@@ -1229,6 +1229,55 @@ spec.add_model(
 '''
 
 
+_MQ_GENERATED_PY = '''\
+"""GENERATED with project-level mq= binding."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import BackendBinding, BackendConfig, spec
+
+
+spec.configure(
+    backend=BackendConfig(
+        meta=BackendBinding(type="memory"),
+        resource=BackendBinding(type="memory"),
+        mq=BackendBinding(type="simple"),
+    ),
+)
+
+
+class JobItem(msgspec.Struct):
+    payload: str
+
+
+spec.add_model(JobItem, name="job_item")
+'''
+
+
+class TestMqEndToEnd:
+    """Phase 2.9: ``### Message queue`` extends ``spec.configure`` with
+    ``mq=BackendBinding(type=...)``. Exercises the simple_mq variant
+    (in-process, no broker) for E2E without external services.
+    """
+
+    def test_simple_mq_binding_survives_lock(
+        self, pristine_project: Path
+    ) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nUse a simple message queue for jobs.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_MQ_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"mq=BackendBinding must survive lock+verify; out={out!r} err={err!r}"
+        )
+        text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert 'mq=BackendBinding(type="simple")' in text
+
+
 _STORAGE_GENERATED_PY = '''\
 """GENERATED with project-level spec.configure(backend=)."""
 
