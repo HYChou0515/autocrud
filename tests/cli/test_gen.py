@@ -1156,6 +1156,54 @@ spec.add_model(User, name="user", indexed_fields=["email", "name"])
 '''
 
 
+_VERSIONED_SCHEMA_GENERATED_PY = '''\
+"""GENERATED with versioned schema migration."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import Schema, spec
+
+
+def _migrate_v1_to_v2(d: dict) -> dict:
+    return {**d, "title": d.pop("name", "")}
+
+
+class BookV2(msgspec.Struct):
+    title: str
+    author: str
+
+
+schema = Schema(BookV2, "v2").step("v1", _migrate_v1_to_v2)
+spec.add_model(schema, name="book")
+'''
+
+
+class TestSchemaEndToEnd:
+    """Phase 2.3: a Schema(Cls, "v2").step("v1", fn) chain must
+    survive the full gen --call pipeline. Verifies the worked example
+    in the STEP 2 prompt is actually executable (catches the
+    Schema-missing-version regression that triggered Phase 2's
+    feedback-retry loop in the first place).
+    """
+
+    def test_schema_chain_survives_lock(self, pristine_project: Path) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\n"
+            "Books used to be called by `name`; rename to `title`.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_VERSIONED_SCHEMA_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"Schema chain must survive lock+verify; out={out!r} err={err!r}"
+        )
+        gen_text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert 'Schema(BookV2, "v2")' in gen_text
+        assert ".step(" in gen_text
+
+
 class TestIndexesEndToEnd:
     """Phase 2.2: ``### Indexes`` translates to ``indexed_fields=`` in
     _generated.py. The kwarg is a plain list literal, so the only

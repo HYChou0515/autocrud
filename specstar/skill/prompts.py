@@ -226,7 +226,7 @@ from specstar.permission import AllowAll, RootOnly  # built-in permission checke
 spec.add_model(
     User,
     name="user",                    # resource name (string)
-    schema=...,                     # optional: a Schema(...) chain
+    migration=...,                  # optional: a Schema(...) chain (or pass Schema as first positional)
     permission_checker=AllowAll(),  # optional: an IPermissionChecker instance
     indexed_fields=["email"],       # optional: list of field names
 )
@@ -296,18 +296,20 @@ class BookV2(msgspec.Struct):
 
 
 schema = Schema(BookV2, "v2").step("v1", _migrate_v1_to_v2)
-spec.add_model(BookV2, name="book", schema=schema)
+# Pass the Schema as the first positional — `add_model()` accepts
+# either a model class or a Schema. There is no `schema=` kwarg.
+spec.add_model(schema, name="book")
 ```
 
-For a brand-new resource that does not yet need migrations, just **omit \
-`schema=` entirely** — do not pass a bare `Schema(Cls)`:
+For a brand-new resource that does not yet need migrations, just **skip \
+`Schema` entirely** — do not pass a bare `Schema(Cls)`:
 
 ```python
 class Book(msgspec.Struct):
     title: str
 
 
-spec.add_model(Book, name="book")  # no schema= → fine
+spec.add_model(Book, name="book")  # no Schema needed → fine
 ```
 
 **Resource with indexed fields:**
