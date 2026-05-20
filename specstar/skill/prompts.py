@@ -98,6 +98,7 @@ that follows SpecStar's β heading protocol.
 
 ### Storage          (optional — omit to use project default)
 ### Workflows        (optional)
+### Indexes          (optional — list field names to be indexed for search)
 ### Schema versions  (only when versioned migrations exist)
 ```
 
@@ -307,6 +308,24 @@ class Book(msgspec.Struct):
 
 
 spec.add_model(Book, name="book")  # no schema= → fine
+```
+
+**Resource with indexed fields:**
+
+When `indexes` is in the Enabled features list, translate each \
+`### Indexes` bullet into a field name in `indexed_fields=[...]`. The \
+runtime uses this list to index search/query.
+
+```python
+class User(msgspec.Struct):
+    name: str
+    email: str
+
+
+# spec.md ### Indexes
+# - email
+# - name
+spec.add_model(User, name="user", indexed_fields=["email", "name"])
 ```
 
 **Resource with workflows (event handlers via string references):**

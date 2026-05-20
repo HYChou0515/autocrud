@@ -66,6 +66,12 @@ class TestStep1SystemPrompt:
         assert "SpecPlan" in STEP1_SYSTEM_PROMPT
         assert "spec_md_after" in STEP1_SYSTEM_PROMPT
 
+    def test_indexes_section_documented(self) -> None:
+        # Phase 2.2: STEP 1 must mention the new ### Indexes section
+        # so prose like "we'll often search by email" gets normalized
+        # to a deterministic bullet list.
+        assert "### Indexes" in STEP1_SYSTEM_PROMPT
+
     def test_workflows_micro_syntax_requires_phase_action_dotted_ref(self) -> None:
         # Phase 2.1: STEP 1 must teach how to normalize free workflow
         # prose into bullets STEP 2 can deterministically translate.
@@ -165,6 +171,21 @@ class TestStep2SystemPrompt:
         ), (
             'prompt must contain a real Schema(<Class>, "<version>") '
             "example so the LLM doesn't drop the required `version` arg"
+        )
+
+    def test_includes_indexes_example_with_indexed_fields(self) -> None:
+        # Phase 2.2: when "indexes" is enabled, spec.md ### Indexes
+        # bullets translate to `indexed_fields=["email", ...]`.
+        # The prompt must show this concretely so the LLM doesn't
+        # invent its own keyword. Anchor on the worked example that
+        # mentions both ### Indexes (the spec.md side) and the
+        # indexed_fields= kwarg with a list literal (the code side).
+        assert "### Indexes" in STEP2_SYSTEM_PROMPT
+        import re
+
+        assert re.search(
+            r"indexed_fields=\[",
+            STEP2_SYSTEM_PROMPT,
         )
 
     def test_includes_workflow_example_with_string_ref_event_handler(self) -> None:

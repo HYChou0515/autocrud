@@ -1135,3 +1135,44 @@ class TestWorkflowsEndToEnd:
         )
         gen_path = edited_intent / "my_app" / "_generated.py"
         assert "StringRefEventHandler" in gen_path.read_text()
+
+
+_INDEXED_GENERATED_PY = '''\
+"""GENERATED with indexed fields."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import spec
+
+
+class User(msgspec.Struct):
+    name: str
+    email: str
+
+
+spec.add_model(User, name="user", indexed_fields=["email", "name"])
+'''
+
+
+class TestIndexesEndToEnd:
+    """Phase 2.2: ``### Indexes`` translates to ``indexed_fields=`` in
+    _generated.py. The kwarg is a plain list literal, so the only
+    pipeline check is that import + lock + verify still pass.
+    """
+
+    def test_indexed_fields_kwarg_survives_lock(
+        self, pristine_project: Path
+    ) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nUsers with name + email; search by email.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_INDEXED_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"indexed_fields= must survive lock+verify; out={out!r} err={err!r}"
+        )
+        gen_path = pristine_project / "my_app" / "_generated.py"
+        assert 'indexed_fields=["email", "name"]' in gen_path.read_text()
