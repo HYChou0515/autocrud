@@ -9,12 +9,11 @@ declarative ``_generated.py``).
 
 from __future__ import annotations
 
-import specstar
-
-
 from pathlib import Path
 
 import pytest
+
+import specstar
 
 
 def test_returns_value_from_existing_os_environ(monkeypatch) -> None:

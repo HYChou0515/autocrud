@@ -1269,8 +1269,7 @@ class TestBlobEndToEnd:
         client = _MockClient(generated_py_after=_BLOB_GENERATED_PY)
         rc, out, err = _call(pristine_project, client=client)
         assert rc == 0, (
-            f"blob=BackendBinding must survive lock+verify; "
-            f"out={out!r} err={err!r}"
+            f"blob=BackendBinding must survive lock+verify; out={out!r} err={err!r}"
         )
         text = (pristine_project / "my_app" / "_generated.py").read_text()
         assert 'blob=BackendBinding(type="memory")' in text
@@ -1309,9 +1308,7 @@ class TestMqEndToEnd:
     (in-process, no broker) for E2E without external services.
     """
 
-    def test_simple_mq_binding_survives_lock(
-        self, pristine_project: Path
-    ) -> None:
+    def test_simple_mq_binding_survives_lock(self, pristine_project: Path) -> None:
         (pristine_project / "intent.md").write_text(
             "# my_app intent\n\nUse a simple message queue for jobs.\n",
             encoding="utf-8",
@@ -1374,6 +1371,53 @@ class TestStorageEndToEnd:
         text = (pristine_project / "my_app" / "_generated.py").read_text()
         assert "spec.configure(" in text
         assert "BackendConfig(" in text
+
+
+_VALIDATOR_GENERATED_PY = '''\
+"""GENERATED with validator (string ref)."""
+
+from __future__ import annotations
+
+import msgspec
+
+import specstar
+from specstar import spec
+
+
+class Book(msgspec.Struct):
+    title: str
+    isbn: str
+
+
+spec.add_model(
+    Book,
+    name="book",
+    validator=specstar.string_ref("my_app.logic.validate_book"),
+)
+'''
+
+
+class TestValidatorEndToEnd:
+    """Phase 2.11: ``### Validation`` → ``validator=`` via
+    ``specstar.string_ref(...)``. validator is called at create/update
+    time (not at add_model time), so the lazy ref doesn't blow up lock.
+    ``constraint_checkers`` is deferred (called eagerly during
+    add_model — needs a dedicated lazy wrapper before it can ship).
+    """
+
+    def test_validator_string_ref_survives_lock(self, pristine_project: Path) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nBooks need ISBN format validation.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_VALIDATOR_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"validator=specstar.string_ref(...) must survive lock+verify; "
+            f"out={out!r} err={err!r}"
+        )
+        text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert 'validator=specstar.string_ref("my_app.logic.validate_book")' in text
 
 
 _ID_GEN_GENERATED_PY = '''\
@@ -1456,12 +1500,11 @@ class TestEncodingEndToEnd:
         )
         client = _MockClient(generated_py_after=_ENCODING_GENERATED_PY)
         rc, out, err = _call(pristine_project, client=client)
-        assert rc == 0, (
-            f"encoding= must survive lock+verify; out={out!r} err={err!r}"
+        assert rc == 0, f"encoding= must survive lock+verify; out={out!r} err={err!r}"
+        assert (
+            "encoding=Encoding.msgpack"
+            in (pristine_project / "my_app" / "_generated.py").read_text()
         )
-        assert "encoding=Encoding.msgpack" in (
-            pristine_project / "my_app" / "_generated.py"
-        ).read_text()
 
 
 class TestDefaultsEndToEnd:
@@ -1471,9 +1514,7 @@ class TestDefaultsEndToEnd:
     plain literal string).
     """
 
-    def test_default_status_and_user_survive_lock(
-        self, pristine_project: Path
-    ) -> None:
+    def test_default_status_and_user_survive_lock(self, pristine_project: Path) -> None:
         (pristine_project / "intent.md").write_text(
             "# my_app intent\n\nArticles default to draft status.\n",
             encoding="utf-8",
@@ -1494,9 +1535,7 @@ class TestIndexesEndToEnd:
     pipeline check is that import + lock + verify still pass.
     """
 
-    def test_indexed_fields_kwarg_survives_lock(
-        self, pristine_project: Path
-    ) -> None:
+    def test_indexed_fields_kwarg_survives_lock(self, pristine_project: Path) -> None:
         (pristine_project / "intent.md").write_text(
             "# my_app intent\n\nUsers with name + email; search by email.\n",
             encoding="utf-8",

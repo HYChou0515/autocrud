@@ -215,6 +215,20 @@ class TestStep2SystemPrompt:
         assert "### Blob" in STEP2_SYSTEM_PROMPT
         assert "blob=BackendBinding(" in STEP2_SYSTEM_PROMPT
 
+    def test_includes_validator_example_with_string_ref(self) -> None:
+        # Phase 2.11: ### Validation → validator=specstar.string_ref(...).
+        # Constraints are deferred — they're called eagerly at add_model
+        # time so a lazy string ref would break lock.
+        assert "### Validation" in STEP2_SYSTEM_PROMPT
+        assert "validator=specstar.string_ref(" in STEP2_SYSTEM_PROMPT
+
+    def test_constraints_documented_as_comments_only(self) -> None:
+        # ### Constraints must surface in the prompt but be marked
+        # explicitly as "emit as comments only" until SpecStar ships a
+        # lazy StringRefConstraintChecker.
+        assert "### Constraints" in STEP2_SYSTEM_PROMPT
+        assert "comments only" in STEP2_SYSTEM_PROMPT.lower()
+
     def test_includes_indexes_example_with_indexed_fields(self) -> None:
         # Phase 2.2: when "indexes" is enabled, spec.md ### Indexes
         # bullets translate to `indexed_fields=["email", ...]`.

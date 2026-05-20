@@ -448,6 +448,49 @@ spec.configure(
 )
 ```
 
+**Resource with a validator (string ref):**
+
+When `validators` is in the Enabled features list, translate the \
+`### Validation` bullet into `validator=specstar.string_ref(...)`. \
+The validator is called at create/update time, not at `add_model` \
+time, so the user logic module can stay unwritten until first dispatch.
+
+```python
+import specstar
+
+
+class Book(msgspec.Struct):
+    title: str
+    isbn: str
+
+
+# spec.md ### Validation
+# - my_app.logic.validate_book
+spec.add_model(
+    Book,
+    name="book",
+    validator=specstar.string_ref("my_app.logic.validate_book"),
+)
+```
+
+**Resource with constraint checkers — emit as comments only.** The \
+runtime calls each entry of `constraint_checkers=[fn(rm)]` at \
+`add_model` time, so a lazy string ref would force an early import \
+of user code and break `specstar lock`. Until SpecStar ships a \
+lazy-resolving `StringRefConstraintChecker`, treat `### Constraints` \
+the same way as fine-grained permissions: write the intent as \
+comments and let the user wire concrete checkers in `__init__.py`.
+
+```python
+# spec.md ### Constraints
+# - my_app.logic.no_duplicate_isbn
+# - my_app.logic.price_must_be_positive
+# (configure constraint_checkers in my_app/__init__.py once the
+# functions exist; they receive the ResourceManager and return an
+# IConstraintChecker.)
+spec.add_model(Book, name="book")
+```
+
 **Resource with a custom ID generator (string ref to user code):**
 
 When `id_generator` is enabled and `### Defaults` includes a \

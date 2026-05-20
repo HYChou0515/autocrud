@@ -249,8 +249,7 @@ class TestPyprojectScaffolding:
         _run(tmp_path)
         gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
         assert ".env" in gitignore.splitlines(), (
-            ".gitignore must list `.env` so users don't accidentally "
-            "commit credentials"
+            ".gitignore must list `.env` so users don't accidentally commit credentials"
         )
 
     def test_existing_pyproject_is_not_overwritten(self, tmp_path: Path) -> None:
