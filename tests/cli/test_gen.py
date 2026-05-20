@@ -1064,3 +1064,74 @@ class TestFeatureToggleWiring:
         preamble_block = prompt[preamble_start:preamble_end]
         assert "workflows" not in preamble_block
         assert "permissions" in preamble_block
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.1: workflows feature end-to-end
+# ---------------------------------------------------------------------------
+
+
+_WORKFLOW_GENERATED_PY = '''\
+"""GENERATED with a workflow handler via string reference."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import spec
+from specstar.events import StringRefEventHandler
+from specstar.types import ResourceAction
+
+
+class Book(msgspec.Struct):
+    title: str
+
+
+spec.add_model(
+    Book,
+    name="book",
+    event_handlers=[
+        StringRefEventHandler(
+            "my_app.logic.notify_customers_new_book",
+            phase="after",
+            action=ResourceAction.create,
+        ),
+    ],
+)
+'''
+
+
+class TestWorkflowsEndToEnd:
+    """Tracer for Phase 2.1: an LLM that emits ``event_handlers=
+    [StringRefEventHandler(...)]`` survives the full gen --call
+    pipeline (AST validate → write → lock → verify) because the
+    handler instance is constructible at module-import time without
+    pulling in user code.
+    """
+
+    @pytest.fixture()
+    def edited_intent(self, pristine_project: Path) -> Path:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\n"
+            "A Book resource. When a book is created, notify customers.\n",
+            encoding="utf-8",
+        )
+        return pristine_project
+
+    def test_string_ref_event_handler_import_survives_lock(
+        self, edited_intent: Path
+    ) -> None:
+        # End-to-end: LLM emits a _generated.py importing
+        # StringRefEventHandler from specstar.events. The pipeline
+        # must (a) AST-accept the import + call, (b) lock the
+        # descriptor (subprocess imports the module — handler instance
+        # constructs without resolving the dotted ref), (c) verify
+        # the lock against on-disk sources.
+        client = _MockClient(generated_py_after=_WORKFLOW_GENERATED_PY)
+        rc, out, err = _call(edited_intent, client=client)
+        assert rc == 0, (
+            "workflow-style _generated.py must survive lock+verify; "
+            f"out={out!r} err={err!r}"
+        )
+        gen_path = edited_intent / "my_app" / "_generated.py"
+        assert "StringRefEventHandler" in gen_path.read_text()

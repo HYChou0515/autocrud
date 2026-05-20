@@ -127,6 +127,26 @@ descriptions. The user reads this as documentation, not as a config file.
 not change should appear verbatim in the new spec.md. Do not rephrase, \
 reformat, or restructure unchanged content.
 
+6. **Normalize `### Workflows` to machine-readable bullets.** Free prose like \
+"notify customers when a new book arrives" must become a bullet with three \
+explicit pieces so STEP 2 can deterministically translate it:
+
+   - **phase**: one of `before`, `after`, `on_success`, `on_failure`
+   - **action**: one of `create`, `update`, `patch`, `delete`, `switch`, \
+`restore`, `permanently_delete`, etc. (any `ResourceAction` member, or \
+combined with `|` for multi-action handlers)
+   - **dotted string reference** to a user function — the convention is \
+`<package>.logic.<fn_name>` (e.g. `my_app.logic.notify_customers_new_book`)
+
+   Bullet format::
+
+       - after create: my_app.logic.notify_customers_new_book
+
+   The user does not need to have written the function yet — STEP 2 will \
+emit a lazy `StringRefEventHandler(...)` that resolves the dotted path on \
+first dispatch. If the intent prose is ambiguous about phase or action, \
+emit an `InferredDecision` recording the choice.
+
 ## Output
 
 Pydantic schema `SpecPlan`:
@@ -288,6 +308,51 @@ class Book(msgspec.Struct):
 
 spec.add_model(Book, name="book")  # no schema= → fine
 ```
+
+**Resource with workflows (event handlers via string references):**
+
+When `workflows` is in the Enabled features list, translate each \
+`### Workflows` bullet into a \
+`StringRefEventHandler("<dotted.path>", phase=..., action=...)` entry \
+in `event_handlers=[...]`. The dotted path points at a function the \
+user owns in their package (e.g. `my_app.logic.notify_customers_new_book`). \
+**Do not import the user module.** `StringRefEventHandler` lazy-resolves \
+the path on first dispatch, so the user can fill in `my_app/logic.py` \
+after `_generated.py` lands.
+
+`phase` is `"before"`, `"after"`, `"on_success"`, or `"on_failure"`. \
+`action` is one of the `ResourceAction` flags (`create`, `update`, \
+`delete`, `patch`, …; combine with `|` for multi-action handlers).
+
+```python
+from specstar.events import StringRefEventHandler
+from specstar.types import ResourceAction
+
+
+class Book(msgspec.Struct):
+    title: str
+    author: str
+
+
+# spec.md ### Workflows
+# - after create: my_app.logic.notify_customers_new_book
+spec.add_model(
+    Book,
+    name="book",
+    event_handlers=[
+        StringRefEventHandler(
+            "my_app.logic.notify_customers_new_book",
+            phase="after",
+            action=ResourceAction.create,
+        ),
+    ],
+)
+```
+
+When `workflows` is **not** in the Enabled features list, leave the \
+`### Workflows` content as a Python comment block above \
+`spec.add_model(...)` and omit `event_handlers=` — do not invent your \
+own handler shape.
 
 **Resource where spec.md describes per-action permissions you cannot \
 express via a single built-in checker** — emit the permissions as \

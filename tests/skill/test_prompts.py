@@ -66,6 +66,24 @@ class TestStep1SystemPrompt:
         assert "SpecPlan" in STEP1_SYSTEM_PROMPT
         assert "spec_md_after" in STEP1_SYSTEM_PROMPT
 
+    def test_workflows_micro_syntax_requires_phase_action_dotted_ref(self) -> None:
+        # Phase 2.1: STEP 1 must teach how to normalize free workflow
+        # prose into bullets STEP 2 can deterministically translate.
+        # Each ``### Workflows`` bullet should declare phase
+        # (before/after/on_success/on_failure), action (create/update/
+        # delete/...), and a dotted string reference to user logic.
+        wf_section = STEP1_SYSTEM_PROMPT
+        # Mentions all four phases.
+        for phase in ("before", "after", "on_success", "on_failure"):
+            assert phase in wf_section, (
+                f"STEP 1 prompt must mention workflow phase {phase!r}"
+            )
+        # Names the dotted string-reference convention explicitly.
+        assert "my_app.logic." in wf_section, (
+            "STEP 1 prompt must show the dotted string-ref shape so "
+            "the LLM normalizes intent.md prose into a machine-readable form"
+        )
+
 
 # ---------------------------------------------------------------------------
 # STEP 2 system prompt
@@ -148,6 +166,28 @@ class TestStep2SystemPrompt:
             'prompt must contain a real Schema(<Class>, "<version>") '
             "example so the LLM doesn't drop the required `version` arg"
         )
+
+    def test_includes_workflow_example_with_string_ref_event_handler(self) -> None:
+        # Phase 2.1: when the "workflows" feature is enabled, the LLM
+        # must translate ``### Workflows`` bullets to a real
+        # ``event_handlers=[StringRefEventHandler("my_app.logic.X",
+        # phase=..., action=...)]`` call. The prompt must show a
+        # copy-pasteable example so the LLM doesn't invent its own
+        # event-handler API.
+        import re
+
+        # Must mention the wrapper class by name (it lives in
+        # specstar.events).
+        assert "StringRefEventHandler" in STEP2_SYSTEM_PROMPT
+        # Must show the concrete call shape, including a dotted ref
+        # to a user logic module.
+        assert re.search(
+            r'StringRefEventHandler\(\s*["\']\w+(?:\.\w+)+["\']',
+            STEP2_SYSTEM_PROMPT,
+        ), "prompt must show StringRefEventHandler with a dotted string ref"
+        # And the phase/action keyword args so the LLM knows what to fill.
+        assert "phase=" in STEP2_SYSTEM_PROMPT
+        assert "action=ResourceAction." in STEP2_SYSTEM_PROMPT
 
     def test_referenced_symbols_actually_exist_in_specstar(self) -> None:
         # If the prompt's worked examples reference symbols that don't
