@@ -354,6 +354,50 @@ spec.add_model(
 )
 ```
 
+**Project-level storage (``spec.configure(backend=...)`` at file top):**
+
+When `storage` is in the Enabled features list, translate spec.md's \
+`### Storage` section to a `spec.configure(backend=BackendConfig(...))` \
+call placed **at the top of `_generated.py`** — before any \
+`spec.add_model()` call. Use `specstar.env("<VAR>")` for credentials \
+so the actual secret stays in `.env` / production env, never in the \
+committed code.
+
+Built-in backend types: `memory` (default), `disk` (needs \
+`options.rootdir`), `postgres` (needs `options.dsn`), `s3` (needs \
+`options.bucket`).
+
+```python
+from specstar import BackendBinding, BackendConfig, ConnectionProfile, spec
+import specstar
+
+
+# spec.md ### Storage
+# - backend: postgres
+# - dsn: env DATABASE_URL
+spec.configure(
+    backend=BackendConfig(
+        connections={
+            "main": ConnectionProfile(
+                type="postgres",
+                options={"dsn": specstar.env("DATABASE_URL")},
+            ),
+        },
+        meta=BackendBinding(use="main"),
+        resource=BackendBinding(use="main"),
+    ),
+)
+
+
+class Book(msgspec.Struct):
+    title: str
+
+
+spec.add_model(Book, name="book")
+```
+
+For `memory` (the default), no `spec.configure(...)` call is needed.
+
 **Resource with a custom ID generator (string ref to user code):**
 
 When `id_generator` is enabled and `### Defaults` includes a \

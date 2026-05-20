@@ -1229,6 +1229,57 @@ spec.add_model(
 '''
 
 
+_STORAGE_GENERATED_PY = '''\
+"""GENERATED with project-level spec.configure(backend=)."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import BackendBinding, BackendConfig, spec
+
+
+spec.configure(
+    backend=BackendConfig(
+        meta=BackendBinding(type="memory"),
+        resource=BackendBinding(type="memory"),
+    ),
+)
+
+
+class Book(msgspec.Struct):
+    title: str
+
+
+spec.add_model(Book, name="book")
+'''
+
+
+class TestStorageEndToEnd:
+    """Phase 2.8: ``### Storage`` lifts to a ``spec.configure(backend=
+    BackendConfig(...))`` call at the top of ``_generated.py``. The
+    memory variant is exercised end-to-end (no env / no real DB) to
+    prove the call shape survives lock + verify.
+    """
+
+    def test_spec_configure_with_memory_backend_survives_lock(
+        self, pristine_project: Path
+    ) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nUse memory storage for development.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_STORAGE_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"spec.configure(backend=...) must survive lock+verify; "
+            f"out={out!r} err={err!r}"
+        )
+        text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert "spec.configure(" in text
+        assert "BackendConfig(" in text
+
+
 _ID_GEN_GENERATED_PY = '''\
 """GENERATED with id_generator via string_ref."""
 

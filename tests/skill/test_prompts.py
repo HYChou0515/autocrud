@@ -194,6 +194,15 @@ class TestStep2SystemPrompt:
         # importing user code directly.
         assert "id_generator=specstar.string_ref(" in STEP2_SYSTEM_PROMPT
 
+    def test_includes_storage_example_with_backend_config(self) -> None:
+        # Phase 2.8: ### Storage drives a top-of-file
+        # spec.configure(backend=BackendConfig(...)) call.
+        assert "spec.configure(" in STEP2_SYSTEM_PROMPT
+        assert "BackendConfig(" in STEP2_SYSTEM_PROMPT
+        assert "ConnectionProfile(" in STEP2_SYSTEM_PROMPT
+        # And must show specstar.env() for the DSN.
+        assert 'specstar.env("' in STEP2_SYSTEM_PROMPT
+
     def test_includes_indexes_example_with_indexed_fields(self) -> None:
         # Phase 2.2: when "indexes" is enabled, spec.md ### Indexes
         # bullets translate to `indexed_fields=["email", ...]`.
