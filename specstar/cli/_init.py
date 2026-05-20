@@ -120,6 +120,32 @@ features = ["permissions", "workflows", "schema"]
 """
 
 
+_DOTENV_EXAMPLE_TEMPLATE = """\
+# Copy this file to `.env` and fill in real values.
+# `.env` is gitignored; `.env.example` is committed so teammates know
+# which variables your code expects via `specstar.env(...)`.
+#
+# Example entries (uncomment as you adopt storage / mq / blob features):
+# DATABASE_URL=postgresql://user:password@localhost:5432/{package}_dev
+# S3_BUCKET={package}-dev
+# AMQP_URL=amqp://guest:guest@localhost:5672/
+"""
+
+
+_GITIGNORE_TEMPLATE = """\
+# Secrets — never commit
+.env
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+"""
+
+
 _PACKAGE_INIT_TEMPLATE = '''\
 """FastAPI entry point for {package}.
 
@@ -232,6 +258,10 @@ def run_init(
     intent_md.write_text(_INTENT_MD_TEMPLATE.format(package=package), encoding="utf-8")
     spec_md.write_text(_SPEC_MD_TEMPLATE.format(package=package), encoding="utf-8")
     (root / "pyproject.toml").write_text(_PYPROJECT_TOML_TEMPLATE, encoding="utf-8")
+    (root / ".env.example").write_text(
+        _DOTENV_EXAMPLE_TEMPLATE.format(package=package), encoding="utf-8"
+    )
+    (root / ".gitignore").write_text(_GITIGNORE_TEMPLATE, encoding="utf-8")
     pkg_init.write_text(
         _PACKAGE_INIT_TEMPLATE.format(package=package), encoding="utf-8"
     )
@@ -265,6 +295,8 @@ def _planned_files(root: Path, package: str, *, write_lock: bool) -> list[Path]:
         root / "intent.md",
         root / "spec.md",
         root / "pyproject.toml",
+        root / ".env.example",
+        root / ".gitignore",
         root / package / "__init__.py",
         root / package / "_generated.py",
     ]

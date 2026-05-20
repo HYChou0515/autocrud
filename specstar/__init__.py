@@ -6,6 +6,7 @@ from specstar.backend import (
     register_backend_provider,
 )
 from specstar.crud.core import LoadStats, SpecStar
+from specstar.env import env
 from specstar.query import QB
 from specstar.resource_manager.pydantic_converter import (
     pydantic_to_struct,
@@ -61,6 +62,7 @@ __all__ = [
     "TaskStatus",
     "Unique",
     "spec",
+    "env",
     "register_backend_provider",
     "pydantic_to_struct",
     "struct_to_pydantic",

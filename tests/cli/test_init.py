@@ -236,6 +236,23 @@ class TestPyprojectScaffolding:
         for name in ("permissions", "workflows", "schema"):
             assert name in content
 
+    def test_creates_dotenv_example(self, tmp_path: Path) -> None:
+        # Phase 2.4: init scaffolds .env.example so users discover
+        # specstar.env(...) the moment they bootstrap.
+        rc, _, _ = _run(tmp_path)
+        assert rc == 0
+        assert (tmp_path / ".env.example").exists()
+
+    def test_gitignore_excludes_dotenv(self, tmp_path: Path) -> None:
+        # Critical safety: .env contains real secrets. If .gitignore
+        # forgets to list it, users will commit credentials.
+        _run(tmp_path)
+        gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+        assert ".env" in gitignore.splitlines(), (
+            ".gitignore must list `.env` so users don't accidentally "
+            "commit credentials"
+        )
+
     def test_existing_pyproject_is_not_overwritten(self, tmp_path: Path) -> None:
         # If the user already has a pyproject.toml (say they ran
         # `uv init` first), init must not stomp it. The standard
