@@ -87,6 +87,11 @@ that follows SpecStar's β heading protocol.
 ```
 # <Project Title>
 
+## Project          (optional — project-wide scalars)
+- model_naming: snake | camel | pascal | kebab | same
+- admin: <email-or-username>
+- strict_operation_context: true | false
+
 ## Resource: <Name>
 <prose description>
 
@@ -420,6 +425,23 @@ spec.add_model(Book, name="book")
 ```
 
 For `memory` (the default), no `spec.configure(...)` call is needed.
+
+**Project-level scalars (## Project block):**
+
+When spec.md has a `## Project` block with model_naming / admin / \
+strict_operation_context, lift them into the same \
+`spec.configure(...)` call as additional kwargs:
+
+```python
+spec.configure(
+    backend=BackendConfig(...),
+    model_naming="snake",
+    admin="root@example.com",
+    strict_operation_context=True,
+)
+```
+
+If no `## Project` block exists, omit these kwargs entirely.
 
 **Project-level message queue:**
 

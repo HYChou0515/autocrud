@@ -76,6 +76,11 @@ class TestStep1SystemPrompt:
         # to a deterministic bullet list.
         assert "### Indexes" in STEP1_SYSTEM_PROMPT
 
+    def test_project_section_documented(self) -> None:
+        # Phase 3.3: STEP 1 lists a top-level ## Project block for
+        # project-wide scalars (model_naming, admin, etc.).
+        assert "## Project" in STEP1_SYSTEM_PROMPT
+
     def test_permission_token_vocabulary_documented(self) -> None:
         # Phase 3.1: STEP 1 must normalize free permission prose
         # ("any logged-in user") into one of the 5 built-in tokens
@@ -232,6 +237,14 @@ class TestStep2SystemPrompt:
         # blob=BackendBinding(type="memory" | "disk" | "s3", options=...).
         assert "### Blob" in STEP2_SYSTEM_PROMPT
         assert "blob=BackendBinding(" in STEP2_SYSTEM_PROMPT
+
+    def test_includes_project_scalars_example_with_spec_configure(self) -> None:
+        # Phase 3.3: ## Project scalars (model_naming, admin,
+        # strict_operation_context) lift into the spec.configure(...)
+        # call as keyword args.
+        assert "model_naming=" in STEP2_SYSTEM_PROMPT
+        assert "admin=" in STEP2_SYSTEM_PROMPT
+        assert "strict_operation_context=" in STEP2_SYSTEM_PROMPT
 
     def test_includes_permission_example_with_action_based_checker(self) -> None:
         # Phase 3.1: ### Permissions tokens translate to

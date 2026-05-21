@@ -1373,6 +1373,56 @@ class TestStorageEndToEnd:
         assert "BackendConfig(" in text
 
 
+_PROJECT_SCALARS_GENERATED_PY = '''\
+"""GENERATED with project-level scalars in spec.configure."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import BackendBinding, BackendConfig, spec
+
+
+spec.configure(
+    backend=BackendConfig(
+        meta=BackendBinding(type="memory"),
+        resource=BackendBinding(type="memory"),
+    ),
+    model_naming="snake",
+    admin="root@example.com",
+    strict_operation_context=True,
+)
+
+
+class Book(msgspec.Struct):
+    title: str
+
+
+spec.add_model(Book, name="book")
+'''
+
+
+class TestProjectScalarsEndToEnd:
+    """Phase 3.3: ``## Project`` block translates to model_naming /
+    admin / strict_operation_context kwargs on spec.configure(...).
+    """
+
+    def test_project_scalars_survive_lock(self, pristine_project: Path) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nAdmin email is root@example.com.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_PROJECT_SCALARS_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"project-scalar spec.configure must survive lock+verify; "
+            f"out={out!r} err={err!r}"
+        )
+        text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert 'model_naming="snake"' in text
+        assert 'admin="root@example.com"' in text
+
+
 _CONSTRAINTS_GENERATED_PY = '''\
 """GENERATED with constraint_checkers (StringRefConstraintChecker)."""
 
