@@ -76,6 +76,24 @@ class TestStep1SystemPrompt:
         # to a deterministic bullet list.
         assert "### Indexes" in STEP1_SYSTEM_PROMPT
 
+    def test_permission_token_vocabulary_documented(self) -> None:
+        # Phase 3.1: STEP 1 must normalize free permission prose
+        # ("any logged-in user") into one of the 5 built-in tokens
+        # (or custom:<dotted>). Each token must appear in the prompt
+        # so the LLM has a deterministic target vocabulary.
+        for token in (
+            "public",
+            "authenticated",
+            "admin",
+            "owner",
+            "denied",
+        ):
+            assert token in STEP1_SYSTEM_PROMPT, (
+                f"STEP 1 prompt must list permission token {token!r}"
+            )
+        # Custom escape must be documented too.
+        assert "custom:" in STEP1_SYSTEM_PROMPT
+
     def test_workflows_micro_syntax_requires_phase_action_dotted_ref(self) -> None:
         # Phase 2.1: STEP 1 must teach how to normalize free workflow
         # prose into bullets STEP 2 can deterministically translate.
@@ -214,6 +232,18 @@ class TestStep2SystemPrompt:
         # blob=BackendBinding(type="memory" | "disk" | "s3", options=...).
         assert "### Blob" in STEP2_SYSTEM_PROMPT
         assert "blob=BackendBinding(" in STEP2_SYSTEM_PROMPT
+
+    def test_includes_permission_example_with_action_based_checker(self) -> None:
+        # Phase 3.1: ### Permissions tokens translate to
+        # ActionBasedPermissionChecker.from_dict({ResourceAction.read:
+        # any_authenticated, ...}). Anchor the prompt on the dict
+        # shape so the LLM produces deterministic code.
+        assert "ActionBasedPermissionChecker.from_dict(" in STEP2_SYSTEM_PROMPT
+        # Built-in tokens must be referenced as Python symbols.
+        for symbol in ("any_user", "any_authenticated", "admin_only", "owner_self"):
+            assert symbol in STEP2_SYSTEM_PROMPT, (
+                f"prompt must reference built-in CheckFunc {symbol!r}"
+            )
 
     def test_includes_validator_example_with_string_ref(self) -> None:
         # Phase 2.11: ### Validation → validator=specstar.string_ref(...).

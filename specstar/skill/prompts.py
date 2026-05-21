@@ -129,7 +129,30 @@ descriptions. The user reads this as documentation, not as a config file.
 not change should appear verbatim in the new spec.md. Do not rephrase, \
 reformat, or restructure unchanged content.
 
-6. **Normalize `### Workflows` to machine-readable bullets.** Free prose like \
+6. **Normalize `### Permissions` to a fixed token vocabulary.** Each \
+bullet must map an action name to one of these 6 tokens so STEP 2 can \
+deterministically translate it to a `permission_checker=` value:
+
+   - `public` — anyone, including anonymous
+   - `authenticated` — any non-anonymous user
+   - `admin` — only the configured admin user
+   - `owner` — the user who created the resource (matched against \
+`meta.created_by`)
+   - `denied` — no one
+   - `custom: <dotted.path>` — escape hatch; STEP 2 wires this via \
+`specstar.string_ref(...)`
+
+   Bullet format::
+
+       - read: authenticated
+       - delete: admin
+       - update: owner
+       - export: custom: my_app.permission.export_check
+
+   When intent.md prose is ambiguous, pick the closest token and emit \
+an `InferredDecision` documenting the choice.
+
+7. **Normalize `### Workflows` to machine-readable bullets.** Free prose like \
 "notify customers when a new book arrives" must become a bullet with three \
 explicit pieces so STEP 2 can deterministically translate it:
 
@@ -580,28 +603,57 @@ When `workflows` is **not** in the Enabled features list, leave the \
 `spec.add_model(...)` and omit `event_handlers=` — do not invent your \
 own handler shape.
 
-**Resource where spec.md describes per-action permissions you cannot \
-express via a single built-in checker** — emit the permissions as \
-comments documenting intent; **do not** invent a `permissions=` kwarg:
+**Resource with per-action permissions:**
+
+When `permissions` is in the Enabled features list, translate each \
+`### Permissions` bullet into a `ResourceAction → CheckFunc` entry of \
+`ActionBasedPermissionChecker.from_dict({...})`. Map STEP 1's 6-token \
+vocabulary to these built-in `CheckFunc`s:
+
+- `public` → `any_user`
+- `authenticated` → `any_authenticated`
+- `admin` → `admin_only`
+- `owner` → `owner_self`
+- `denied` → `deny_all`
+- `custom: <dotted>` → `specstar.string_ref("<dotted>")`
 
 ```python
+from specstar.permission import (
+    ActionBasedPermissionChecker,
+    admin_only,
+    any_authenticated,
+    deny_all,
+    owner_self,
+)
+from specstar.types import ResourceAction
+
+
 class Document(msgspec.Struct):
     title: str
     body: str
 
 
-# spec.md permissions (configure permission_checker in my_app/__init__.py):
-#   read: any authenticated
-#   delete: admin only
-spec.add_model(Document, name="document")
+# spec.md ### Permissions
+# - read: authenticated
+# - update: owner
+# - delete: admin
+# - permanently_delete: denied
+spec.add_model(
+    Document,
+    name="document",
+    permission_checker=ActionBasedPermissionChecker.from_dict(
+        {
+            ResourceAction.read: any_authenticated,
+            ResourceAction.update: owner_self,
+            ResourceAction.delete: admin_only,
+            ResourceAction.permanently_delete: deny_all,
+        }
+    ),
+)
 ```
 
-In v0.11, if a resource's spec.md `### Permissions` section requires \
-fine-grained per-action rules, leave `permission_checker` defaulted, \
-embed the intent as a comment, and let the user attach the appropriate \
-`IPermissionChecker` in their own code. **Do not** call \
-`add_model(..., permissions={...})` — that kwarg does not exist and the \
-import will raise `TypeError`.
+**Do not** call `add_model(..., permissions={...})` — that kwarg does \
+not exist and the import will raise `TypeError`.
 
 ## Output
 

@@ -1373,6 +1373,68 @@ class TestStorageEndToEnd:
         assert "BackendConfig(" in text
 
 
+_PERMISSIONS_GENERATED_PY = '''\
+"""GENERATED with per-action permissions."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import spec
+from specstar.permission import (
+    ActionBasedPermissionChecker,
+    admin_only,
+    any_authenticated,
+    owner_self,
+)
+from specstar.types import ResourceAction
+
+
+class Document(msgspec.Struct):
+    title: str
+    body: str
+
+
+spec.add_model(
+    Document,
+    name="document",
+    permission_checker=ActionBasedPermissionChecker.from_dict(
+        {
+            ResourceAction.read: any_authenticated,
+            ResourceAction.update: owner_self,
+            ResourceAction.delete: admin_only,
+        }
+    ),
+)
+'''
+
+
+class TestPermissionsEndToEnd:
+    """Phase 3.1: ``### Permissions`` translates to
+    ``permission_checker=ActionBasedPermissionChecker.from_dict({...})``
+    using the 5 built-in CheckFunc symbols.
+    """
+
+    def test_action_based_checker_survives_lock(
+        self, pristine_project: Path
+    ) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\n"
+            "Documents: any logged-in user can read; owner can update; "
+            "admin can delete.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_PERMISSIONS_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"ActionBasedPermissionChecker must survive lock+verify; "
+            f"out={out!r} err={err!r}"
+        )
+        text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert "ActionBasedPermissionChecker.from_dict" in text
+        assert "any_authenticated" in text
+
+
 _VALIDATOR_GENERATED_PY = '''\
 """GENERATED with validator (string ref)."""
 

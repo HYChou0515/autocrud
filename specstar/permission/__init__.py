@@ -2,6 +2,13 @@
 
 from specstar.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from specstar.permission.action import ActionBasedPermissionChecker
+from specstar.permission.builtins import (
+    admin_only,
+    any_authenticated,
+    any_user,
+    deny_all,
+    owner_self,
+)
 from specstar.permission.checker import (
     IPermissionChecker,
     PermissionContext,
@@ -39,4 +46,9 @@ __all__ = [
     "ResourceOwnershipChecker",
     "RoleMembership",
     "RootOnly",
+    "admin_only",
+    "any_authenticated",
+    "any_user",
+    "deny_all",
+    "owner_self",
 ]
