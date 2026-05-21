@@ -525,6 +525,19 @@ When `validators` is in the Enabled features list, translate the \
 The validator is called at create/update time, not at `add_model` \
 time, so the user logic module can stay unwritten until first dispatch.
 
+**Gotcha:** when the resource also uses `Schema(...)` (versioned \
+migrations), pass `validator=...` to the `Schema` constructor instead \
+of `add_model` — passing both raises \
+`ValueError: Cannot specify 'validator' when passing Schema as the \
+first argument`:
+
+```python
+book_schema = Schema(
+    Book, "v2", validator=specstar.string_ref("my_app.logic.validate_book")
+).step("v1", _migrate)
+spec.add_model(book_schema, name="book")
+```
+
 ```python
 import specstar
 

@@ -1,3 +1,4 @@
+from specstar import defaults, id_generators
 from specstar.backend import (
     BackendBinding,
     BackendConfig,
@@ -65,6 +66,8 @@ __all__ = [
     "spec",
     "env",
     "string_ref",
+    "defaults",
+    "id_generators",
     "register_backend_provider",
     "pydantic_to_struct",
     "struct_to_pydantic",

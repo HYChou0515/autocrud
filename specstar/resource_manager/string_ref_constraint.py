@@ -25,9 +25,7 @@ class StringRefConstraintChecker(IConstraintChecker):
         self.target = target
         self._resolved = None
 
-    def check(
-        self, data: Any, *, exclude_resource_id: str | None = None
-    ) -> None:
+    def check(self, data: Any, *, exclude_resource_id: str | None = None) -> None:
         if self._resolved is None:
             self._resolved = resolve(self.target)
         self._resolved(data, exclude_resource_id=exclude_resource_id)

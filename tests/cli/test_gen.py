@@ -1373,6 +1373,104 @@ class TestStorageEndToEnd:
         assert "BackendConfig(" in text
 
 
+_MEGA_GENERATED_PY = '''\
+"""GENERATED — multi-feature kitchen sink. Tracks cross-feature drift."""
+
+from __future__ import annotations
+
+import msgspec
+
+import specstar
+from specstar import BackendBinding, BackendConfig, Schema, spec
+from specstar.events import StringRefEventHandler
+from specstar.permission import (
+    ActionBasedPermissionChecker,
+    admin_only,
+    any_authenticated,
+    owner_self,
+)
+from specstar.resource_manager import Encoding, StringRefConstraintChecker
+from specstar.types import ResourceAction, RevisionStatus
+
+
+spec.configure(
+    backend=BackendConfig(
+        meta=BackendBinding(type="memory"),
+        resource=BackendBinding(type="memory"),
+        blob=BackendBinding(type="memory"),
+        mq=BackendBinding(type="simple"),
+    ),
+    model_naming="snake",
+    admin="root@example.com",
+)
+
+
+def _migrate_v1_to_v2(d: dict) -> dict:
+    return {**d, "title": d.pop("name", "")}
+
+
+class Book(msgspec.Struct):
+    title: str
+    author: str
+    isbn: str
+    price: float
+
+
+book_schema = Schema(
+    Book,
+    "v2",
+    validator=specstar.string_ref("my_app.logic.validate_book"),
+).step("v1", _migrate_v1_to_v2)
+spec.add_model(
+    book_schema,
+    name="book",
+    indexed_fields=["title", "isbn"],
+    default_status=RevisionStatus.draft,
+    default_user="anonymous",
+    default_now=specstar.defaults.utcnow,
+    encoding=Encoding.json,
+    id_generator=specstar.id_generators.uuid4,
+    permission_checker=ActionBasedPermissionChecker.from_dict(
+        {
+            ResourceAction.read: any_authenticated,
+            ResourceAction.update: owner_self,
+            ResourceAction.delete: admin_only,
+        }
+    ),
+    event_handlers=[
+        StringRefEventHandler(
+            "my_app.logic.notify_customers_new_book",
+            phase="after",
+            action=ResourceAction.create,
+        ),
+    ],
+    constraint_checkers=[
+        StringRefConstraintChecker("my_app.logic.no_duplicate_isbn"),
+    ],
+)
+'''
+
+
+class TestMegaFeatureEndToEnd:
+    """Phase 3.6: one resource that exercises *every* Phase 2 + 3
+    feature simultaneously. Catches cross-feature drift — e.g. a
+    prompt rewrite that forgets one import or changes a kwarg name
+    while looking fine in isolation.
+    """
+
+    def test_all_features_together_survive_lock(self, pristine_project: Path) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nKitchen-sink Book resource.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_MEGA_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"multi-feature _generated.py must survive lock+verify; "
+            f"out={out!r} err={err!r}"
+        )
+
+
 _PROJECT_SCALARS_GENERATED_PY = '''\
 """GENERATED with project-level scalars in spec.configure."""
 
@@ -1517,9 +1615,7 @@ class TestPermissionsEndToEnd:
     using the 5 built-in CheckFunc symbols.
     """
 
-    def test_action_based_checker_survives_lock(
-        self, pristine_project: Path
-    ) -> None:
+    def test_action_based_checker_survives_lock(self, pristine_project: Path) -> None:
         (pristine_project / "intent.md").write_text(
             "# my_app intent\n\n"
             "Documents: any logged-in user can read; owner can update; "

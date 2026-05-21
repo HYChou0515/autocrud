@@ -1127,24 +1127,14 @@ class SimpleEventHandler(IEventHandler):
 
 
 def _resolve_string_ref(target: str) -> Callable[[EventContext], None]:  # ty:ignore[invalid-type-form]
-    """Resolve a dotted ``module.path.attr`` to the actual attribute.
+    """Resolve a dotted ``module.path.attr`` reference.
 
-    Raises :class:`ValueError` for malformed targets, :class:`ImportError`
-    if the module is missing, and :class:`AttributeError` if the
-    attribute is absent on the module. Errors surface at first dispatch
-    time so the spec-driven authoring loop can use feedback retry to
-    self-correct.
+    Thin wrapper kept for backwards compatibility — delegates to the
+    canonical :func:`specstar.refs.resolve`.
     """
-    import importlib
+    from specstar.refs import resolve
 
-    if "." not in target:
-        raise ValueError(
-            f"string reference {target!r} must be a dotted path like "
-            "'my_app.logic.fn_name'"
-        )
-    module_name, _, attr = target.rpartition(".")
-    module = importlib.import_module(module_name)
-    return getattr(module, attr)
+    return resolve(target)
 
 
 class StringRefEventHandler(IEventHandler):

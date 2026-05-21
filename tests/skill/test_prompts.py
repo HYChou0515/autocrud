@@ -251,7 +251,10 @@ class TestStep2SystemPrompt:
         # acknowledge them but instruct the LLM to emit comments only,
         # not real imports, so lock+verify works without strawberry-
         # graphql installed.
-        assert "## Project: graphql" in STEP2_SYSTEM_PROMPT or "graphql" in STEP2_SYSTEM_PROMPT.lower()
+        assert (
+            "## Project: graphql" in STEP2_SYSTEM_PROMPT
+            or "graphql" in STEP2_SYSTEM_PROMPT.lower()
+        )
         assert "CORS" in STEP2_SYSTEM_PROMPT or "cors" in STEP2_SYSTEM_PROMPT.lower()
         # Should be in __init__.py, not _generated.py.
         assert "__init__.py" in STEP2_SYSTEM_PROMPT
