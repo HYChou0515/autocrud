@@ -353,9 +353,15 @@ or `RevisionStatus.stable`
 - `encoding: json|msgpack` → `encoding=Encoding.json` or \
 `encoding=Encoding.msgpack`
 
-Anything that requires a callable (like `default_now`) is too \
-opinionated for declarative `_generated.py`; leave it as a TODO \
-comment pointing at `__init__.py` wiring.
+For callable defaults, prefer SpecStar's batteries-included helpers \
+over user string refs whenever possible:
+
+- `default_now: utc` → `default_now=specstar.defaults.utcnow`
+- `default_now: <IANA tz>` → `default_now=specstar.defaults.now("<tz>")`
+- `id_generator: uuid4` → `id_generator=specstar.id_generators.uuid4`
+
+Anything that doesn't fit a built-in falls back to \
+`specstar.string_ref("my_app.logic.X")`.
 
 ```python
 from specstar.types import RevisionStatus

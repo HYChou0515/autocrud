@@ -217,6 +217,13 @@ class TestStep2SystemPrompt:
         # importing user code directly.
         assert "id_generator=specstar.string_ref(" in STEP2_SYSTEM_PROMPT
 
+    def test_includes_default_now_uuid4_builtins(self) -> None:
+        # Phase 3.5: ship batteries-included defaults so common cases
+        # (UTC timestamps, UUID ids) don't need user code.
+        assert "specstar.defaults.utcnow" in STEP2_SYSTEM_PROMPT
+        assert "specstar.defaults.now(" in STEP2_SYSTEM_PROMPT
+        assert "specstar.id_generators.uuid4" in STEP2_SYSTEM_PROMPT
+
     def test_includes_storage_example_with_backend_config(self) -> None:
         # Phase 2.8: ### Storage drives a top-of-file
         # spec.configure(backend=BackendConfig(...)) call.
