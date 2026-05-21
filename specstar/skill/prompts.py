@@ -443,6 +443,25 @@ spec.configure(
 
 If no `## Project` block exists, omit these kwargs entirely.
 
+**FastAPI app layer (graphql / cors / auth) — comments only:**
+
+These features touch the FastAPI app object or middleware order, \
+which lives in the user's `__init__.py`, not `_generated.py`. They \
+also require optional dependencies (e.g. `strawberry-graphql` for \
+GraphQL) that may not be installed when `specstar lock` runs the \
+subprocess import. So translate them as a top-of-file comment block \
+pointing at `__init__.py`, never as imports or code:
+
+```python
+# spec.md ## Project: graphql: on
+# (Add GraphQLRouteTemplate to spec.configure(route_templates=...) in
+#  my_app/__init__.py once `pip install specstar[graphql]` is done.)
+#
+# spec.md ## Project: cors: allow_origins=["https://example.com"]
+# (Add CORSMiddleware in my_app/__init__.py — middleware order matters,
+#  it must be added before spec.apply(app).)
+```
+
 **Project-level message queue:**
 
 When `mq` is in the Enabled features list, extend the same \

@@ -238,6 +238,17 @@ class TestStep2SystemPrompt:
         assert "### Blob" in STEP2_SYSTEM_PROMPT
         assert "blob=BackendBinding(" in STEP2_SYSTEM_PROMPT
 
+    def test_includes_graphql_cors_documented_as_init_py_concern(self) -> None:
+        # Phase 3.4: GraphQL + CORS both touch the FastAPI app layer
+        # (require external deps / middleware order). The prompt must
+        # acknowledge them but instruct the LLM to emit comments only,
+        # not real imports, so lock+verify works without strawberry-
+        # graphql installed.
+        assert "## Project: graphql" in STEP2_SYSTEM_PROMPT or "graphql" in STEP2_SYSTEM_PROMPT.lower()
+        assert "CORS" in STEP2_SYSTEM_PROMPT or "cors" in STEP2_SYSTEM_PROMPT.lower()
+        # Should be in __init__.py, not _generated.py.
+        assert "__init__.py" in STEP2_SYSTEM_PROMPT
+
     def test_includes_project_scalars_example_with_spec_configure(self) -> None:
         # Phase 3.3: ## Project scalars (model_naming, admin,
         # strict_operation_context) lift into the spec.configure(...)
