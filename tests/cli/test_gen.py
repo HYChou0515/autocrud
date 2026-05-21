@@ -1373,6 +1373,58 @@ class TestStorageEndToEnd:
         assert "BackendConfig(" in text
 
 
+_CONSTRAINTS_GENERATED_PY = '''\
+"""GENERATED with constraint_checkers (StringRefConstraintChecker)."""
+
+from __future__ import annotations
+
+import msgspec
+
+from specstar import spec
+from specstar.resource_manager import StringRefConstraintChecker
+
+
+class Book(msgspec.Struct):
+    title: str
+    isbn: str
+    price: float
+
+
+spec.add_model(
+    Book,
+    name="book",
+    constraint_checkers=[
+        StringRefConstraintChecker("my_app.logic.no_duplicate_isbn"),
+        StringRefConstraintChecker("my_app.logic.price_must_be_positive"),
+    ],
+)
+'''
+
+
+class TestConstraintsEndToEnd:
+    """Phase 3.2: ``### Constraints`` translates to real
+    ``StringRefConstraintChecker`` instances. The wrapper is an
+    IConstraintChecker (not a factory), so it survives ``add_model``
+    without resolving user code; that only happens on first ``check``.
+    """
+
+    def test_string_ref_constraint_checker_survives_lock(
+        self, pristine_project: Path
+    ) -> None:
+        (pristine_project / "intent.md").write_text(
+            "# my_app intent\n\nBooks have ISBN uniqueness + price > 0.\n",
+            encoding="utf-8",
+        )
+        client = _MockClient(generated_py_after=_CONSTRAINTS_GENERATED_PY)
+        rc, out, err = _call(pristine_project, client=client)
+        assert rc == 0, (
+            f"constraint_checkers=[StringRefConstraintChecker(...)] must "
+            f"survive lock+verify; out={out!r} err={err!r}"
+        )
+        text = (pristine_project / "my_app" / "_generated.py").read_text()
+        assert "StringRefConstraintChecker(" in text
+
+
 _PERMISSIONS_GENERATED_PY = '''\
 """GENERATED with per-action permissions."""
 

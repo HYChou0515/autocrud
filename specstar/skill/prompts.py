@@ -496,22 +496,30 @@ spec.add_model(
 )
 ```
 
-**Resource with constraint checkers — emit as comments only.** The \
-runtime calls each entry of `constraint_checkers=[fn(rm)]` at \
-`add_model` time, so a lazy string ref would force an early import \
-of user code and break `specstar lock`. Until SpecStar ships a \
-lazy-resolving `StringRefConstraintChecker`, treat `### Constraints` \
-the same way as fine-grained permissions: write the intent as \
-comments and let the user wire concrete checkers in `__init__.py`.
+**Resource with constraint checkers:**
+
+When `constraints` is in the Enabled features list, translate each \
+`### Constraints` bullet into a `StringRefConstraintChecker(...)` \
+entry inside `constraint_checkers=[...]`. The user-side function \
+must match the `IConstraintChecker.check` signature \
+`(data, *, exclude_resource_id=None) -> None`. The wrapper lazy- \
+resolves the dotted target on first dispatch.
 
 ```python
+from specstar.resource_manager import StringRefConstraintChecker
+
+
 # spec.md ### Constraints
 # - my_app.logic.no_duplicate_isbn
 # - my_app.logic.price_must_be_positive
-# (configure constraint_checkers in my_app/__init__.py once the
-# functions exist; they receive the ResourceManager and return an
-# IConstraintChecker.)
-spec.add_model(Book, name="book")
+spec.add_model(
+    Book,
+    name="book",
+    constraint_checkers=[
+        StringRefConstraintChecker("my_app.logic.no_duplicate_isbn"),
+        StringRefConstraintChecker("my_app.logic.price_must_be_positive"),
+    ],
+)
 ```
 
 **Resource with a custom ID generator (string ref to user code):**

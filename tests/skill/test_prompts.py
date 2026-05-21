@@ -252,12 +252,13 @@ class TestStep2SystemPrompt:
         assert "### Validation" in STEP2_SYSTEM_PROMPT
         assert "validator=specstar.string_ref(" in STEP2_SYSTEM_PROMPT
 
-    def test_constraints_documented_as_comments_only(self) -> None:
-        # ### Constraints must surface in the prompt but be marked
-        # explicitly as "emit as comments only" until SpecStar ships a
-        # lazy StringRefConstraintChecker.
+    def test_constraints_translate_to_string_ref_constraint_checker(self) -> None:
+        # Phase 3.2: ### Constraints now translates to real code via
+        # StringRefConstraintChecker (instances, not factories — works
+        # at add_model time without forcing eager import).
         assert "### Constraints" in STEP2_SYSTEM_PROMPT
-        assert "comments only" in STEP2_SYSTEM_PROMPT.lower()
+        assert "StringRefConstraintChecker(" in STEP2_SYSTEM_PROMPT
+        assert "constraint_checkers=[" in STEP2_SYSTEM_PROMPT
 
     def test_includes_indexes_example_with_indexed_fields(self) -> None:
         # Phase 2.2: when "indexes" is enabled, spec.md ### Indexes
