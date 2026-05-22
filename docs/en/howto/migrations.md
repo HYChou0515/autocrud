@@ -143,11 +143,18 @@ This wraps the migration and preserves `schema_version` + `migrate()` compatibil
 
 ## Migrating specific revisions
 
-By default, `migrate()` migrates only the **current revision** of a resource.
-Older revisions remain at their original `schema_version` until explicitly migrated.
+By default, `migrate()` migrates only the **current revision** of a resource
+and bumps `meta.schema_version` to the new target. Older revisions remain at
+their original `schema_version` until explicitly migrated.
 
-This matters when you want to **switch** back to an older revision — SpecStar
-will raise `RevisionNotMigratedError` if that revision has not been migrated yet.
+This matters when you want to **switch** back to an older revision. SpecStar
+raises `RevisionNotMigratedError` from `switch(resource_id, old_revision_id)`
+**when the target revision's `schema_version` does not match
+`meta.schema_version`** — typically after you've already called
+`migrate(resource_id)` to upgrade the current revision (which bumps
+`meta.schema_version`) but haven't migrated the older revision yet. If the
+schema versions still line up (e.g. nothing has been migrated, or only this
+revision was migrated), `switch` succeeds.
 
 ```python
 from specstar.errors import RevisionNotMigratedError
@@ -169,3 +176,40 @@ Notes:
 
 * Migrating a specific revision **does not** update `meta.schema_version` — only the revision's own `schema_version` changes.
 * The `migrate/single/{resource_id}` HTTP endpoint also accepts an optional `revision_id` query parameter.
+
+## Migrating from unversioned (`schema_version=None`) data
+
+If you originally registered a model with bare `spec.add_model(User)` (no
+`Schema(...)`), existing resources are stored with `schema_version=None`.
+Adding a versioned `Schema(UserV2, "v2").step("v1", ...)` later then fails
+with `No migration path from version None to 'v2'` — there's literally no
+edge from `None`.
+
+**Recommendation:** declare a version from day one, even on a brand-new
+project:
+
+```python
+spec.add_model(Schema(User, "v1"))
+```
+
+This keeps the upgrade path trivial: just add another `.step("v1", ...)` later.
+
+**If you already have unversioned data**, you can register a migration step
+whose source is `None`:
+
+```python
+from specstar import Schema
+
+def from_unversioned_to_v2(data: UserV1) -> UserV2:
+    return UserV2(name=data.name, age=0)
+
+schema = Schema(UserV2, "v2").step(
+    None,                 # source is "data without a schema_version"
+    from_unversioned_to_v2,
+    source_type=UserV1,
+)
+```
+
+Then call `resource_manager.migrate(resource_id)` to bring each resource up
+to `v2`. Once migrated, future schema steps can use literal version strings
+as normal.
