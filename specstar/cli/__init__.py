@@ -28,6 +28,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+from specstar.cli._backfill import add_backfill_parser
 from specstar.cli._gen import add_gen_parser
 from specstar.cli._init import add_init_parser
 from specstar.cli._lock import add_lock_parser
@@ -50,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_lock_parser(sub)
     add_verify_parser(sub)
     add_status_parser(sub)
+    add_backfill_parser(sub)
     return parser
 
 

@@ -199,7 +199,8 @@ class IndexedValueExtractor:
 
             if value is not UNSET:
                 # 將 Enum 轉換為其值（但保留其他類型如 datetime）
-                indexed_data[field.field_path] = self._convert_enum_to_value(value)
+                key = field.index_key or field.field_path
+                indexed_data[key] = self._convert_enum_to_value(value)
 
         return indexed_data
 
@@ -815,6 +816,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         pydantic_type: type | None = None,
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
         strict_operation_context: bool = False,
+        encoder_registry: "Any | None" = None,
+        vector_encoders: "dict[str, str | Callable] | None" = None,
     ):
         """Initialize a ResourceManager.
 
@@ -926,6 +929,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.event_handlers.append(self._constraint_handler)
 
         self._binary_processor = BinaryProcessor(resource_type)
+
+        # ── Vector / Embedding ────────────────────────────────────────────
+        from specstar.resource_manager.embedding_processor import EmbeddingProcessor
+        from specstar.resource_manager.encoder_registry import EncoderRegistry
+
+        self._encoder_registry = encoder_registry or EncoderRegistry()
+        self._vector_encoders = vector_encoders or {}
+        self._embedding_processor = EmbeddingProcessor(
+            resource_type,
+            self._encoder_registry,
+            model_overrides=self._vector_encoders,
+        )
 
         # Set up validator
         self._validator = build_validator(validator)
@@ -1715,7 +1730,97 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """
         if isinstance(query, Query):
             query = query.build()
+        query = self._resolve_str_query_vectors(query)
         return self.storage.count(query)
+
+    def _resolve_str_query_vectors(
+        self, query: ResourceMetaSearchQuery
+    ) -> ResourceMetaSearchQuery:
+        """Convert any ``str`` ``query_vector`` in conditions/sorts to a
+        ``list[float]`` by invoking the field's registered encoder.
+
+        Sync only: raises if a required encoder is async.
+        """
+        import inspect
+
+        import msgspec
+
+        from specstar.query_types import (
+            DataSearchGroup as _DSG,
+            VectorDistanceCondition as _VC,
+            VectorDistanceSort as _VS,
+        )
+        from specstar.resource_manager.encoder_registry import lookup_encoder
+        from specstar.types import extract_vector_field_infos
+
+        # Build per-field encoder cache once
+        infos = {i.name: i for i in extract_vector_field_infos(self._resource_type)}
+
+        # Embedding fields' field_path in query is the parent name (e.g. "summary"),
+        # which corresponds to info.name; raw vector fields map directly too.
+
+        def _encode(field_path: str, text: str) -> list[float]:
+            top = field_path.split(".")[0]
+            info = infos.get(top)
+            if info is None:
+                raise ValueError(
+                    f"Vector field {field_path!r} not registered on "
+                    f"{self._resource_type.__name__}; cannot encode str query_vector."
+                )
+            encoder = lookup_encoder(
+                self._encoder_registry,
+                field_info=info,
+                model_overrides=self._vector_encoders,
+            )
+            if encoder is None:
+                raise ValueError(
+                    f"No encoder configured for field {field_path!r}; "
+                    f"cannot encode str query_vector."
+                )
+            vec = encoder(text)
+            if inspect.isawaitable(vec):
+                # Close the unawaited coroutine to avoid a RuntimeWarning
+                try:
+                    vec.close()  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f"Encoder for field {field_path!r} is async but search was "
+                    f"invoked synchronously. Register a sync encoder or use the "
+                    f"async query path."
+                )
+            return vec
+
+        def _maybe_resolve_cond(c):
+            if isinstance(c, _VC) and isinstance(c.query_vector, str):
+                return msgspec.structs.replace(
+                    c, query_vector=_encode(c.field_path, c.query_vector)
+                )
+            if isinstance(c, _DSG):
+                new_sub = [_maybe_resolve_cond(sub) for sub in c.conditions]
+                if any(a is not b for a, b in zip(new_sub, c.conditions)):
+                    return msgspec.structs.replace(c, conditions=new_sub)
+            return c
+
+        def _maybe_resolve_sort(s):
+            if isinstance(s, _VS) and isinstance(s.query_vector, str):
+                return msgspec.structs.replace(
+                    s, query_vector=_encode(s.field_path, s.query_vector)
+                )
+            return s
+
+        changes: dict = {}
+        if query.conditions is not UNSET:
+            new_conds = [_maybe_resolve_cond(c) for c in query.conditions]
+            if any(a is not b for a, b in zip(new_conds, query.conditions)):
+                changes["conditions"] = new_conds
+        if query.sorts is not UNSET:
+            new_sorts = [_maybe_resolve_sort(s) for s in query.sorts]
+            if any(a is not b for a, b in zip(new_sorts, query.sorts)):
+                changes["sorts"] = new_sorts
+        if not changes:
+            return query
+        return msgspec.structs.replace(query, **changes)
 
     @execute_with_events(
         (
@@ -1740,6 +1845,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """
         if isinstance(query, Query):
             query = query.build()
+        query = self._resolve_str_query_vectors(query)
         return self.storage.search(query)
 
     def _default_worker_num(self, nr_work: int) -> int:
@@ -1889,6 +1995,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
+        data = self._embedding_processor.process_sync(data)
         info = self._rev_info(_BuildRevInfoCreate(data, status))
         self.storage.save_revision(info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
@@ -2082,6 +2189,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id,
             prev_res_meta.current_revision_id,
         )
+        # Pass previous data for Embedding cache reuse (bypass events: raw decode)
+        prev_data = None
+        try:
+            with self.storage.get_data_bytes(
+                resource_id, prev_res_meta.current_revision_id
+            ) as fh:
+                prev_data = self._data_serializer.decode(fh.read())
+        except Exception:
+            pass
+        data = self._embedding_processor.process_sync(data, previous=prev_data)
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data, status))
         if prev_info.data_hash == rev_info.data_hash:
             return prev_info
@@ -2169,6 +2286,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         if data is not UNSET:
             data = self._process_binary_fields(data)
+            prev_data = None
+            try:
+                with self.storage.get_data_bytes(
+                    resource_id, prev_res_meta.current_revision_id
+                ) as fh:
+                    prev_data = self._data_serializer.decode(fh.read())
+            except Exception:
+                pass
+            data = self._embedding_processor.process_sync(data, previous=prev_data)
 
         rev_info = self._rev_info(
             _BuildRevInfoModify(prev_res_meta, prev_info, data, status=status)

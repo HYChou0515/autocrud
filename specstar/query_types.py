@@ -4,7 +4,7 @@ import datetime as dt
 import os
 import warnings
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from msgspec import UNSET, Struct, UnsetType
 
@@ -51,7 +51,21 @@ class DataSearchGroup(Struct, kw_only=True, tag=True):
     conditions: list["DataSearchCondition | DataSearchGroup"]
 
 
-DataSearchFilter = DataSearchCondition | DataSearchGroup
+class VectorDistanceCondition(Struct, kw_only=True, tag=True):
+    """Filter rows by the distance between a Vector field and a query vector.
+
+    Belongs in :attr:`ResourceMetaSearchQuery.conditions` alongside
+    :class:`DataSearchCondition` and :class:`DataSearchGroup`.
+    """
+
+    field_path: str
+    query_vector: list[float] | str
+    operator: DataSearchOperator
+    threshold: float
+    distance: "Literal['cosine', 'l2', 'ip'] | None" = None
+
+
+DataSearchFilter = DataSearchCondition | DataSearchGroup | VectorDistanceCondition
 
 
 class ResourceMetaSortDirection(StrEnum):
@@ -83,6 +97,19 @@ class ResourceMetaSortKey(StrEnum):
 class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):
     direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
     key: ResourceMetaSortKey
+
+
+class VectorDistanceSort(Struct, kw_only=True, tag=True):
+    """Sort rows by the distance between a Vector field and a query vector.
+
+    Belongs in :attr:`ResourceMetaSearchQuery.sorts` alongside
+    :class:`ResourceMetaSearchSort` and :class:`ResourceDataSearchSort`.
+    """
+
+    field_path: str
+    query_vector: list[float] | str
+    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
+    distance: "Literal['cosine', 'l2', 'ip'] | None" = None
 
 
 DEFAULT_QUERY_LIMIT_ENV_VAR = "SPECSTAR_DEFAULT_QUERY_LIMIT"
@@ -204,7 +231,10 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     offset: int = 0
     """Number of results to skip before starting to collect the result set."""
 
-    sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] | UnsetType = UNSET
+    sorts: (
+        list[ResourceMetaSearchSort | ResourceDataSearchSort | VectorDistanceSort]
+        | UnsetType
+    ) = UNSET
     """Sorting criteria for the search results."""
 
 

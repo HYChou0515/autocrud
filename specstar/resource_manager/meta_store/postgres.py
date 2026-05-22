@@ -15,6 +15,8 @@ from specstar.query_types import (
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
+    VectorDistanceCondition,
+    VectorDistanceSort,
 )
 from specstar.resource_manager.basic import (
     Encoding,
@@ -48,15 +50,178 @@ class PostgresMetaStore(ISlowMetaStore):
         )
 
         # 建立連線池
+        self._pg_dsn = pg_dsn
         self._conn_pool = psycopg2.pool.SimpleConnectionPool(
             minconn=1,
             maxconn=10,
             dsn=pg_dsn,
         )
         self.table_name = table_name
+        # field_path → (indexed_dim, distance) for pgvector columns
+        self._vec_columns: dict[str, tuple[int, str]] = {}
 
         # 初始化 PostgreSQL 表
         self._init_postgres_table()
+        self._has_pgvector = self._detect_pgvector()
+
+    def _detect_pgvector(self) -> bool:
+        # Use a dedicated raw connection to avoid touching the pool — pool
+        # mock-based tests rely on a fixed iteration count.
+        try:
+            conn = psycopg2.connect(self._pg_dsn)
+        except BaseException:
+            return False
+        try:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM pg_extension WHERE extname = 'vector' LIMIT 1"
+                )
+                return cur.fetchone() is not None
+        except BaseException:
+            return False
+        finally:
+            try:
+                conn.close()
+            except BaseException:
+                pass
+
+    @property
+    def supports_native_vector_search(self) -> bool:
+        return self._has_pgvector
+
+    # ------------------------------------------------------------------
+    # Vector / pgvector DDL helpers
+    # ------------------------------------------------------------------
+
+    # pgvector HNSW upper bound for indexable dim.
+    HNSW_MAX_DIM = 2000
+
+    _DISTANCE_OPS = {
+        "cosine": ("vector_cosine_ops", "<=>"),
+        "l2": ("vector_l2_ops", "<->"),
+        "ip": ("vector_ip_ops", "<#>"),
+    }
+
+    def _vec_col_name(self, field_path: str) -> str:
+        # JSON paths use ".", which is invalid in column identifiers
+        return "vec_" + field_path.replace(".", "_")
+
+    def ensure_vector_column(
+        self,
+        field_path: str,
+        *,
+        dim: int,
+        distance: str = "cosine",
+    ) -> None:
+        """Create a pgvector column + HNSW index for *field_path*.
+
+        Idempotent: skips when the column / index already exists.  When
+        ``dim`` exceeds :pyattr:`HNSW_MAX_DIM`, only the first
+        ``HNSW_MAX_DIM`` dimensions are indexed (Matryoshka prefix
+        strategy).
+        """
+        if not self._has_pgvector:
+            raise RuntimeError(
+                "PostgresMetaStore: pgvector extension is required for "
+                "vector fields. Run `CREATE EXTENSION vector;` as superuser."
+            )
+
+        ops_class, _op = self._DISTANCE_OPS.get(distance, self._DISTANCE_OPS["cosine"])
+        col = self._vec_col_name(field_path)
+        indexed_dim = min(dim, self.HNSW_MAX_DIM)
+        idx_name = f"idx_{self.table_name}_{col}_hnsw"
+
+        # ALTER TABLE / CREATE INDEX CONCURRENTLY cannot run inside a
+        # transaction.  Pool connections are managed with autocommit=False,
+        # so open a dedicated raw connection for DDL and close it after.
+        conn = psycopg2.connect(self._pg_dsn)
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f'ALTER TABLE "{self.table_name}" '
+                    f'ADD COLUMN IF NOT EXISTS "{col}" vector({indexed_dim})'
+                )
+                cur.execute(
+                    f'CREATE INDEX IF NOT EXISTS "{idx_name}" '
+                    f'ON "{self.table_name}" '
+                    f'USING hnsw ("{col}" {ops_class})'
+                )
+        finally:
+            conn.close()
+
+        self._vec_columns[field_path] = (indexed_dim, distance)
+
+    def _build_vector_condition(
+        self, condition: "VectorDistanceCondition"
+    ) -> tuple[str, list]:
+        if condition.field_path not in self._vec_columns:
+            return "", []
+        if not isinstance(condition.query_vector, list):
+            return "", []  # str query_vector must be resolved upstream
+        indexed_dim, default_distance = self._vec_columns[condition.field_path]
+        metric = condition.distance or default_distance or "cosine"
+        _ops, op_symbol = self._DISTANCE_OPS[metric]
+        col = self._vec_col_name(condition.field_path)
+        clipped = condition.query_vector[:indexed_dim]
+        vec_literal = self._format_vec_literal(clipped)
+        op_map = {
+            DataSearchOperator.less_than: "<",
+            DataSearchOperator.less_than_or_equal: "<=",
+            DataSearchOperator.greater_than: ">",
+            DataSearchOperator.greater_than_or_equal: ">=",
+        }
+        sql_op = op_map.get(condition.operator)
+        if sql_op is None:
+            return "", []
+        return (
+            f'"{col}" {op_symbol} %s::vector {sql_op} %s',
+            [vec_literal, float(condition.threshold)],
+        )
+
+    def _build_vector_order(
+        self, sort: "VectorDistanceSort"
+    ) -> tuple[str, list]:
+        if sort.field_path not in self._vec_columns:
+            return "", []
+        if not isinstance(sort.query_vector, list):
+            return "", []
+        indexed_dim, default_distance = self._vec_columns[sort.field_path]
+        metric = sort.distance or default_distance or "cosine"
+        _ops, op_symbol = self._DISTANCE_OPS[metric]
+        col = self._vec_col_name(sort.field_path)
+        clipped = sort.query_vector[:indexed_dim]
+        vec_literal = self._format_vec_literal(clipped)
+        direction = (
+            "ASC" if sort.direction == ResourceMetaSortDirection.ascending else "DESC"
+        )
+        return f'"{col}" {op_symbol} %s::vector {direction}', [vec_literal]
+
+    @staticmethod
+    def _format_vec_literal(vec: list[float]) -> str:
+        """pgvector accepts vector input as the string '[v1,v2,...]'."""
+        return "[" + ",".join(str(float(v)) for v in vec) + "]"
+
+    def _extract_vec_value(
+        self, meta: ResourceMeta, field_path: str, indexed_dim: int
+    ) -> str | None:
+        """Pull the vector value out of meta.indexed_data and clip to indexed_dim."""
+        if meta.indexed_data is UNSET or meta.indexed_data is None:
+            return None
+        # Support dotted paths like "summary.vector"
+        cur: object = meta.indexed_data
+        for part in field_path.split("."):
+            if isinstance(cur, dict) and part in cur:
+                cur = cur[part]
+            else:
+                return None
+        if not isinstance(cur, list):
+            return None
+        clipped = cur[:indexed_dim]
+        if len(clipped) != indexed_dim:
+            return None  # under-dim vector — leave NULL
+        return self._format_vec_literal(clipped)
 
     def __del__(self):
         # 物件被回收時自動清理
@@ -278,7 +443,7 @@ class PostgresMetaStore(ISlowMetaStore):
         """Pack a ResourceMeta into the column-order tuple used by INSERT/UPSERT."""
         import json
 
-        return (
+        base = (
             meta.resource_id,
             self._serializer.encode(meta),
             meta.created_time,
@@ -298,29 +463,33 @@ class PostgresMetaStore(ISlowMetaStore):
             meta.rev_created_time if meta.rev_created_time is not UNSET else None,
             meta.rev_updated_time if meta.rev_updated_time is not UNSET else None,
         )
+        # Append registered vec column values in deterministic order
+        for field_path, (indexed_dim, _) in self._vec_columns.items():
+            base = base + (self._extract_vec_value(meta, field_path, indexed_dim),)
+        return base
 
     def _upsert_sql(self) -> str:
-        return f"""
-        INSERT INTO "{self.table_name}"
-        (resource_id, data, created_time, updated_time, created_by, updated_by,
-         is_deleted, schema_version, indexed_data,
-         rev_status, rev_created_by, rev_updated_by, rev_created_time, rev_updated_time)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (resource_id) DO UPDATE SET
-            data = EXCLUDED.data,
-            created_time = EXCLUDED.created_time,
-            updated_time = EXCLUDED.updated_time,
-            created_by = EXCLUDED.created_by,
-            updated_by = EXCLUDED.updated_by,
-            is_deleted = EXCLUDED.is_deleted,
-            schema_version = EXCLUDED.schema_version,
-            indexed_data = EXCLUDED.indexed_data,
-            rev_status = EXCLUDED.rev_status,
-            rev_created_by = EXCLUDED.rev_created_by,
-            rev_updated_by = EXCLUDED.rev_updated_by,
-            rev_created_time = EXCLUDED.rev_created_time,
-            rev_updated_time = EXCLUDED.rev_updated_time
-        """
+        vec_cols = [self._vec_col_name(fp) for fp in self._vec_columns]
+        base_cols = [
+            "resource_id", "data", "created_time", "updated_time",
+            "created_by", "updated_by", "is_deleted", "schema_version",
+            "indexed_data", "rev_status", "rev_created_by", "rev_updated_by",
+            "rev_created_time", "rev_updated_time",
+        ]
+        all_cols = base_cols + vec_cols
+        col_list = ", ".join(f'"{c}"' for c in all_cols)
+        # vec values are passed as strings; cast to vector
+        placeholders = ", ".join(
+            ["%s"] * len(base_cols) + ["%s::vector"] * len(vec_cols)
+        )
+        update_clause = ", ".join(
+            f'"{c}" = EXCLUDED."{c}"' for c in all_cols if c != "resource_id"
+        )
+        return (
+            f'INSERT INTO "{self.table_name}" ({col_list}) '
+            f'VALUES ({placeholders}) '
+            f'ON CONFLICT (resource_id) DO UPDATE SET {update_clause}'
+        )
 
     def save_many(self, metas: Iterable[ResourceMeta]) -> None:
         """批量保存元数据到 PostgreSQL（ISlowMetaStore 接口方法）"""
@@ -458,6 +627,12 @@ class PostgresMetaStore(ISlowMetaStore):
         # 處理 conditions - 在 PostgreSQL 層面過濾
         if query.conditions is not UNSET:
             for condition in query.conditions:
+                if isinstance(condition, VectorDistanceCondition):
+                    sql_cond, vec_params = self._build_vector_condition(condition)
+                    if sql_cond:
+                        conditions.append(sql_cond)
+                        params.extend(vec_params)
+                    continue
                 json_condition, json_params = self._build_condition(condition)
                 if json_condition:
                     conditions.append(json_condition)
@@ -470,9 +645,16 @@ class PostgresMetaStore(ISlowMetaStore):
 
         # 构建排序子句
         order_clause = ""
+        order_params: list = []
         if query.sorts is not UNSET and query.sorts:
             order_parts = []
             for sort in query.sorts:
+                if isinstance(sort, VectorDistanceSort):
+                    sql_part, sort_params = self._build_vector_order(sort)
+                    if sql_part:
+                        order_parts.append(sql_part)
+                        order_params.extend(sort_params)
+                    continue
                 if isinstance(sort, ResourceMetaSearchSort):
                     direction = (
                         "ASC"
@@ -487,12 +669,10 @@ class PostgresMetaStore(ISlowMetaStore):
                         if sort.direction == ResourceMetaSortDirection.ascending
                         else "DESC"
                     )
-                    # 使用 JSONB 提取語法對 indexed_data 中的欄位進行排序
-                    # PostgreSQL 可以根據 JSON 值的類型自動選擇排序方式
-                    # 使用 -> 操作符保持原始類型，讓 PostgreSQL 自動處理不同數據類型的排序
                     jsonb_extract = f"indexed_data->'{sort.field_path}'"
                     order_parts.append(f"{jsonb_extract} {direction}")
             order_clause = "ORDER BY " + ", ".join(order_parts)
+        params.extend(order_params)
 
         sql = f'SELECT data FROM "{self.table_name}" {where_clause} {order_clause} LIMIT %s OFFSET %s'
         params.append(query.limit)
