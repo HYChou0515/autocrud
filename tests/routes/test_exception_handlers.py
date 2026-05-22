@@ -328,8 +328,16 @@ class TestRouteExceptionConsistency:
 
     def test_switch_nonexistent_returns_not_found(self, app_and_client):
         _, client = app_and_client
-        resp = client.post("/item/does-not-exist/switch/rev1")
+        # Use a well-formed-but-nonexistent revision id (bare number is
+        # normalized to {resource_id}:{n}, see Issue 3).
+        resp = client.post("/item/does-not-exist/switch/1")
         assert resp.status_code == 404
+
+    def test_switch_malformed_revision_id_returns_400_with_hint(self, app_and_client):
+        _, client = app_and_client
+        resp = client.post("/item/does-not-exist/switch/rev1")
+        assert resp.status_code == 400
+        assert "Invalid revision_id" in resp.json()["detail"]
 
     # -- SEARCH / LIST → 400 for bad query params ----------------------
 

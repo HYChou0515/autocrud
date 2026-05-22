@@ -722,20 +722,31 @@ class TestRouteTemplates:
         assert response.json()["age"] == 30
 
     def test_switch_revision_not_found(self, client: TestClient):
-        """測試切換到不存在的版本"""
-        # 創建一個用戶
+        """測試切換到不存在的版本 (well-formed but no such revision)"""
         user_data = {"name": "Test User", "email": "test@example.com", "age": 25}
         create_response = client.post("/user", json=user_data)
         resource_id = create_response.json()["resource_id"]
 
-        # 嘗試切換到不存在的版本
-        response = client.post(f"/user/{resource_id}/switch/nonexistent-revision")
+        # Well-formed bare number → normalized to {resource_id}:9999, not found.
+        response = client.post(f"/user/{resource_id}/switch/9999")
         assert response.status_code == 404
 
     def test_switch_revision_resource_not_found(self, client: TestClient):
-        """測試切換不存在資源的版本"""
-        response = client.post("/user/nonexistent/switch/some-revision")
+        """測試切換不存在資源的版本 (well-formed revision id, no such resource)"""
+        response = client.post("/user/nonexistent/switch/1")
         assert response.status_code == 404
+
+    def test_switch_malformed_revision_id_returns_400_with_hint(
+        self, client: TestClient
+    ):
+        """Malformed revision_id (neither full form nor bare number) → 400."""
+        user_data = {"name": "Test User", "email": "test@example.com", "age": 25}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        response = client.post(f"/user/{resource_id}/switch/nonexistent-revision")
+        assert response.status_code == 400
+        assert "Invalid revision_id" in response.json()["detail"]
 
     def test_restore_resource(self, client: TestClient):
         """測試恢復已刪除的資源"""

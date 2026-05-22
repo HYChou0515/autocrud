@@ -75,8 +75,40 @@ class SwitchRevisionRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
+                normalized = _normalize_revision_id(resource_id, revision_id)
                 with resource_manager.using(current_user, current_time):
-                    meta = resource_manager.switch(resource_id, revision_id)
+                    meta = resource_manager.switch(resource_id, normalized)
                 return MsgspecResponse(meta)
             except Exception as e:
                 raise to_http_exception(e)
+
+
+def _normalize_revision_id(resource_id: str, revision_id: str) -> str:
+    """Accept either the full revision_id (``{resource_id}:{number}``) or
+    the bare revision number, and reject obvious garbage with a 400 + hint.
+
+    The path already carries ``resource_id``, so users naturally try to
+    pass just the revision number on ``/switch/{revision_id}``. Without
+    this normalization that produces a bare ``404`` with no hint.
+    """
+    if not revision_id:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="revision_id is required")
+    if revision_id.isdigit():
+        return f"{resource_id}:{revision_id}"
+    expected_prefix = f"{resource_id}:"
+    if revision_id.startswith(expected_prefix):
+        suffix = revision_id[len(expected_prefix) :]
+        if suffix.isdigit():
+            return revision_id
+    from fastapi import HTTPException
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"Invalid revision_id {revision_id!r}. Expected the full id "
+            f"{expected_prefix}<n> (e.g. {expected_prefix}3) or the bare "
+            f"revision number (e.g. 3)."
+        ),
+    )
