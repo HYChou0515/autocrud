@@ -20,6 +20,8 @@ from specstar.query_types import (
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
+    VectorDistanceCondition,
+    VectorDistanceSort,
 )
 from specstar.query_types import ResourceMetaSortKey as ResourceMetaSortKey
 from specstar.types import (
@@ -154,6 +156,10 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
 
     if query.conditions is not UNSET:
         for condition in query.conditions:
+            if isinstance(condition, VectorDistanceCondition):
+                if not _match_vector_condition(meta, condition):
+                    return False
+                continue
             if not _match_condition(meta, condition):
                 return False
 
@@ -177,6 +183,35 @@ def _match_condition(
     return result is True
 
 
+def _match_vector_condition(
+    meta: ResourceMeta,
+    condition: VectorDistanceCondition,
+) -> bool:
+    """Brute-force evaluation of a VectorDistanceCondition against indexed_data."""
+    from specstar.util.vector_distance import distance
+
+    if meta.indexed_data is UNSET:
+        return False
+    vec = meta.indexed_data.get(condition.field_path)
+    if not isinstance(vec, list):
+        return False
+    if not isinstance(condition.query_vector, list):
+        # str query_vector must have been resolved to a vector before reaching here
+        return False
+    metric = condition.distance or "cosine"
+    d = distance(vec, condition.query_vector, metric)
+    op = condition.operator
+    if op == DataSearchOperator.less_than:
+        return d < condition.threshold
+    if op == DataSearchOperator.less_than_or_equal:
+        return d <= condition.threshold
+    if op == DataSearchOperator.greater_than:
+        return d > condition.threshold
+    if op == DataSearchOperator.greater_than_or_equal:
+        return d >= condition.threshold
+    return False
+
+
 def _match_data_condition(
     indexed_data: dict[str, Any],
     condition: DataSearchCondition | DataSearchGroup,
@@ -188,12 +223,28 @@ def _match_data_condition(
 
 def _evaluate_trivalent(
     data: dict[str, Any] | ResourceMeta,
-    condition: DataSearchCondition | DataSearchGroup,
+    condition: DataSearchCondition | DataSearchGroup | VectorDistanceCondition,
 ) -> bool | None:
     """
     Evaluate condition using SQL-like trivalent logic (True, False, Unknown/None).
     Unknown is returned for operations on missing keys or NULL values (except is_null/exists/isna).
     """
+    if isinstance(condition, VectorDistanceCondition):
+        # Vector conditions only make sense against full ResourceMeta (with
+        # indexed_data); when nested inside a data-condition group we
+        # synthesize a ResourceMeta-like wrapper.
+        if isinstance(data, ResourceMeta):
+            return _match_vector_condition(data, condition)
+        if isinstance(data, dict):
+            # Treat as indexed_data dict
+            class _Wrap:
+                pass
+
+            wrapper = _Wrap()
+            wrapper.indexed_data = data  # type: ignore[attr-defined]
+            return _match_vector_condition(wrapper, condition)  # type: ignore[arg-type]
+        return None
+
     if isinstance(condition, DataSearchGroup):
         results = [
             _evaluate_trivalent(data, sub_cond) for sub_cond in condition.conditions
@@ -389,6 +440,32 @@ def get_sort_fn(qsorts: list[ResourceMetaSearchSort | ResourceDataSearchSort]):
             if isinstance(sort, ResourceMetaSearchSort):
                 v1 = getattr(meta1, sort.key.value)
                 v2 = getattr(meta2, sort.key.value)
+            elif isinstance(sort, VectorDistanceSort):
+                from specstar.util.vector_distance import distance
+
+                metric = sort.distance or "cosine"
+                if not isinstance(sort.query_vector, list):
+                    return 0  # unresolved str query_vector — punt
+                v1_raw = (
+                    meta1.indexed_data.get(sort.field_path)
+                    if meta1.indexed_data is not UNSET
+                    else None
+                )
+                v2_raw = (
+                    meta2.indexed_data.get(sort.field_path)
+                    if meta2.indexed_data is not UNSET
+                    else None
+                )
+                v1 = (
+                    distance(v1_raw, sort.query_vector, metric)
+                    if isinstance(v1_raw, list)
+                    else UNSET
+                )
+                v2 = (
+                    distance(v2_raw, sort.query_vector, metric)
+                    if isinstance(v2_raw, list)
+                    else UNSET
+                )
             else:
                 v1 = (
                     meta1.indexed_data.get(sort.field_path)
@@ -548,6 +625,15 @@ class IMetaStore(MutableMapping[str, ResourceMeta]):
         """
         for m in metas:
             self[m.resource_id] = m
+
+    @property
+    def supports_native_vector_search(self) -> bool:
+        """Whether this meta store can run vector searches natively (vs brute-force).
+
+        Default is ``False``: subclasses that have native vector indexing
+        (e.g. PostgresMetaStore with pgvector) override to return ``True``.
+        """
+        return False
 
 
 class IFastMetaStore(IMetaStore):

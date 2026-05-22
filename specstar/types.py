@@ -345,6 +345,166 @@ class Unique:
         return "Unique()"
 
 
+# ---------------------------------------------------------------------------
+# Vector / Embedding
+# ---------------------------------------------------------------------------
+
+
+class Vector:
+    """Annotation marker for a vector-typed field.
+
+    Use with ``Annotated`` to declare a field that stores a numeric vector
+    (``list[float]``) or an :class:`Embedding` instance.  Carries the
+    indexing and encoding configuration for the field.
+
+    Args:
+        dim: The dimensionality of the stored vector.
+        distance: Distance metric to use for similarity comparisons.  When
+            ``None`` (default), the framework falls back to the query-time
+            metric and finally to ``"cosine"``.
+        encoder: Name of a registered encoder.  Used when querying with a
+            ``str`` and (for :class:`Embedding` fields) to auto-compute the
+            vector at write time.  Resolution: field-level overrides
+            model-level overrides global registration.
+
+    Example::
+
+        class Doc(Struct):
+            embedding: Annotated[list[float], Vector(dim=1536, distance="cosine")]
+    """
+
+    __slots__ = ("dim", "distance", "encoder")
+
+    def __init__(
+        self,
+        dim: int,
+        *,
+        distance: "Literal['cosine', 'l2', 'ip'] | None" = None,
+        encoder: str | None = None,
+    ) -> None:
+        if dim <= 0:
+            raise ValueError(f"Vector dim must be positive, got {dim}")
+        if distance is not None and distance not in ("cosine", "l2", "ip"):
+            raise ValueError(
+                f"Vector distance must be one of 'cosine', 'l2', 'ip' or None, "
+                f"got {distance!r}"
+            )
+        self.dim = dim
+        self.distance = distance
+        self.encoder = encoder
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Vector):
+            return NotImplemented
+        return (
+            self.dim == other.dim
+            and self.distance == other.distance
+            and self.encoder == other.encoder
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.dim, self.distance, self.encoder))
+
+
+class Embedding(Struct, kw_only=True):
+    """A piece of content paired with its vector embedding.
+
+    Analogous to :class:`Binary` for file blobs.  At write time, when only
+    ``content`` is supplied, the framework computes ``vector`` via the
+    field's registered encoder and fills ``content_hash`` (xxh3_128 of
+    content) and ``encoder_id`` so that subsequent writes with unchanged
+    content+encoder can skip the encoder call.
+    """
+
+    content: str
+    vector: list[float] | UnsetType = UNSET
+    content_hash: str | UnsetType = UNSET
+    encoder_id: str | UnsetType = UNSET
+
+
+class VectorFieldInfo(Struct, frozen=True, kw_only=True):
+    """Per-field info about a Vector-annotated field, returned by
+    :func:`extract_vector_field_infos`.
+    """
+
+    name: str
+    marker: Vector
+    is_embedding: bool
+    nullable: bool
+
+
+def extract_vector_field_infos(struct_type: type) -> "list[VectorFieldInfo]":
+    """Return rich info for every ``Vector``-annotated field in *struct_type*.
+
+    Returned list preserves definition order.  Each entry tells callers
+    whether the inner type is :class:`Embedding` (vs raw ``list[float]``)
+    and whether the field is nullable.
+    """
+    from specstar.util.type_utils import (
+        get_hints,
+        get_non_none_args,
+        is_annotated_type,
+        is_nullable_type,
+        unwrap_annotated,
+    )
+
+    out: list[VectorFieldInfo] = []
+    try:
+        hints = get_hints(struct_type)
+    except (TypeError, NameError):
+        return out
+    for field_name, hint in hints.items():
+        if not is_annotated_type(hint):
+            continue
+        inner, metadata = unwrap_annotated(hint)
+        marker: Vector | None = None
+        for meta in metadata:
+            if isinstance(meta, Vector):
+                marker = meta
+                break
+        if marker is None:
+            continue
+        nullable = is_nullable_type(inner)
+        # peel Optional/Union to find the value type
+        value_type = inner
+        if nullable:
+            non_none = get_non_none_args(inner)
+            if non_none:
+                value_type = non_none[0]
+        is_embedding = isinstance(value_type, type) and issubclass(
+            value_type, Embedding
+        )
+        out.append(
+            VectorFieldInfo(
+                name=field_name,
+                marker=marker,
+                is_embedding=is_embedding,
+                nullable=nullable,
+            )
+        )
+    return out
+
+
+def extract_vectors(struct_type: type) -> "list[tuple[str, Vector]]":
+    """Return ``(field_name, Vector)`` pairs for Vector-annotated fields."""
+    from specstar.util.type_utils import (
+        get_hints,
+        is_annotated_type,
+        unwrap_annotated,
+    )
+
+    result: list[tuple[str, Vector]] = []
+    hints = get_hints(struct_type)
+    for field_name, hint in hints.items():
+        if is_annotated_type(hint):
+            _inner, metadata = unwrap_annotated(hint)
+            for meta in metadata:
+                if isinstance(meta, Vector):
+                    result.append((field_name, meta))
+                    break
+    return result
+
+
 def extract_unique_fields(struct_type: type) -> list[str]:
     """Return all field names annotated with :class:`Unique`.
 
@@ -1828,6 +1988,12 @@ class IndexableField(Struct):
     field_type: type | SpecialIndex | UnsetType = (
         UNSET  # The type of the field (str, int, float, bool, datetime)
     )
+    index_key: str | None = None
+    """Optional override for the key under which the extracted value is
+    stored in ``indexed_data``.  When ``None`` (default) the ``field_path``
+    is used.  Useful when you want to extract from a nested path
+    (e.g. ``summary.vector``) but expose the value under a short alias
+    (e.g. ``summary``) for query convenience."""
 
 
 class IConstraintChecker(ABC):

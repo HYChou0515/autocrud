@@ -175,6 +175,7 @@ plugins:
               - concepts/resource-lifecycle.md
               - concepts/search-indexing.md
               - concepts/query-system.md
+              - concepts/vector-and-embedding.md
               - concepts/refs.md
               - concepts/validation.md
               - concepts/route-templates.md
@@ -187,6 +188,7 @@ plugins:
                 - howto/query-builder.md
                 - howto/graphql.md
                 - howto/binary-data.md
+                - howto/vector-search.md
                 - howto/pydantic-integration.md
                 - howto/backup-restore.md
                 - howto/web-ui.md

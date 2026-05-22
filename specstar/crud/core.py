@@ -256,6 +256,11 @@ class SpecStar:
         self._pending_update_actions: list[_PendingUpdateAction] = []
         self.backend: BackendConfig | None = None
 
+        # Vector + Embedding: encoder registry shared across all models
+        from specstar.resource_manager.encoder_registry import EncoderRegistry
+
+        self.encoder_registry = EncoderRegistry()
+
         # Apply configuration using shared logic
         self._apply_configuration(
             model_naming=model_naming,
@@ -472,6 +477,7 @@ class SpecStar:
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool | UnsetType = UNSET,
+        vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
 
@@ -561,6 +567,11 @@ class SpecStar:
             default_status=default_status,
             strict_operation_context=strict_operation_context,
         )
+
+        # Register vector encoders into the registry
+        if vector_encoders is not UNSET:
+            for name, fn in vector_encoders.items():
+                self.encoder_registry.register(name, fn)
 
     def get_resource_manager(self, model: type[T] | str) -> IResourceManager[T]:
         """Get the resource manager for a registered model.
@@ -978,6 +989,7 @@ class SpecStar:
         | None = None,
         validator: "Callable[[T], None] | IValidator | type | None" = None,
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
+        vector_encoders: dict[str, str | Callable] | None = None,
     ) -> None:
         """Register a resource model (or `Schema`) and create its `ResourceManager`.
 
@@ -1231,6 +1243,44 @@ class SpecStar:
                         IndexableField(field_path="retries", field_type=int)
                     )
 
+        # Auto-mount dim validator for any Vector / Embedding fields
+        from specstar.resource_manager.vector_validator import (
+            CompositeValidator,
+            VectorDimValidator,
+        )
+        from specstar.types import extract_vector_field_infos
+
+        vector_infos = extract_vector_field_infos(resolved_model)
+        if vector_infos:
+            dim_validator = VectorDimValidator(resolved_model)
+            if validator is None:
+                validator = dim_validator
+            else:
+                validator = CompositeValidator([dim_validator, validator])
+
+            # Make vector values searchable via indexed_data (brute-force
+            # backends use this; pgvector backend reads it for indexed copy).
+            # For Embedding fields, extract from "<name>.vector" but expose
+            # the value under the short alias "<name>" so QB["<name>"]
+            # matches naturally.
+            existing_keys = {(f.index_key or f.field_path) for f in _indexed_fields}
+            for vinfo in vector_infos:
+                if vinfo.is_embedding:
+                    field_path = f"{vinfo.name}.vector"
+                    index_key = vinfo.name
+                else:
+                    field_path = vinfo.name
+                    index_key = None
+                key_in_use = index_key or field_path
+                if key_in_use not in existing_keys:
+                    _indexed_fields.append(
+                        IndexableField(
+                            field_path=field_path,
+                            field_type=list,
+                            index_key=index_key,
+                        )
+                    )
+
         # ResourceManager binds T from ``resolved_model`` (typed as bare
         # ``type`` after Pydantic conversion), erasing the caller's T.
         # Cast the parameterised inputs to the corresponding T-erased
@@ -1252,9 +1302,28 @@ class SpecStar:
             pydantic_type=pydantic_model,
             constraint_checkers=constraint_checkers,
             strict_operation_context=self.strict_operation_context,
+            encoder_registry=self.encoder_registry,
+            vector_encoders=vector_encoders,
             **other_options,
         )
         self.resource_managers[model_name] = resource_manager
+
+        # If meta store supports native vector indexing, register pgvector
+        # columns + HNSW indices for each Vector / Embedding field
+        meta_store = getattr(resource_manager.storage, "_meta_store", None)
+        if (
+            vector_infos
+            and meta_store is not None
+            and getattr(meta_store, "supports_native_vector_search", False)
+            and hasattr(meta_store, "ensure_vector_column")
+        ):
+            for vinfo in vector_infos:
+                # Use the short alias (matches the indexed_data key).
+                meta_store.ensure_vector_column(
+                    vinfo.name,
+                    dim=vinfo.marker.dim,
+                    distance=vinfo.marker.distance or "cosine",
+                )
 
         # Scan Ref / RefRevision annotations and collect relationships
         refs = extract_refs(resolved_model, model_name)

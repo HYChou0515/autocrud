@@ -19,8 +19,10 @@ from specstar.types import (
     BackgroundTaskAccepted,
     BlobUploadSession,
     DisplayName,
+    Embedding,
     IConstraintChecker,
     IValidator,
+    ValidationError,
     Job,
     JobRedirectInfo,
     OnDelete,
@@ -31,6 +33,7 @@ from specstar.types import (
     SearchedResource,
     TaskStatus,
     Unique,
+    Vector,
 )
 
 # Global instance for simplified usage pattern
@@ -47,6 +50,7 @@ __all__ = [
     "BlobUploadSession",
     "ConnectionProfile",
     "DisplayName",
+    "Embedding",
     "IConstraintChecker",
     "IValidator",
     "Job",
@@ -63,6 +67,8 @@ __all__ = [
     "SpecStar",
     "TaskStatus",
     "Unique",
+    "ValidationError",
+    "Vector",
     "spec",
     "env",
     "string_ref",

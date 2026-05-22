@@ -230,6 +230,24 @@ class OpenAPIBuilder:
                 if comp is not None:
                     comp["x-display-name-field"] = dn_field
 
+            # Vector / Embedding field annotations
+            from specstar.types import extract_vector_field_infos
+
+            vector_infos = extract_vector_field_infos(struct_type)
+            if vector_infos:
+                comp = _find_component(struct_name)
+                if comp is not None:
+                    props = comp.get("properties", {})
+                    for vinfo in vector_infos:
+                        prop = props.get(vinfo.name)
+                        if prop is None:
+                            continue
+                        prop["x-vector-dim"] = vinfo.marker.dim
+                        if vinfo.marker.distance is not None:
+                            prop["x-vector-distance"] = vinfo.marker.distance
+                        if vinfo.marker.encoder is not None:
+                            prop["x-vector-encoder-id"] = vinfo.marker.encoder
+
             if inject_unique and rm is not None:
                 unique_fields = self._get_unique_fields(rm)
                 if unique_fields:

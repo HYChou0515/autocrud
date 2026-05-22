@@ -15,7 +15,67 @@ from specstar.query_types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
+    VectorDistanceCondition,
+    VectorDistanceSort,
 )
+
+
+class VectorDistanceExpr:
+    """A vector-distance expression produced by ``Field.cosine/l2/ip(q)``.
+
+    Acts as both a filter (via ``<``, ``<=``, ``>``, ``>=``) and a sort
+    (when passed to :meth:`Query.sort`).
+    """
+
+    __slots__ = ("field_path", "query_vector", "distance")
+
+    def __init__(
+        self,
+        field_path: str,
+        query_vector,
+        distance,
+    ) -> None:
+        self.field_path = field_path
+        self.query_vector = query_vector
+        self.distance = distance
+
+    def _cond(self, op: DataSearchOperator, threshold: float) -> "ConditionBuilder":
+        cond = VectorDistanceCondition(
+            field_path=self.field_path,
+            query_vector=self.query_vector,
+            operator=op,
+            threshold=float(threshold),
+            distance=self.distance,
+        )
+        return ConditionBuilder(cond)
+
+    def __lt__(self, threshold: float) -> "ConditionBuilder":
+        return self._cond(DataSearchOperator.less_than, threshold)
+
+    def __le__(self, threshold: float) -> "ConditionBuilder":
+        return self._cond(DataSearchOperator.less_than_or_equal, threshold)
+
+    def __gt__(self, threshold: float) -> "ConditionBuilder":
+        return self._cond(DataSearchOperator.greater_than, threshold)
+
+    def __ge__(self, threshold: float) -> "ConditionBuilder":
+        return self._cond(DataSearchOperator.greater_than_or_equal, threshold)
+
+    def asc(self) -> VectorDistanceSort:
+        return VectorDistanceSort(
+            field_path=self.field_path,
+            query_vector=self.query_vector,
+            direction=ResourceMetaSortDirection.ascending,
+            distance=self.distance,
+        )
+
+    def desc(self) -> VectorDistanceSort:
+        return VectorDistanceSort(
+            field_path=self.field_path,
+            query_vector=self.query_vector,
+            direction=ResourceMetaSortDirection.descending,
+            distance=self.distance,
+        )
 
 _PREV_Query = globals().get("Query")
 _PREV_ConditionBuilder = globals().get("ConditionBuilder")
@@ -82,6 +142,8 @@ class Query:
                         direction=direction, field_path=field_name
                     )
                 self._sorts.append(sort_obj)
+            elif isinstance(s, VectorDistanceExpr):
+                self._sorts.append(s.asc())
             else:
                 self._sorts.append(s)
         return self
@@ -467,6 +529,18 @@ class Field(ConditionBuilder):
             # Equivalent to: QB["comment"].is_falsy()
         """
         return self.is_falsy()
+
+    def cosine(self, query_vector) -> VectorDistanceExpr:
+        """Build a cosine-distance expression for this field."""
+        return VectorDistanceExpr(self.name, query_vector, "cosine")
+
+    def l2(self, query_vector) -> VectorDistanceExpr:
+        """Build an L2-distance expression for this field."""
+        return VectorDistanceExpr(self.name, query_vector, "l2")
+
+    def ip(self, query_vector) -> VectorDistanceExpr:
+        """Build an inner-product distance expression for this field."""
+        return VectorDistanceExpr(self.name, query_vector, "ip")
 
     def between(self, min_val: Any, max_val: Any) -> ConditionBuilder:
         """Support range query: field.between(min, max).
