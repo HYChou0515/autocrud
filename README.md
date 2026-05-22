@@ -61,7 +61,7 @@ class User(Struct):
 
 Register the model:
 
-```python
+```python continuation
 from fastapi import FastAPI
 from specstar import spec
 

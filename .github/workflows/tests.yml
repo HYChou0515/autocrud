@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Fast, service-free gate that runs on every PR.
+  fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v3
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # Public-API contract tests (fast, no external services).
+      - name: Contract tests
+        run: uv run pytest tests/test_docs_contract.py -q
+
+      # Executable documentation: the ```python blocks in these files must run.
+      # Expand the list as more pages are annotated (```python continuation / notest).
+      - name: Documentation examples
+        run: uv run pytest --markdown-docs README.md -q
+
+  # NOTE: a full `uv run pytest` is intentionally not run here yet.
+  # The suite contains integration tests that need live Postgres/S3 and that
+  # currently *error* (not skip) when those services are absent. Once those
+  # tests are tagged with the already-declared `integration` marker (and/or
+  # guarded with importorskip), enable a tiered setup:
+  #
+  #   core:
+  #     - run: uv run pytest -m "not integration and not benchmark and not slow" -q
+  #   integration:
+  #     services:
+  #       postgres: { image: postgres:16, env: { POSTGRES_PASSWORD: postgres } }
+  #       minio:    { image: minio/minio }
+  #     - run: uv run pytest -m integration -q
