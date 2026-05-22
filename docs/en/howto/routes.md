@@ -49,16 +49,22 @@ A model is registered with a resource name:
 When `route_templates` is `None` (default behavior) or a configuration dict, SpecStar installs
 a default set of templates (create/list/read/update/patch/delete/restore/export/import, etc).
 
-For a resource named `users`, you typically get endpoints like:
+For a `User` model (path segment follows `model_naming`, default
+**kebab-case singular** — e.g. `User → /user`, `BlogPost → /blog-post`),
+you typically get endpoints like:
 
-* `POST /users` — create
-* `GET /users/...` — list variants (depending on templates, may include data/meta/full/revision views)
-* `GET /users/{id}/...` — read variants (depending on templates)
-* `PUT /users/{id}` — replace
-* `PATCH /users/{id}` — RFC6902 JSON Patch (if Patch template is enabled)
-* `DELETE /users/{id}` — soft delete (if Delete template is enabled)
-* `POST /users/{id}/restore` — restore (if Restore template is enabled)
+* `POST /user` — create
+* `GET /user` — list (variants under `?returns=…`; see [API conventions](/specstar/howto/api-conventions))
+* `GET /user/{resource_id}` — read (variants under `?returns=…`)
+* `PUT /user/{resource_id}` — **full replace** (not upsert; missing id → `404`)
+* `PATCH /user/{resource_id}` — **RFC 6902 JSON Patch** body (an array of ops,
+  not a partial object). Posting a partial object returns
+  `400 "Document is expected to be sequence of operations"`.
+* `DELETE /user/{resource_id}` — soft delete (if Delete template is enabled)
+* `POST /user/{resource_id}/restore` — restore (if Restore template is enabled)
 * Revision-related endpoints (switch / list / info) depending on templates
+
+> Path params are always named `resource_id` (not `id`).
 
 ### Why the endpoints are not listed exhaustively here
 

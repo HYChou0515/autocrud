@@ -237,13 +237,17 @@ apply(model, resource_manager, router)
 Examples of generated routes:
 
 ```
-POST   /users
-GET    /users
-GET    /users/{id}
-PUT    /users/{id}
-PATCH  /users/{id}
-DELETE /users/{id}
+POST   /user
+GET    /user
+GET    /user/{resource_id}
+PUT    /user/{resource_id}
+PATCH  /user/{resource_id}
+DELETE /user/{resource_id}
 ```
+
+(The path segment follows `model_naming`; the default is the kebab-case
+singular of the model name — e.g. `User → /user`, `BlogPost → /blog-post`.
+Path params are always named `resource_id`.)
 
 Route templates allow customization while maintaining consistent API behavior.
 

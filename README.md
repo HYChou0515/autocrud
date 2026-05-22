@@ -71,6 +71,11 @@ spec.add_model(User)
 spec.apply(app)
 ```
 
+> `spec.add_model(User)` is shorthand for `spec.add_model(Schema(User))` — the
+> canonical form once you start tracking schema versions or migrations is
+> `spec.add_model(Schema(User, "v1"))`, which the quickstart docs use.
+> Both run; pick whichever fits your stage.
+
 Start the server:
 
 ```bash
@@ -83,8 +88,10 @@ Optional startup tuning:
 export SPECSTAR_DEFAULT_QUERY_LIMIT=1000
 ```
 
-This controls the default page size for list endpoints. Per-request `limit`
-still overrides it.
+This controls the default page size for **list endpoints** (`GET /{model}` and
+search routes). The built-in fallback is `2**32 - 1` (effectively unlimited)
+— pick a sane value for production. Per-request `limit` and `offset` query
+params still override it.
 
 You now automatically get:
 
@@ -204,7 +211,12 @@ SpecStar supports multiple storage backends.
 | S3       | SQLite     | S3       | S3         |
 | Postgres | PostgreSQL | S3       | S3         |
 
-You can also implement custom storage systems.
+The rows above are **typical profiles**, not the only valid combinations. The
+three storage layers (`IMetaStore` / `IResourceStore` / `IBlobStore`) are
+independent — for example, a Postgres `resource_store` exists
+(`resource_data` table with `data BYTEA`), so you can keep revision payloads
+in Postgres instead of S3 if that fits your deployment. You can also implement
+custom storage systems.
 
 ---
 

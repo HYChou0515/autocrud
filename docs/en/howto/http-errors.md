@@ -253,6 +253,19 @@ All routes now use the same error mapping:
 * **422** → data validation failure
 * **400** → generic / unexpected error
 
+### Notes on specific semantics
+
+* **`PUT` does not upsert.** `PUT /{model}/{resource_id}` requires the resource
+  to exist — an unknown `resource_id` returns `404`, not a create. Use
+  `POST /{model}` if you want create-on-write semantics.
+* **Soft-deleted resource → `404`.** Reading a soft-deleted resource returns
+  `404` with `detail="… is deleted"` (distinct from a "never existed" 404).
+  Pass `?include_deleted=true` to read deleted resources via the same endpoint.
+* **Unknown `revision_id` on `switch` → `404`** with the parsed id in the
+  body. The `{revision_id}` path segment is the **full id** form
+  `{model}:{resource_id}:{revision_number}` (e.g. `user:abc:3`); passing the
+  bare revision number is rejected with `400` and a hint.
+
 ### UniqueConstraintError detail
 
 `409` responses from `UniqueConstraintError` include structured JSON:

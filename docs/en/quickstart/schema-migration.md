@@ -108,9 +108,10 @@ def migrate_v1_to_v2(old: IssueV1) -> Issue:
 Attach the migration step when registering the new schema:
 
 ```python
+from datetime import datetime
 from specstar import spec, Schema
 
-spec.configure()
+spec.configure(default_user="migration", default_now=datetime.utcnow)
 spec.add_model(
     Schema(Issue, "v2").step(
         "v1",
@@ -119,6 +120,12 @@ spec.add_model(
     )
 )
 ```
+
+> Programmatic `resource_manager.migrate(...)` / `.switch(...)` calls require an
+> **operation context** (current user + clock). Pass `default_user` /
+> `default_now` to `configure()` as above, or wrap the call with
+> `rm.using(user=..., now=...)`. Without it, write methods raise
+> `MissingOperationContextError`.
 
 This tells SpecStar how to upgrade data from `v1` → `v2`.
 

@@ -186,9 +186,9 @@ Deprecated aliases may exist (e.g. `/data`, `/meta`, `/full`), but should not be
 
 Example (from template):
 
-* `GET /users`
-* `GET /users?returns=data`
-* `GET /users?limit=20&offset=40`
+* `GET /user`
+* `GET /user?returns=data`
+* `GET /user?limit=20&offset=40`
 
 ### ReadRouteTemplate (Read single resource)
 
@@ -200,9 +200,9 @@ Example (from template):
 
 Example:
 
-* `GET /users/123`
-* `GET /users/123?returns=meta`
-* `GET /users/123?revision_id=users:123:2`
+* `GET /user/123`
+* `GET /user/123?returns=meta`
+* `GET /user/123?revision_id=user:123:2`
 
 ### CreateRouteTemplate (Create)
 
