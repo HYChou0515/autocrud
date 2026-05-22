@@ -199,6 +199,7 @@ plugins:
                 - howto/errors.md
                 - howto/troubleshooting.md
                 - howto/http-errors.md
+                - howto/gotchas.md
 
             - Guides:
                 - guides/index.md

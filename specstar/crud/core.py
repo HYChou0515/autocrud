@@ -174,7 +174,12 @@ class SpecStar:
         message_queue_factory:
             Lower-level message queue factory used for Job models (when enabled).
         admin:
-            If provided and `permission_checker` is not set, enables RBAC with `admin` as root user.
+            **Username** of the root user for RBAC. This is *not* a URL path
+            and does not mount any admin UI — passing
+            ``configure(admin="alice")`` makes the username ``"alice"`` the
+            RBAC root (full access) when no explicit ``permission_checker``
+            is provided. The web admin UI is a separate TypeScript app under
+            ``wizard/``.
         permission_checker:
             Permission checker used by default for models that don't override it.
         dependency_provider:
@@ -515,7 +520,9 @@ class SpecStar:
                 This path offers more direct control than the unified ``backend=`` API.
             message_queue_factory: Lower-level message queue factory for async job
                 processing.
-            admin: Admin user for RBAC permission system.
+            admin: **Username** of the RBAC root user (full access). Not a URL
+                path and does not mount any admin UI; the web admin UI is the
+                separate TypeScript app under ``wizard/``.
             permission_checker: Custom permission checker implementation.
             dependency_provider: Dependency injection provider for routes.
             event_handlers: List of event handlers for lifecycle hooks.

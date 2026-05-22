@@ -59,6 +59,24 @@ That means you can export:
 
 Import accepts an `.acbak` archive and loads records back into the datastore.
 
+> **Upload format asymmetry.** `GET /{model}/export` *returns* the archive
+> as `application/octet-stream` (so the response body is the raw bytes),
+> but `POST /{model}/import` *accepts* the archive as
+> **`multipart/form-data`** with a single `file` form field — not as a raw
+> body. Sending the export bytes directly as the request body returns
+> `422` because the `file` form field is missing.
+>
+> Correct upload with `curl`:
+>
+> ```bash
+> # export → raw bytes on stdout, save to disk
+> curl -o dump.acbak http://localhost:8000/issue/export
+>
+> # import → multipart, use -F file=@...
+> curl -X POST -F 'file=@dump.acbak' -F 'on_duplicate=overwrite' \
+>      http://localhost:8000/issue/import
+> ```
+
 The important behavior control is `on_duplicate`, which defines how existing records should be handled.
 
 Typical options are:

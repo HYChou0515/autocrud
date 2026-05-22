@@ -151,6 +151,20 @@ class ImportRouteTemplate(BaseRouteTemplate):
                 The archive must contain a **{model_name}** model section.
                 Use ``on_duplicate`` to control behaviour when a resource ID
                 already exists.
+
+                **Upload format:** ``multipart/form-data`` with a single
+                ``file`` field carrying the archive bytes — NOT a raw
+                ``application/octet-stream`` body. Sending the archive as
+                the raw request body (as ``GET /{model_name}/export``
+                returns it) will fail with ``422`` because FastAPI cannot
+                find the ``file`` form field.
+
+                Example with ``curl``:
+                ```
+                curl -X POST -F 'file=@dump.acbak' \\
+                     -F 'on_duplicate=overwrite' \\
+                     http://localhost:8000/{model_name}/import
+                ```
             """),
         )
         async def import_model(

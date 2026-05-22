@@ -142,9 +142,18 @@ SpecStar generates APIs directly from Python models.
 Model
   ↓
 REST API
-GraphQL API
+GraphQL API   (opt-in: pip install specstar[graphql] + add_route_template(GraphQLRouteTemplate()))
 OpenAPI
 ```
+
+> REST and OpenAPI are wired up automatically when you call `spec.apply(app)`.
+> GraphQL is **opt-in**: install the extra (`pip install specstar[graphql]`)
+> and register the template explicitly:
+>
+> ```python
+> from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
+> spec.add_route_template(GraphQLRouteTemplate())
+> ```
 
 ---
 

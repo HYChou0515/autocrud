@@ -44,6 +44,25 @@ A model is registered with a resource name:
 * `add_model(User)` → name inferred from model class + `model_naming`
 * `add_model(User, name="people")` → override path base to `/people`
 
+### `model_naming` reference
+
+The `model_naming` setting on `SpecStar` / `spec.configure()` controls how
+**class names** become **URL segments**. The default is `"kebab"` — lowercase
+words joined by hyphens.
+
+| `model_naming` | `User`     | `BlogPost`   | `URLPath`    | `XMLNode`   |
+|----------------|------------|--------------|--------------|-------------|
+| `"kebab"` *(default)* | `/user`    | `/blog-post` | `/u-r-l-path` | `/x-m-l-node` |
+| `"snake"`      | `/user`    | `/blog_post` | `/u_r_l_path` | `/x_m_l_node` |
+| `"camel"`      | `/user`    | `/blogPost`  | `/uRLPath`   | `/xMLNode`  |
+| `"pascal"`     | `/User`    | `/BlogPost`  | `/URLPath`   | `/XMLNode`  |
+| `"same"`       | `/User`    | `/BlogPost`  | `/URLPath`   | `/XMLNode`  |
+| callable       | `model_naming=lambda cls: cls.__name__.lower() + "s"` → `/users` |
+
+Names are **singular by default** (no automatic pluralisation). Pass
+`name=` to `add_model` to override a single model, or supply a callable to
+`model_naming` for project-wide custom rules (including plurals).
+
 ## Default templates (typical endpoints)
 
 When `route_templates` is `None` (default behavior) or a configuration dict, SpecStar installs

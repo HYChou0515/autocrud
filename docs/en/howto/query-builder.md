@@ -53,6 +53,28 @@ List endpoints are paginated by default. The startup default comes from the SPEC
 
 The server parses the expression with a safe AST parser.
 
+> ### Heads up — bare query params on list endpoints are **silently ignored**
+>
+> `GET /task?name=Alice` returns *all* tasks, not the ones whose `name` is
+> `Alice`. SpecStar's list endpoints **do not** auto-bind unknown query
+> parameters to data fields — filtering has to go through one of:
+>
+> * `?qb=…` *(recommended)* — the safe expression DSL on this page,
+> * `?data_conditions=…` — JSON array of structured conditions,
+> * `?conditions=…` — meta-level conditions,
+> * the dedicated metadata params (`is_deleted`, `created_time_start`, …).
+>
+> The looseness is a deliberate 0.x trade-off: in a versioned system,
+> resources can sit at different schema versions, so strict
+> validation of arbitrary `?field=value` filters against "the current
+> schema" would either reject legitimate old data or require a full
+> "which fields are queryable at which versions" matrix. That work is
+> out of scope for 0.x.
+>
+> If you want a louder failure for typos, opt in per-request with
+> `?strict_filters=true` *(coming after 0.11; see issue tracker)* —
+> until then, **always go through `qb` / `conditions` for filtering**.
+
 ---
 
 ## Common patterns

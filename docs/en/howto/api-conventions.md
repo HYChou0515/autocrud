@@ -207,6 +207,19 @@ SpecStar has two update modes with different revision semantics:
   * Sets `parent_revision_id` to the previous current revision
   * Revision history is append-only under this mode
 
+> #### Same-content writes are de-duplicated
+>
+> If a `PUT` (or no-op `PATCH`) produces a payload byte-identical to the
+> current revision's stored bytes, SpecStar **does not create a new
+> revision**. The endpoint returns `200` with the existing
+> `revision_id` — `total_revision_count` is unchanged.
+>
+> This keeps history clean (no churn from clients that re-PUT the same
+> body on every save) but it means a successful `200` does **not**
+> guarantee a new revision was recorded. Code that depends on
+> "every successful write = one new audit row" should compare the
+> returned `revision_id` against the prior one to detect a dedup.
+
 ### `modify` (draft update): overwrite the current revision (not immutable)
 
 * Used by:
