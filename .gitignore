@@ -37,3 +37,9 @@ tmp*/
 
 # Benchmark results
 benchmark/results/
+.autocrudrc.json
+autocrud
+
+CLAUDE.md
+NEXTSTEP.md
+UBIQUITOUS_LANGUAGE.md
