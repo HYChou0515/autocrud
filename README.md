@@ -89,13 +89,17 @@ still overrides it.
 You now automatically get:
 
 ```
-POST   /users
-GET    /users
-GET    /users/{id}
-PUT    /users/{id}
-PATCH  /users/{id}
-DELETE /users/{id}
+POST   /user
+GET    /user
+GET    /user/{resource_id}
+PUT    /user/{resource_id}
+PATCH  /user/{resource_id}
+DELETE /user/{resource_id}
 ```
+
+The path segment follows `model_naming` (default: kebab-case of the model name,
+e.g. `User` -> `/user`). `PUT` replaces the whole resource; `PATCH` expects a
+JSON Patch (RFC 6902) array of operations rather than a partial object.
 
 OpenAPI documentation is generated automatically.
 

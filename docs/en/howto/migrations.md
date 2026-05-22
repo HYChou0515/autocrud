@@ -150,7 +150,7 @@ This matters when you want to **switch** back to an older revision — SpecStar
 will raise `RevisionNotMigratedError` if that revision has not been migrated yet.
 
 ```python
-from specstar import RevisionNotMigratedError
+from specstar.errors import RevisionNotMigratedError
 
 # After a schema upgrade, migrate the current revision
 resource_manager.migrate(resource_id)

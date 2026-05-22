@@ -126,10 +126,25 @@ This tells SpecStar how to upgrade data from `v1` → `v2`.
 
 ## 6. Execute migration
 
+The migration endpoints are **not registered by default**. Opt in by adding
+`MigrateRouteTemplate` before `add_model()`:
+
+```python
+from specstar import spec
+from specstar.crud.route_templates.migrate import MigrateRouteTemplate
+
+spec.add_route_template(MigrateRouteTemplate())
+```
+
+This mounts `POST /{model_name}/migrate/execute`,
+`POST /{model_name}/migrate/test`, and
+`POST /{model_name}/migrate/single/{resource_id}` (the path segment follows
+`model_naming`; e.g. an `Issue` model is mounted under `/issue`).
+
 Run migration via API:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/issues/migrate/execute \
+curl -X POST http://127.0.0.1:8000/issue/migrate/execute \
   -H "Content-Type: application/json" \
   -d '{
     "limit": 10000
