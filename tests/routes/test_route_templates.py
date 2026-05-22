@@ -854,32 +854,25 @@ class TestRevisionListAdvanced:
         assert "Invalid sort" in response.json()["detail"]
 
     def test_revision_list_invalid_limit(self, client: TestClient):
-        """測試無效的 limit 參數 (行 345)"""
-        # 創建資源
+        """limit < 1 is rejected by FastAPI Query(ge=1) → 422."""
         user_data = {"name": "Test", "email": "test@example.com", "age": 20}
         create_response = client.post("/user", json=user_data)
         resource_id = create_response.json()["resource_id"]
 
-        # 測試 limit < 1
         response = client.get(f"/user/{resource_id}/revision-list?limit=0")
-        assert response.status_code == 400
-        assert "limit must be >= 1" in response.json()["detail"]
+        assert response.status_code == 422
 
         response = client.get(f"/user/{resource_id}/revision-list?limit=-5")
-        assert response.status_code == 400
-        assert "limit must be >= 1" in response.json()["detail"]
+        assert response.status_code == 422
 
     def test_revision_list_invalid_offset(self, client: TestClient):
-        """測試無效的 offset 參數 (行 349)"""
-        # 創建資源
+        """offset < 0 is rejected by FastAPI Query(ge=0) → 422."""
         user_data = {"name": "Test", "email": "test@example.com", "age": 20}
         create_response = client.post("/user", json=user_data)
         resource_id = create_response.json()["resource_id"]
 
-        # 測試 offset < 0
         response = client.get(f"/user/{resource_id}/revision-list?offset=-1")
-        assert response.status_code == 400
-        assert "offset must be >= 0" in response.json()["detail"]
+        assert response.status_code == 422
 
     def test_revision_list_with_time_filters(self, client: TestClient):
         """測試 created_time_start 和 created_time_end 過濾 (行 373-374, 377-380)"""
