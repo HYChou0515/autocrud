@@ -245,6 +245,47 @@ All exceptions go through `to_http_exception`:
 
 ---
 
+## Uniform error envelope (opt-in)
+
+By default, `detail` shapes vary by endpoint:
+
+| Status | Source                              | Default `detail` shape |
+|--------|-------------------------------------|------------------------|
+| 4xx    | SpecStar errors (most)              | **string** (e.g. `"Resource 'x' not found."`) |
+| 409    | `UniqueConstraintError`             | **dict** `{message, code, field, conflicting_resource_id}` |
+| 422    | FastAPI `RequestValidationError`    | **list** of `{type, loc, msg, input, ...}` |
+
+For clients that want a single shape to dispatch on, opt into the
+**structured error envelope**:
+
+```python
+spec = SpecStar(structured_errors=True)
+# or
+spec.configure(structured_errors=True)
+```
+
+With this on, **every** error response — SpecStar's domain errors *and*
+FastAPI's own validation errors — looks like:
+
+```json
+{
+  "detail": {
+    "message": "Human-readable description",
+    "code": "RESOURCE_NOT_FOUND",
+    "field": "email",                                 // when relevant
+    "conflicting_resource_id": "user_123",            // when relevant
+    "errors": [{"type": "...", "loc": [...], ...}]    // when from FastAPI 422
+  }
+}
+```
+
+The `code` values match the table at the top of this page
+(`RESOURCE_NOT_FOUND`, `RESOURCE_GONE`, `VALIDATION_ERROR`,
+`UNIQUE_CONSTRAINT`, …). Default is **off** for backward compatibility
+— existing clients see the same shapes as 0.10/0.11.
+
+---
+
 ## Implications for API clients
 
 ### Consistent behavior across all routes

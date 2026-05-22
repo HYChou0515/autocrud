@@ -214,6 +214,15 @@ class SpecStar:
             :class:`specstar.types.ValidationError` (HTTP 422 on routes).
             Defaults to ``False`` for backward compatibility — unknown fields
             are silently dropped, matching msgspec's default behavior.
+        structured_errors:
+            When ``True``, :meth:`apply` registers exception handlers that
+            wrap every error response (``HTTPException`` and FastAPI's
+            ``RequestValidationError``) in a uniform envelope
+            ``{"detail": {"message": str, "code": str, ...extras}}`` so
+            clients can parse errors with a single shape. Defaults to
+            ``False`` — error ``detail`` keeps its current per-endpoint
+            shape (string for most, dict for unique-constraint, FastAPI's
+            array for 422).
 
     See also:
         - `Schema`: declare schema/validation/migration for a resource.
@@ -245,6 +254,7 @@ class SpecStar:
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool = False,
         forbid_unknown_fields: bool = False,
+        structured_errors: bool = False,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -266,6 +276,7 @@ class SpecStar:
         self.default_status: RevisionStatus | UnsetType = UNSET
         self.strict_operation_context = False
         self.forbid_unknown_fields = False
+        self.structured_errors = False
         self._pending_create_actions: list[_PendingCreateAction] = []
         self._pending_update_actions: list[_PendingUpdateAction] = []
         self.backend: BackendConfig | None = None
@@ -292,6 +303,7 @@ class SpecStar:
             default_status=default_status,
             strict_operation_context=strict_operation_context,
             forbid_unknown_fields=forbid_unknown_fields,
+            structured_errors=structured_errors,
         )
 
     def _apply_configuration(
@@ -317,6 +329,7 @@ class SpecStar:
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool | UnsetType = UNSET,
         forbid_unknown_fields: bool | UnsetType = UNSET,
+        structured_errors: bool | UnsetType = UNSET,
     ) -> None:
         """Apply configuration settings to the SpecStar instance.
 
@@ -476,6 +489,10 @@ class SpecStar:
         if forbid_unknown_fields is not UNSET:
             self.forbid_unknown_fields = forbid_unknown_fields
 
+        # Update structured_errors
+        if structured_errors is not UNSET:
+            self.structured_errors = structured_errors
+
     def configure(
         self,
         *,
@@ -498,6 +515,7 @@ class SpecStar:
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool | UnsetType = UNSET,
         forbid_unknown_fields: bool | UnsetType = UNSET,
+        structured_errors: bool | UnsetType = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
@@ -548,6 +566,11 @@ class SpecStar:
                 being silently dropped. Defaults to ``False`` — kept off to
                 preserve current behavior; turn it on at the start of a new
                 project or as part of a coordinated 1.0 cutover.
+            structured_errors: When ``True``, :meth:`apply` registers
+                exception handlers that wrap every error response in a
+                uniform envelope ``{"detail": {"message", "code", ...}}``
+                so clients can parse errors with one shape. Defaults to
+                ``False``.
 
         Example:
             ```python
@@ -597,6 +620,7 @@ class SpecStar:
             default_status=default_status,
             strict_operation_context=strict_operation_context,
             forbid_unknown_fields=forbid_unknown_fields,
+            structured_errors=structured_errors,
         )
 
         # Register vector encoders into the registry
@@ -1556,6 +1580,12 @@ class SpecStar:
         # Auto include_router + auto openapi when app is a FastAPI instance
         is_fastapi = isinstance(app, FastAPI)
         if is_fastapi:
+            if self.structured_errors:
+                from specstar.crud.route_templates.exception_handlers import (
+                    install_structured_error_handlers,
+                )
+
+                install_structured_error_handlers(app)
             if router is not None and auto_include:
                 app.include_router(router)
             # Only generate OpenAPI when routes are actually on the app.

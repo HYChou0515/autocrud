@@ -1,7 +1,11 @@
 """Shared exception-to-HTTP mapping for route templates.
 
 Provides a single :func:`to_http_exception` helper that maps internal
-domain exceptions to consistent :class:`~fastapi.HTTPException` responses.
+domain exceptions to consistent :class:`~fastapi.HTTPException` responses,
+plus :func:`install_structured_error_handlers` which (when enabled via
+``SpecStar(structured_errors=True)``) registers handlers that emit a
+uniform ``{message, code, ...}`` error envelope across HTTPException and
+FastAPI's ``RequestValidationError``.
 
 Every route handler should use the same pattern::
 
@@ -10,24 +14,29 @@ Every route handler should use the same pattern::
 
 Mapping table:
 
-==================================  ====
-Exception                           HTTP
-==================================  ====
-``HTTPException``                   (re-raised as-is)
-``msgspec.ValidationError``         422
-``specstar.types.ValidationError``  422
-``PermissionDeniedError``           403
-``ResourceIsDeletedError``          410
-``ResourceNotFoundError`` family    404
-``FileNotFoundError``               404
-``ResourceConflictError`` family    409
-``NotImplementedError``             501
-fallback                            400
-==================================  ====
+==================================  ====  ============================
+Exception                           HTTP  Structured ``code``
+==================================  ====  ============================
+``HTTPException``                   (re-raised as-is)  —
+``msgspec.ValidationError``         422   ``VALIDATION_ERROR``
+``specstar.types.ValidationError``  422   ``VALIDATION_ERROR``
+``PermissionDeniedError``           403   ``PERMISSION_DENIED``
+``ResourceIsDeletedError``          410   ``RESOURCE_GONE``
+``ResourceNotFoundError`` family    404   ``RESOURCE_NOT_FOUND``
+``FileNotFoundError``               404   ``RESOURCE_NOT_FOUND``
+``UniqueConstraintError``           409   ``UNIQUE_CONSTRAINT``
+``ResourceConflictError`` family    409   ``RESOURCE_CONFLICT``
+``NotImplementedError``             501   ``NOT_IMPLEMENTED``
+fallback                            400   ``BAD_REQUEST``
+==================================  ====  ============================
 """
 
+from typing import Any
+
 import msgspec
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from specstar.types import (
     PermissionDeniedError,
@@ -97,6 +106,7 @@ def to_http_exception(e: Exception) -> HTTPException:
             status_code=409,
             detail={
                 "message": str(e),
+                "code": "UNIQUE_CONSTRAINT",
                 "field": e.field,
                 "conflicting_resource_id": e.conflicting_resource_id,
             },
@@ -112,3 +122,84 @@ def to_http_exception(e: Exception) -> HTTPException:
 
     # Fallback — generic bad request
     return HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Structured error envelope (opt-in)
+# ---------------------------------------------------------------------------
+
+
+_STATUS_TO_CODE: dict[int, str] = {
+    400: "BAD_REQUEST",
+    401: "UNAUTHORIZED",
+    403: "PERMISSION_DENIED",
+    404: "RESOURCE_NOT_FOUND",
+    409: "RESOURCE_CONFLICT",
+    410: "RESOURCE_GONE",
+    422: "VALIDATION_ERROR",
+    501: "NOT_IMPLEMENTED",
+}
+
+
+def _normalize_detail(status_code: int, detail: Any) -> dict[str, Any]:
+    """Coerce any HTTPException ``detail`` shape into a uniform envelope.
+
+    Output: ``{"message": str, "code": str, **extras}``.
+
+    * Plain strings → ``{"message": detail, "code": <by status>}``.
+    * Dicts that already carry ``message`` → keep, ensure ``code``.
+    * Other (lists / arbitrary objects) → preserve under ``extra`` and use
+      a generic message; this keeps the envelope predictable even when
+      the underlying detail is unusual.
+    """
+    code = _STATUS_TO_CODE.get(status_code, "ERROR")
+    if isinstance(detail, dict):
+        out = {"code": code, **detail}
+        out.setdefault("message", str(detail))
+        # In case caller already supplied a code, prefer theirs.
+        if "code" in detail:
+            out["code"] = detail["code"]
+        return out
+    if isinstance(detail, str):
+        return {"message": detail, "code": code}
+    return {"message": "error", "code": code, "extra": detail}
+
+
+def _structured_http_exception_handler(_request: Request, exc: HTTPException):
+    payload = _normalize_detail(exc.status_code, exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": payload},
+        headers=exc.headers,
+    )
+
+
+def _structured_validation_error_handler(
+    _request: Request, exc: RequestValidationError
+):
+    # FastAPI's RequestValidationError carries a list of pydantic-style
+    # errors. Promote them under ``errors`` so clients still get the per-
+    # field info, but expose a uniform top-level shape.
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": {
+                "message": "Request validation failed",
+                "code": "VALIDATION_ERROR",
+                "errors": exc.errors(),
+            }
+        },
+    )
+
+
+def install_structured_error_handlers(app: FastAPI) -> None:
+    """Register the structured error handlers on *app*.
+
+    Idempotent: calling twice replaces the previous handlers. Intended to
+    be called from ``SpecStar.apply()`` only when
+    ``structured_errors=True``.
+    """
+    app.add_exception_handler(HTTPException, _structured_http_exception_handler)
+    app.add_exception_handler(
+        RequestValidationError, _structured_validation_error_handler
+    )
