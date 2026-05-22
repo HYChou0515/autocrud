@@ -8,16 +8,46 @@ If you don't want spec-driven authoring, ignore this page — `pip install -U sp
 
 ## What's new
 
+### Engine API (unchanged)
+
 | Surface | Status |
 |---|---|
 | `spec.add_model(...)` Python API | unchanged |
 | `Schema(...).step(...)` migrations | unchanged |
 | Route templates, storage, permissions, message queue | unchanged |
-| `spec.dump_descriptor()` | **new** — emits a property-graph descriptor |
-| `spec.lock.json` manifest | **new** — hashes + descriptor + validation |
-| `specstar` shell command | **new** — `init`, `verify`, `status` subcommands |
-| `.claude/skills/specstar-spec/SKILL.md` | **new** — Claude Code authoring skill |
-| AST validator | **new** — protects skill-written `_generated.py` files |
+
+### New surface
+
+| Surface | What it is |
+|---|---|
+| `spec.dump_descriptor()` | Emits a property-graph descriptor |
+| `spec.lock.json` manifest | Hashes + descriptor + validation |
+| `specstar` shell command | `init` / `verify` / `status` / `lock` / `gen` subcommands |
+| `.claude/skills/specstar-spec/SKILL.md` | Claude Code authoring skill |
+| AST validator | Protects spec-driven `_generated.py` files |
+
+### New spec-driven helpers (importable from `specstar`)
+
+| Symbol | Purpose |
+|---|---|
+| `specstar.env(name, *, default=None)` | Read env var; lazy-loads `./.env` |
+| `specstar.string_ref(dotted)` | Lazy dotted-path callable wrapper |
+| `specstar.defaults.utcnow` / `specstar.defaults.now(tz)` | Built-in `default_now=` values |
+| `specstar.id_generators.uuid4` | Built-in `id_generator=` value |
+| `specstar.events.StringRefEventHandler` | Lazy event handler from dotted ref |
+| `specstar.resource_manager.StringRefConstraintChecker` | Lazy constraint checker |
+| `specstar.permission.{any_user, any_authenticated, admin_only, owner_self, deny_all}` | 5 built-in `CheckFunc` for `ActionBasedPermissionChecker.from_dict` |
+
+### `specstar gen --call` (LLM-driven authoring)
+
+| Flag | Purpose |
+|---|---|
+| `--provider {anthropic,openai,openai-compatible}` | Pick the LLM transport |
+| `--model NAME` | Model identifier for the provider |
+| `--feature NAME` / `--no-feature NAME` | Per-run codegen scope override |
+| `--feedback-retries N` | How many times to retry on LLM-output errors (default 2) |
+| `--force` | Re-run STEP 1 + STEP 2 unconditionally |
+| `--from-spec` | Skip STEP 1, run STEP 2 from current `spec.md` |
 
 The complete workflow is documented in the [Spec-Driven Authoring guide](spec-driven.md).
 
@@ -57,14 +87,20 @@ mkdir my_new_app && cd my_new_app
 uv run specstar init my_app
 
 # Files created:
-#   spec.md                  ← edit this
+#   intent.md                ← your free prose; edit this
+#   spec.md                  ← LLM-generated structured spec
 #   my_app/__init__.py       ← FastAPI app
-#   my_app/_generated.py     ← skill-maintained, don't edit
-#   spec.lock.json           ← skill-maintained
+#   my_app/_generated.py     ← LLM-maintained, runtime SSOT
+#   spec.lock.json           ← deterministic, regenerated on lock
+#   pyproject.toml           ← [tool.specstar] feature toggles
+#   .env.example             ← committed; copy to .env
+#   .gitignore               ← excludes .env
 
-# In Claude Code, edit spec.md or describe a change:
-#   /specstar regen
-#   "add Order resource with user ref and amount field"
+# Edit intent.md to describe your app, then either:
+#   /specstar              (in Claude Code — no API key needed)
+# or
+#   specstar gen --call --provider openai --model gpt-4o --yes
+#   specstar gen --call --provider anthropic --model claude-sonnet-4-6 --yes
 
 # CI / drift check (no LLM)
 uv run specstar verify
@@ -102,5 +138,7 @@ If any of these fail or surprise you, please open an issue.
 ## See also
 
 - [Spec-Driven Authoring guide](spec-driven.md) — full workflow walkthrough
+- [Spec.md syntax reference](../reference/spec-md-syntax.md) — every section + its tokens
+- [How-to: feature toggles](../howto/spec-driven-features.md) — pyproject.toml + CLI control
 - [AST validator reference](../reference/ast-rules.md) — what the skill is allowed to emit
 - [`docs/design/spec-driven-architecture.md`](https://github.com/HYChou0515/specstar/blob/master/docs/design/spec-driven-architecture.md) — strategic design

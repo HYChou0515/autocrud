@@ -36,6 +36,10 @@ Use it when you already know what you want to do in SpecStar and need the shorte
 - [Backup and restore](/specstar/howto/backup-restore)
 - [Web UI](/specstar/howto/web-ui)
 
+### Spec-driven authoring
+
+- [Spec-driven feature toggles](/specstar/howto/spec-driven-features) — pyproject.toml flags, CLI overrides, and `.env` credentials
+
 ---
 
 ## Recommended order for new users
