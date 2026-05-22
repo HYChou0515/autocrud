@@ -21,6 +21,7 @@ INTEGRATION_FILE_PATTERNS = (
     "test_vector_integration.py",
     # S3 / MinIO dependent
     "test_advanced_cached_s3.py",
+    "test_cached_s3.py",
     "test_s3_storage_factory.py",
     "test_blob_store_s3_*.py",
     # End-to-end wizard / wizard integration
@@ -29,6 +30,9 @@ INTEGRATION_FILE_PATTERNS = (
     "test_resource_store.py",
     # Benchmarks pull in PG + S3
     "test_benchmark_backup.py",
+    # Message queue brokers (RabbitMQ / Celery) — need a live broker
+    "test_rabbitmq_*.py",
+    "test_celery*.py",
 )
 
 INTEGRATION_SUBPATH_PREFIXES = (

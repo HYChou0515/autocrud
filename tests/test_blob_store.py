@@ -66,7 +66,13 @@ def test_get_content_type_guesser_warns_when_libmagic_missing():
         builtins.__import__ = old_import
 
 
-@pytest.fixture(params=["memory", "simple", "s3"])
+@pytest.fixture(
+    params=[
+        "memory",
+        "simple",
+        pytest.param("s3", marks=pytest.mark.integration),
+    ]
+)
 def blob_store(
     request: pytest.FixtureRequest, tmp_path: pytest.TempPathFactory
 ) -> Generator[IBlobStore]:

@@ -19,7 +19,14 @@ from specstar.types import BlobUploadSession
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(params=["memory", "disk", "s3_proxy", "s3_single_put"])
+@pytest.fixture(
+    params=[
+        "memory",
+        "disk",
+        pytest.param("s3_proxy", marks=pytest.mark.integration),
+        pytest.param("s3_single_put", marks=pytest.mark.integration),
+    ]
+)
 def blob_store(
     request: pytest.FixtureRequest, tmp_path: pytest.TempPathFactory
 ) -> Generator[IBlobStore]:
