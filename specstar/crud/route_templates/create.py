@@ -2,7 +2,8 @@ import datetime as dt
 import textwrap
 from typing import TypeVar
 
-from fastapi import APIRouter, Depends
+import msgspec
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.params import Body
 
 from specstar.crud.route_templates.basic import (
@@ -31,6 +32,20 @@ class CreateRouteTemplate(BaseRouteTemplate):
     ) -> None:
         # 動態創建響應模型
         resource_type = resource_manager.resource_type
+
+        # ``resource_id`` belongs to the server-generated meta, not the
+        # resource's data. Reject it loudly if a client tries to set it via
+        # the POST body unless the Struct actually declares such a field
+        # (rare). This avoids the previous silent-drop behavior where a
+        # client thought they'd set the id but the server generated a
+        # different one anyway.
+        try:
+            _struct_field_names = {
+                f.name for f in msgspec.structs.fields(resource_type)
+            }
+        except TypeError:
+            _struct_field_names = set()
+        _reject_resource_id_in_body = "resource_id" not in _struct_field_names
 
         @router.post(
             f"/{model_name}",
@@ -66,6 +81,20 @@ class CreateRouteTemplate(BaseRouteTemplate):
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
+            if (
+                _reject_resource_id_in_body
+                and isinstance(body, dict)
+                and "resource_id" in body
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "`resource_id` cannot be supplied in the POST body — "
+                        "the server always generates it. To customise id "
+                        "generation, pass `id_generator=` when calling "
+                        "`spec.add_model(...)`."
+                    ),
+                )
             try:
                 # Pass the raw body through so the manager's ``_coerce_data``
                 # decorator can apply ``forbid_unknown_fields`` checks before
