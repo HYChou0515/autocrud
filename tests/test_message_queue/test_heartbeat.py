@@ -445,19 +445,22 @@ class TestPeriodicRecovery:
             )
 
     def test_periodic_recovery_does_not_kill_active_jobs(self, rm_and_queue):
-        """Periodic recovery should NOT mark jobs with fresh heartbeats as FAILED."""
+        """Periodic recovery should NOT mark jobs with fresh heartbeats as FAILED.
+
+        Uses generous intervals (heartbeat 0.1s → 0.3s stale threshold,
+        recovery every 0.3s, HeartbeatThread firing every 0.05s for ~6× margin)
+        so the test stays robust on heavily-loaded CI runners where short
+        sleeps can be delayed by hundreds of milliseconds.
+        """
         rm, queue = rm_and_queue
         user = "test_user"
         now = dt.datetime.now(dt.timezone.utc)
 
-        queue._recovery_interval = 0.15
-        queue._heartbeat_interval = 0.05
+        queue._recovery_interval = 0.3
+        queue._heartbeat_interval = 0.1  # stale threshold = 3× = 0.3s
 
-        consumer_thread = threading.Thread(target=queue.start_consume, daemon=True)
-        consumer_thread.start()
-        time.sleep(0.1)
-
-        # Create a PROCESSING job and simulate an active heartbeat from another worker
+        # Start the fake heartbeat BEFORE the consumer so the active heartbeat
+        # is in place by the time periodic recovery starts firing.
         with rm.meta_provide(user=user, now=now):
             info = rm.create(Job(payload=Payload(task_name="active_job")))
             resource_id = info.resource_id
@@ -466,13 +469,15 @@ class TestPeriodicRecovery:
             resource.data.last_heartbeat_at = dt.datetime.now(dt.timezone.utc)
             rm.create_or_update(resource_id, resource.data, status=RevisionStatus.draft)
 
-        # Simulate the other worker's heartbeat keeping the job alive
         fake_hb = HeartbeatThread(
             mq=queue, resource_id=resource_id, interval_seconds=0.05
         )
         fake_hb.start()
 
-        time.sleep(0.5)  # Let periodic recovery fire multiple times
+        consumer_thread = threading.Thread(target=queue.start_consume, daemon=True)
+        consumer_thread.start()
+
+        time.sleep(1.0)  # Let periodic recovery fire ≥3× while heartbeat is fresh
 
         fake_hb.stop()
         queue.stop_consuming()
