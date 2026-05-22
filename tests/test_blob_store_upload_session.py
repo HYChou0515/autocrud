@@ -128,6 +128,7 @@ class TestCreateUploadSession:
         assert session.upload_method == "proxy"
         assert session.upload_id in session.upload_url
 
+    @pytest.mark.integration
     def test_s3_single_put_has_single_put_method(self, tmp_path):
         """S3 single_put returns upload_method='single_put' with a presigned URL."""
         from specstar.resource_manager.blob_store.s3 import S3BlobStore
@@ -206,6 +207,7 @@ class TestUploadToSession:
                 session.upload_id, b"more", part_number=1
             )
 
+    @pytest.mark.integration
     def test_s3_single_put_raises_not_implemented(self, tmp_path):
         """In single_put mode, upload_to_session is not supported."""
         from specstar.resource_manager.blob_store.s3 import S3BlobStore
@@ -332,8 +334,14 @@ class TestAbortUploadSession:
 # ===================================================================
 
 
+@pytest.mark.integration
 class TestS3SinglePutFinalize:
-    """Tests specific to S3 single_put mode finalize behavior."""
+    """Tests specific to S3 single_put mode finalize behavior.
+
+    Every test in the class needs a live S3 / MinIO endpoint reachable
+    at ``http://localhost:9000`` (see fixture below), so the class is
+    marked ``integration`` wholesale.
+    """
 
     @pytest.fixture
     def s3_single_put_store(self, tmp_path):
