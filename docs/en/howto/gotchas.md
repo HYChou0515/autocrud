@@ -36,7 +36,7 @@ slash-prefixed field names instead:
 GET /user?partial=/name&partial=/email
 ```
 
-See [API conventions § `partial`](./api-conventions.md#field-projection-partial--partial).
+See [API conventions § `partial`](./api-conventions.md#field-projection-partial-partial).
 
 ### Three id fields in every response
 
