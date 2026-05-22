@@ -17,6 +17,7 @@ from specstar.types import (
     OnDelete,
     ResourceAction,
     ResourceConflictError,
+    ValidationError,
     _RefInfo,
 )
 
@@ -133,6 +134,80 @@ def _make_restrict_check_func(
             )
 
     return _check
+
+
+def _make_ref_existence_validator(
+    refs: list[_RefInfo],
+    resource_managers: dict[str, IResourceManager],
+) -> ContextFunc:
+    """Build the ``before + create/update/modify`` callback that validates
+    ``Ref(...)`` field values point at *existing*, non-deleted resources.
+
+    Only ``RefType.resource_id`` references are validated; ``revision_id``
+    references can legitimately point at either a revision id or a bare
+    resource id, and validation rules vary.
+    """
+
+    def _check(context: EventContext) -> None:
+        data = getattr(context, "data", None)
+        if data is None:
+            return
+        missing: list[tuple[str, str]] = []
+        for ref_info in refs:
+            if ref_info.ref_type != "resource_id":
+                continue
+            target_rm = resource_managers.get(ref_info.target)
+            if target_rm is None:
+                continue
+            field_value = getattr(data, ref_info.source_field, None)
+            if field_value is None:
+                continue
+            ids = field_value if ref_info.is_list else [field_value]
+            for rid in ids:
+                if not isinstance(rid, str) or not rid:
+                    continue
+                try:
+                    target_rm.get_meta(rid)
+                except Exception:
+                    missing.append((ref_info.source_field, rid))
+        if missing:
+            details = ", ".join(f"{field}={rid!r}" for field, rid in missing)
+            raise ValidationError(
+                f"Reference target(s) not found: {details}"
+            )
+
+    return _check
+
+
+def install_ref_existence_validators(
+    relationships: list[_RefInfo],
+    resource_managers: dict[str, IResourceManager],
+) -> None:
+    """Register ``before + create/update/modify`` validators that reject
+    writes whose ``Ref(...)`` fields point at non-existent target
+    resources.
+
+    Only called when ``SpecStar(validate_refs=True)``.
+    """
+    by_source: dict[str, list[_RefInfo]] = defaultdict(list)
+    for ref_info in relationships:
+        if ref_info.ref_type == "resource_id":
+            by_source[ref_info.source].append(ref_info)
+
+    for source_name, refs in by_source.items():
+        source_rm = resource_managers.get(source_name)
+        if source_rm is None:
+            continue
+        validator = _make_ref_existence_validator(refs, resource_managers)
+        source_rm.event_handlers.extend(  # ty:ignore[unresolved-attribute]
+            do(validator).before(ResourceAction.create)
+        )
+        source_rm.event_handlers.extend(  # ty:ignore[unresolved-attribute]
+            do(validator).before(ResourceAction.update)
+        )
+        source_rm.event_handlers.extend(  # ty:ignore[unresolved-attribute]
+            do(validator).before(ResourceAction.modify)
+        )
 
 
 def install_ref_integrity_handlers(

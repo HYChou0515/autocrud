@@ -26,7 +26,10 @@ from specstar.crud.custom_actions import (
     _PendingCreateAction,
     _PendingUpdateAction,
 )
-from specstar.crud.ref_manager import install_ref_integrity_handlers
+from specstar.crud.ref_manager import (
+    install_ref_existence_validators,
+    install_ref_integrity_handlers,
+)
 from specstar.crud.route_templates.backup import (
     ExportRouteTemplate,
     ImportRouteTemplate,
@@ -255,6 +258,7 @@ class SpecStar:
         strict_operation_context: bool = False,
         forbid_unknown_fields: bool = False,
         structured_errors: bool = False,
+        validate_refs: bool = False,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -277,6 +281,7 @@ class SpecStar:
         self.strict_operation_context = False
         self.forbid_unknown_fields = False
         self.structured_errors = False
+        self.validate_refs = False
         self._pending_create_actions: list[_PendingCreateAction] = []
         self._pending_update_actions: list[_PendingUpdateAction] = []
         self.backend: BackendConfig | None = None
@@ -304,6 +309,7 @@ class SpecStar:
             strict_operation_context=strict_operation_context,
             forbid_unknown_fields=forbid_unknown_fields,
             structured_errors=structured_errors,
+            validate_refs=validate_refs,
         )
 
     def _apply_configuration(
@@ -330,6 +336,7 @@ class SpecStar:
         strict_operation_context: bool | UnsetType = UNSET,
         forbid_unknown_fields: bool | UnsetType = UNSET,
         structured_errors: bool | UnsetType = UNSET,
+        validate_refs: bool | UnsetType = UNSET,
     ) -> None:
         """Apply configuration settings to the SpecStar instance.
 
@@ -493,6 +500,10 @@ class SpecStar:
         if structured_errors is not UNSET:
             self.structured_errors = structured_errors
 
+        # Update validate_refs
+        if validate_refs is not UNSET:
+            self.validate_refs = validate_refs
+
     def configure(
         self,
         *,
@@ -516,6 +527,7 @@ class SpecStar:
         strict_operation_context: bool | UnsetType = UNSET,
         forbid_unknown_fields: bool | UnsetType = UNSET,
         structured_errors: bool | UnsetType = UNSET,
+        validate_refs: bool | UnsetType = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
@@ -621,6 +633,7 @@ class SpecStar:
             strict_operation_context=strict_operation_context,
             forbid_unknown_fields=forbid_unknown_fields,
             structured_errors=structured_errors,
+            validate_refs=validate_refs,
         )
 
         # Register vector encoders into the registry
@@ -1437,6 +1450,10 @@ class SpecStar:
 
     def _install_ref_integrity_handlers(self) -> None:
         install_ref_integrity_handlers(self.relationships, self.resource_managers)
+        if self.validate_refs:
+            install_ref_existence_validators(
+                self.relationships, self.resource_managers
+            )
 
     @staticmethod
     def _inline_embedded_schema_ref(schema_extra: dict, source_type: Any) -> dict:

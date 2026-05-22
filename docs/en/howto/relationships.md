@@ -114,6 +114,33 @@ For `RefType.revision_id`:
 
 * Auto-indexing is intentionally disabled by default because values may be revision_id or resource_id.
 
+## Write-time validation (opt-in)
+
+By default, you can create or update a resource whose `Ref(...)` field
+points at a *non-existent* target — the reference becomes dangling
+immediately. SpecStar leaves this open by default because in a versioned
+system, the validation policy varies (e.g. should a soft-deleted target
+count? what about cross-system refs?).
+
+To force ref targets to exist at write time, opt in:
+
+```python
+spec = SpecStar(validate_refs=True)
+# or
+spec.configure(validate_refs=True)
+```
+
+With it on, `POST` / `PUT` / `PATCH` / `modify()` calls reject the
+write with `422` (or `ValidationError` programmatically) when any
+`RefType.resource_id` field value does not resolve to an existing,
+non-deleted resource. `RefType.revision_id` refs are not validated —
+those legitimately accept either revision ids or bare resource ids.
+
+```
+POST /monster  {"name": "B", "zone_id": "zone:never-existed"}
+# → 422 "Reference target(s) not found: zone_id='zone:never-existed'"
+```
+
 ## Recommended practices
 
 * Use `RefType.resource_id` for true relational links between resources.
