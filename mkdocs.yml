@@ -193,18 +193,21 @@ plugins:
                 - howto/relationships.md
                 - howto/constraints.md
                 - howto/migrations.md
+                - howto/spec-driven-features.md
                 - howto/errors.md
                 - howto/troubleshooting.md
                 - howto/http-errors.md
 
             - Guides:
                 - guides/index.md
+                - guides/spec-driven.md
                 - guides/backend-setup.md
                 - guides/storage.md
                 - guides/performance.md
                 - guides/from-demo-to-production.md
                 - guides/upgrade-0.9.md
                 - guides/upgrade-0.10.md
+                - guides/upgrade-0.11.md
 
             - Contributing:
                 - contributing/docs.md
@@ -213,6 +216,8 @@ plugins:
             - Reference:
                 - reference/index.md
                 - reference/python_api.md
+                - reference/spec-md-syntax.md
+                - reference/ast-rules.md
                 - reference/backend-configuration.md
                 - reference/query-builder.md
                 - reference/behavior.md

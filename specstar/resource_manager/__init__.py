@@ -27,6 +27,9 @@ from specstar.resource_manager.storage_factory import (
     PostgresStorageFactory,
     S3StorageFactory,
 )
+from specstar.resource_manager.string_ref_constraint import (
+    StringRefConstraintChecker,
+)
 
 __all__ = [
     "DiskStorageFactory",
@@ -45,6 +48,7 @@ __all__ = [
     "ResourceOps",
     "S3StorageFactory",
     "SimpleStorage",
+    "StringRefConstraintChecker",
     "pydantic_to_struct",
     "pydantic_to_validator",
     "struct_to_pydantic",

@@ -53,6 +53,7 @@ from specstar.crud.route_templates.rerun import RerunRouteTemplate
 from specstar.crud.route_templates.search import ListRouteTemplate
 from specstar.crud.route_templates.switch import SwitchRevisionRouteTemplate
 from specstar.crud.route_templates.update import UpdateRouteTemplate
+from specstar.descriptor import Descriptor
 from specstar.events import IEventHandler
 from specstar.permission.checker import IPermissionChecker
 from specstar.permission.rbac import RBACPermissionChecker
@@ -2750,6 +2751,40 @@ class SpecStar:
                 }
                 for model, s in stats.items()
             }
+
+    def dump_descriptor(self, path: str | Path | None = None) -> Descriptor | None:
+        """Build a property-graph descriptor of the registered models.
+
+        The descriptor is the machine-readable artifact behind
+        ``spec.lock.json`` and the spec-driven authoring workflow. It is
+        deterministic — same registered state always yields the same graph —
+        and contains no LLM-generated content.
+
+        Args:
+            path: If given, write the descriptor as indented JSON to ``path``
+                and return ``None``. If omitted, return the
+                :class:`~specstar.descriptor.Descriptor` instance for in-process
+                inspection.
+
+        Coverage in v0.11: ``resource`` / ``field`` nodes, ``has_field`` and
+        ``references`` edges. Subsequent v0.11 follow-ups extend coverage to
+        ``schema_version`` / ``route`` / ``storage_backend`` /
+        ``permission_policy`` etc. without changing this signature.
+
+        See ``docs/design/spec-driven-architecture.md`` §3.3 for the full
+        descriptor schema and rationale.
+        """
+        import msgspec.json as _json
+
+        from specstar.descriptor.builder import build_descriptor
+
+        descriptor = build_descriptor(self)
+        if path is None:
+            return descriptor
+
+        encoded = _json.format(_json.encode(descriptor), indent=2)
+        Path(path).write_bytes(encoded)
+        return None
 
     def dump(
         self,

@@ -1126,6 +1126,55 @@ class SimpleEventHandler(IEventHandler):
         self.func(context)
 
 
+def _resolve_string_ref(target: str) -> Callable[[EventContext], None]:  # ty:ignore[invalid-type-form]
+    """Resolve a dotted ``module.path.attr`` reference.
+
+    Thin wrapper kept for backwards compatibility — delegates to the
+    canonical :func:`specstar.refs.resolve`.
+    """
+    from specstar.refs import resolve
+
+    return resolve(target)
+
+
+class StringRefEventHandler(IEventHandler):
+    """An event handler whose target is a dotted string reference.
+
+    Used by spec-driven codegen so ``_generated.py`` can wire a
+    workflow without importing the user's logic module at module-top
+    time. The target is resolved via :func:`importlib.import_module`
+    on the first :meth:`handle_event` call.
+
+    Example::
+
+        spec.add_model(
+            Book,
+            name="book",
+            event_handlers=[
+                StringRefEventHandler(
+                    "my_app.logic.notify_customers_new_book",
+                    phase="after",
+                    action=ResourceAction.create,
+                ),
+            ],
+        )
+    """
+
+    def __init__(self, target: str, *, phase: str, action: ResourceAction):
+        self.target = target
+        self.phase = phase
+        self.action = action
+        self._resolved: Callable[[EventContext], None] | None = None  # ty:ignore[invalid-type-form]
+
+    def is_supported(self, context: EventContext) -> bool:  # ty:ignore[invalid-type-form]
+        return context.phase == self.phase and context.action in self.action
+
+    def handle_event(self, context: EventContext) -> None:  # ty:ignore[invalid-type-form]
+        if self._resolved is None:
+            self._resolved = _resolve_string_ref(self.target)
+        self._resolved(context)
+
+
 class SimpleEventHandlerBuilder(Sequence[SimpleEventHandler]):
     def __init__(self, func: ContextFunc | list[ContextFunc]):
         self._ehs: list[SimpleEventHandler] = []
@@ -1262,5 +1311,6 @@ __all__ = [
     "ResourceAction",
     "SimpleEventHandler",
     "SimpleEventHandlerBuilder",
+    "StringRefEventHandler",
     "do",
 ]

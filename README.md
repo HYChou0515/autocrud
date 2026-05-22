@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo-text.svg" alt="SpecStar" height="120">
+  <img src="https://github.com/HYChou0515/specstar/raw/master/docs/assets/logo-text.svg" alt="SpecStar" height="120">
 </p>
 
 <p align="center">
@@ -14,6 +14,8 @@
 </p>
 
 > **Renamed from `autocrud` to `specstar` (v0.10.0).** The old name still installs as a deprecation shim that redirects every `autocrud[.X]` import to `specstar[.X]`. New projects should `pip install specstar`. See the [migration guide](MIGRATION.md).
+
+> **v0.11 adds spec-driven authoring** (additive, zero breaking changes). Edit a single `spec.md` in prose; a Claude Code skill or the `specstar gen` CLI translates it into the declarative Python the engine consumes. See the [Spec-Driven Authoring guide](docs/en/guides/spec-driven.md) and the [v0.11 upgrade notes](docs/en/guides/upgrade-0.11.md).
 
 Focus on **business logic**, not infrastructure.
 
@@ -239,6 +241,20 @@ Install:
 ```bash
 pip install specstar
 ```
+
+**Spec-driven (v0.11+)** — bootstrap a starter project, then describe resources in prose:
+
+```bash
+specstar init my_app
+# edit spec.md, then in Claude Code:
+/specstar regen
+# CI-friendly drift check (no LLM):
+specstar verify
+```
+
+See the [Spec-Driven Authoring guide](docs/en/guides/spec-driven.md) for the full workflow.
+
+**Classic Python** — register models directly:
 
 Run your app:
 

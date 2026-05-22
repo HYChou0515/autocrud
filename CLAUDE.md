@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Communication
+
+- **Always respond to the user in 台灣繁體中文** (Traditional Chinese, Taiwan). This applies to every user-facing message — explanations, questions, status updates, summaries.
+- Code, comments, commit messages, and identifier names: English.
+
 ## Project Overview
 
 SpecStar is a spec-driven backend platform for FastAPI. Define a `msgspec.Struct` model once; the framework generates REST APIs, GraphQL, search, version history, permissions, background jobs, and an admin UI automatically.
@@ -94,7 +99,6 @@ spec.add_model(User, schema=schema)
 - Extensive type hints required — `typing_extensions.Literal`, `Generic[T]`, etc.
 - All FastAPI routes and storage operations are `async`.
 - Google-style docstrings; write `TODO` for unclear items rather than guessing.
-- Code and comments in English; always respond to the user in 台灣繁體中文.
 - All new features must update docstrings and documentation.
 
 ## Testing
