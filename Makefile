@@ -61,8 +61,13 @@ dev-install:
 	uv sync --dev
 
 # 執行測試（排除基準測試）
+# Mirrors the CI fast job: documentation examples + main pytest suite.
+# pytest-markdown-docs catches README / docs code-block drift; tag
+# illustrative snippets with ```python notest``` to skip them.
 .PHONY: test
 test: check
+	@echo "執行文檔範例測試（README markdown blocks）..."
+	uv run pytest --markdown-docs README.md -q
 	@echo "執行測試（排除基準測試）..."
 	uv run coverage run --branch -m pytest -m "not benchmark"
 	uv run coverage report -m

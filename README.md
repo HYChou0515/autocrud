@@ -151,7 +151,9 @@ OpenAPI
 > and register the template explicitly:
 >
 > ```python
+> from specstar import spec
 > from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
+>
 > spec.add_route_template(GraphQLRouteTemplate())
 > ```
 
