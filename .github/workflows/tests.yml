@@ -1,18 +1,33 @@
 name: Tests
 
+# Runs on every PR (head + target branches), on direct pushes to master,
+# inside a merge queue, and on demand. Make the ``required`` job(s) below
+# required status checks in branch protection so PRs can't merge red.
 on:
   push:
     branches: [ master ]
   pull_request:
+    branches: [ master ]
+  merge_group:
   workflow_dispatch:
+
+# Cancel in-flight runs for the same PR / branch when a new commit lands,
+# so reviewers see only the latest result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   # Fast, service-free gate that runs on every PR.
+  # NB: the job ID and name are what branch protection matches on — keep
+  # them stable, or update protection rules when renaming.
   fast:
+    name: fast (no external services)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
@@ -37,7 +52,25 @@ jobs:
       - name: Unit + route tests (no external services)
         run: uv run pytest -m "not integration and not benchmark and not slow" -q
 
+  # Single status check that fans in from every required job above.
+  # Make THIS the required check in branch protection — that way adding a
+  # new required job is one line here instead of a protection-rule edit.
+  required:
+    name: required
+    if: always()
+    needs: [fast]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required jobs passed
+        run: |
+          if [ "${{ needs.fast.result }}" != "success" ]; then
+            echo "fast job did not succeed (result: ${{ needs.fast.result }})"
+            exit 1
+          fi
+          echo "All required jobs passed."
+
   # NOTE: a separate ``integration`` job (services: postgres + minio +
   # rabbitmq, ``-m integration``) is intentionally not enabled here yet.
   # When you're ready, add a sibling job using GitHub Actions ``services:``
-  # to spin those up and run ``uv run pytest -m integration -q``.
+  # to spin those up and run ``uv run pytest -m integration -q``, then add
+  # it to ``needs: [fast, integration]`` on the ``required`` job above.
