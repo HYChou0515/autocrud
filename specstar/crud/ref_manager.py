@@ -16,6 +16,7 @@ from specstar.types import (
     IResourceManager,
     OnDelete,
     ResourceAction,
+    ResourceConflictError,
     _RefInfo,
 )
 
@@ -33,11 +34,18 @@ def _make_ref_integrity_func(
     * ``cascade``  — soft-delete each referencing resource.
     * ``set_null`` — set the referencing field to ``None`` via update.
     * ``dangling`` — (not handled here; no action needed).
+
+    ``restrict`` is enforced *before* the delete fires via a separate
+    ``before_delete`` handler (see :func:`_make_restrict_check_func`), so
+    that the delete itself never happens when references exist.
     """
 
     def _handle(context: EventContext) -> None:
         deleted_resource_id: str = context.resource_id  # ty:ignore[unresolved-attribute]
         for ref_info in refs:
+            if ref_info.on_delete == OnDelete.restrict:
+                # Handled by the before-delete guard.
+                continue
             source_rm = resource_managers.get(ref_info.source)
             if source_rm is None:
                 continue
@@ -76,6 +84,57 @@ def _make_ref_integrity_func(
     return _handle
 
 
+def _make_restrict_check_func(
+    refs: list[_RefInfo],
+    resource_managers: dict[str, IResourceManager],
+) -> ContextFunc:
+    """Build the ``before + delete`` callback that enforces ``OnDelete.restrict``.
+
+    Raises :class:`ResourceConflictError` (HTTP 409) when any
+    ``OnDelete.restrict`` reference still points at the resource that is
+    about to be deleted, naming the source resource(s) that block the
+    delete.
+    """
+
+    def _check(context: EventContext) -> None:
+        target_resource_id: str = context.resource_id  # ty:ignore[unresolved-attribute]
+        blockers: list[tuple[str, str, str]] = []
+        for ref_info in refs:
+            if ref_info.on_delete != OnDelete.restrict:
+                continue
+            source_rm = resource_managers.get(ref_info.source)
+            if source_rm is None:
+                continue
+            matching = source_rm.search_resources(
+                ResourceMetaSearchQuery(
+                    is_deleted=False,
+                    conditions=[
+                        DataSearchCondition(
+                            field_path=ref_info.source_field,
+                            operator=DataSearchOperator.equals,
+                            value=target_resource_id,
+                        )
+                    ],
+                    limit=10,
+                )
+            )
+            for meta in matching:
+                blockers.append(
+                    (ref_info.source, ref_info.source_field, meta.resource_id)
+                )
+        if blockers:
+            blocker_list = ", ".join(
+                f"{src}.{field}=<-{rid}" for src, field, rid in blockers[:5]
+            )
+            more = "" if len(blockers) <= 5 else f" (+{len(blockers) - 5} more)"
+            raise ResourceConflictError(
+                f"Cannot delete '{target_resource_id}': still referenced by "
+                f"{blocker_list}{more} (on_delete=RESTRICT)."
+            )
+
+    return _check
+
+
 def install_ref_integrity_handlers(
     relationships: list[_RefInfo],
     resource_managers: dict[str, IResourceManager],
@@ -105,3 +164,11 @@ def install_ref_integrity_handlers(
                 ResourceAction.delete
             )
         )
+        # ``OnDelete.restrict`` must run *before* the delete so we can block
+        # it. ``cascade`` / ``set_null`` still run on_success above.
+        if any(r.on_delete == OnDelete.restrict for r in refs):
+            target_rm.event_handlers.extend(  # ty:ignore[unresolved-attribute]
+                do(_make_restrict_check_func(refs, resource_managers)).before(
+                    ResourceAction.delete
+                )
+            )

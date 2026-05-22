@@ -54,6 +54,15 @@ class OnDelete(StrEnum):
     cascade = "cascade"
     """Delete the referencing resource as well."""
 
+    restrict = "restrict"
+    """Refuse to delete the referenced resource while any other resource
+    still references it. The :meth:`ResourceManager.delete` call raises
+    :class:`specstar.types.ResourceConflictError` (HTTP 409 on routes).
+
+    Use this when you want to force the caller to clean up references
+    explicitly instead of letting the referencing rows become dangling
+    (``dangling``) or wholesale-cascaded (``cascade``)."""
+
 
 class RefType(StrEnum):
     """Defines the type of reference a field holds."""

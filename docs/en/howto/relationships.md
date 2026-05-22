@@ -75,9 +75,32 @@ SpecStar:
 
 Behavior depends on `on_delete`:
 
-* `dangling`: no action, ref stays as-is
-* `set_null`: referencing field set to null (for nullable fields only)
-* `cascade`: referencing resources are deleted too
+* `dangling` *(default)*: no action, ref stays as-is — referencing rows
+  end up pointing at a deleted target.
+* `set_null`: referencing field set to null (for nullable fields only).
+* `cascade`: referencing resources are deleted too.
+* `restrict`: **refuse the delete** while any other resource still
+  references this one. The `delete` call raises
+  `ResourceConflictError` (HTTP 409 on routes) with a message naming the
+  blocking source rows. Use this when you want callers to clean up
+  references explicitly rather than auto-cascading or letting refs go
+  dangling.
+
+```python
+class Zone(msgspec.Struct):
+    name: str
+
+class Monster(msgspec.Struct):
+    name: str
+    zone_id: Annotated[str, Ref("zone", on_delete=OnDelete.restrict)]
+```
+
+```
+DELETE /zone/{zid}     # 200 when no monsters reference the zone
+                       # 409 when one or more do — body names the blockers
+DELETE /monster/{mid}  # remove the referencer
+DELETE /zone/{zid}     # now 200
+```
 
 (Exact semantics may depend on your storage and event handler implementation.)
 
