@@ -14,7 +14,8 @@ provides consistent error mapping across every endpoint.
 | `msgspec.ValidationError`          | 422  | Type-level validation |
 | `specstar.types.ValidationError`   | 422  | Custom validation     |
 | `PermissionDeniedError`            | 403  | Access denied         |
-| `ResourceNotFoundError` (family)   | 404  | Resource / revision missing |
+| `ResourceIsDeletedError`           | 410  | Soft-deleted (Gone) — distinct from "never existed" |
+| `ResourceNotFoundError` (other)    | 404  | Resource / revision missing |
 | `UniqueConstraintError`            | 409  | Unique field conflict (structured detail) |
 | `ResourceConflictError` (family)   | 409  | Conflict              |
 | Any other `Exception`              | 400  | Bad request (fallback) |
@@ -22,7 +23,9 @@ provides consistent error mapping across every endpoint.
 The **ResourceNotFoundError** family includes:
 
 * `ResourceIDNotFoundError`
-* `ResourceIsDeletedError`
+* `ResourceIsDeletedError` — mapped specifically to **410 Gone**
+  (see below), not 404, so clients can distinguish "deleted" from
+  "never existed"
 * `RevisionNotFoundError`
 * `RevisionIDNotFoundError`
 
@@ -37,15 +40,15 @@ The **ResourceConflictError** family includes:
 
 ## Error matrix (quick overview)
 
-| Route   | 400          | 403         | 404             | 409              | 422        |
-|---------|--------------|-------------|-----------------|------------------|------------|
-| GET     | fallback     | permission  | not found       | conflict         | —          |
-| POST    | fallback     | permission  | not found       | unique / conflict| validation |
-| PUT     | fallback     | permission  | not found       | unique / conflict| validation |
-| PATCH   | fallback     | permission  | not found       | unique / conflict| validation |
-| DELETE  | fallback     | permission  | not found       | conflict         | —          |
-| SWITCH  | fallback     | permission  | not found       | conflict         | —          |
-| RESTORE | fallback     | permission  | not found       | conflict         | —          |
+| Route   | 400          | 403         | 404             | 409              | 410          | 422        |
+|---------|--------------|-------------|-----------------|------------------|--------------|------------|
+| GET     | fallback     | permission  | not found       | conflict         | soft-deleted | —          |
+| POST    | fallback     | permission  | not found       | unique / conflict| —            | validation |
+| PUT     | fallback     | permission  | not found       | unique / conflict| soft-deleted | validation |
+| PATCH   | fallback     | permission  | not found       | unique / conflict| soft-deleted | validation |
+| DELETE  | fallback     | permission  | not found       | conflict         | —            | —          |
+| SWITCH  | fallback     | permission  | not found       | conflict         | soft-deleted | —          |
+| RESTORE | fallback     | permission  | not found       | conflict         | —            | —          |
 
 ---
 
@@ -71,7 +74,8 @@ In QB mode, only `limit` and `offset` should be sent alongside `qb`. If you need
 
 Errors pass through `to_http_exception`:
 
-* **404** — `ResourceIDNotFoundError`, `ResourceIsDeletedError`, `RevisionIDNotFoundError`
+* **410** — `ResourceIsDeletedError` (soft-deleted; pass `?include_deleted=true` to bypass)
+* **404** — `ResourceIDNotFoundError`, `RevisionIDNotFoundError`
 * **403** — `PermissionDeniedError`
 * **400** — any other internal exception
 
@@ -258,9 +262,10 @@ All routes now use the same error mapping:
 * **`PUT` does not upsert.** `PUT /{model}/{resource_id}` requires the resource
   to exist — an unknown `resource_id` returns `404`, not a create. Use
   `POST /{model}` if you want create-on-write semantics.
-* **Soft-deleted resource → `404`.** Reading a soft-deleted resource returns
-  `404` with `detail="… is deleted"` (distinct from a "never existed" 404).
-  Pass `?include_deleted=true` to read deleted resources via the same endpoint.
+* **Soft-deleted resource → `410 Gone`.** Reading a soft-deleted resource
+  returns `410` with `detail="Resource '<id>' is deleted."`, distinct from
+  the `404` returned when the id never existed. Pass `?include_deleted=true`
+  to read deleted resources via the same endpoint.
 * **Unknown `revision_id` on `switch` → `404`** with the parsed id in the
   body. The `{revision_id}` path segment is the **full id** form
   `{model}:{resource_id}:{revision_number}` (e.g. `user:abc:3`); passing the

@@ -287,9 +287,10 @@ class TestRouteTemplates:
         assert data["resource_id"] == resource_id
         assert data["is_deleted"] is True
 
-        # 驗證刪除
+        # 驗證刪除 — soft-deleted resources map to HTTP 410 Gone
+        # (distinct from a "never existed" 404).
         get_response = client.get(f"/user/{resource_id}/data")
-        assert get_response.status_code == 404
+        assert get_response.status_code == 410
 
     def test_list_users(self, client: TestClient):
         """測試列出用戶"""
@@ -764,9 +765,9 @@ class TestRouteTemplates:
         delete_response = client.delete(f"/user/{resource_id}")
         assert delete_response.status_code == 200
 
-        # 驗證用戶已被刪除
+        # 驗證用戶已被刪除 (soft-deleted → 410 Gone)
         response = client.get(f"/user/{resource_id}/data")
-        assert response.status_code == 404
+        assert response.status_code == 410
 
         # 恢復用戶
         restore_response = client.post(f"/user/{resource_id}/restore")

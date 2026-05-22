@@ -87,10 +87,13 @@ class TestToHttpException:
         assert exc.status_code == 404
         assert "rev1" in exc.detail
 
-    def test_resource_is_deleted_error(self):
+    def test_resource_is_deleted_error_maps_to_410(self):
+        # Soft-deleted resources are semantically "Gone", not "Not Found".
+        # Clients can distinguish "deleted" from "never existed" by status.
         exc = to_http_exception(ResourceIsDeletedError("del1"))
-        assert exc.status_code == 404
+        assert exc.status_code == 410
         assert "del1" in exc.detail
+        assert "deleted" in exc.detail
 
     # -- ResourceConflictError family → 409 ----------------------------
 

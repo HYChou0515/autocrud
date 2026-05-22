@@ -17,6 +17,7 @@ Exception                           HTTP
 ``msgspec.ValidationError``         422
 ``specstar.types.ValidationError``  422
 ``PermissionDeniedError``           403
+``ResourceIsDeletedError``          410
 ``ResourceNotFoundError`` family    404
 ``FileNotFoundError``               404
 ``ResourceConflictError`` family    409
@@ -31,6 +32,7 @@ from fastapi import HTTPException
 from specstar.types import (
     PermissionDeniedError,
     ResourceConflictError,
+    ResourceIsDeletedError,
     ResourceNotFoundError,
     UniqueConstraintError,
     ValidationError,
@@ -75,6 +77,11 @@ def to_http_exception(e: Exception) -> HTTPException:
     # Permission denied
     if isinstance(e, PermissionDeniedError):
         return HTTPException(status_code=403, detail=str(e))
+
+    # Soft-deleted: 410 Gone, distinct from "never existed" 404.
+    # Must be checked before ResourceNotFoundError since it is a subclass.
+    if isinstance(e, ResourceIsDeletedError):
+        return HTTPException(status_code=410, detail=str(e))
 
     # Resource / revision not found
     if isinstance(e, ResourceNotFoundError):
