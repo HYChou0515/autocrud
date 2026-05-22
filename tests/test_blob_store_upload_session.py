@@ -60,7 +60,13 @@ def blob_store(
 
 
 # Convenience helper — only proxy stores
-@pytest.fixture(params=["memory", "disk", "s3_proxy"])
+@pytest.fixture(
+    params=[
+        "memory",
+        "disk",
+        pytest.param("s3_proxy", marks=pytest.mark.integration),
+    ]
+)
 def proxy_blob_store(
     request: pytest.FixtureRequest, tmp_path: pytest.TempPathFactory
 ) -> Generator[IBlobStore]:
