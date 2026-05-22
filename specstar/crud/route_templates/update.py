@@ -87,10 +87,10 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                     detail="change_status can only be used with mode 'modify'",
                 )
             try:
-                if body is None:
-                    data = msgspec.UNSET
-                else:
-                    data = msgspec.convert(body, resource_type)
+                # Pass the raw body through so the manager's ``_coerce_data``
+                # decorator can apply ``forbid_unknown_fields`` checks before
+                # ``msgspec.convert`` drops unknown keys.
+                data = msgspec.UNSET if body is None else body
                 if mode == "update":
                     with resource_manager.using(current_user, current_time):
                         info = resource_manager.update(resource_id, data)  # ty:ignore[invalid-argument-type]

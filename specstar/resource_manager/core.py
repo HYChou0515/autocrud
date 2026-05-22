@@ -816,6 +816,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         pydantic_type: type | None = None,
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
         strict_operation_context: bool = False,
+        forbid_unknown_fields: bool = False,
         encoder_registry: "Any | None" = None,
         vector_encoders: "dict[str, str | Callable] | None" = None,
     ):
@@ -830,9 +831,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise :class:`MissingOperationContextError` if required context
             fields (``user``, ``now``) are not fully resolved from any source
             (explicit kwargs, ``using()`` scope, or manager defaults).
+        forbid_unknown_fields (bool):
+            When ``True``, ``create()`` / ``update()`` / ``modify()`` reject
+            dict inputs (or Pydantic instances) carrying keys that are not
+            declared on the resource ``Struct``, raising
+            :class:`specstar.types.ValidationError`. Defaults to ``False`` —
+            unknown keys are silently dropped, matching msgspec's default.
         """
         self._pydantic_type = pydantic_type
         self._strict_operation_context = strict_operation_context
+        self._forbid_unknown_fields = forbid_unknown_fields
 
         # ── Resolve Schema vs legacy migration/validator ──────────────
         from specstar.schema import Schema as _Schema
@@ -1055,6 +1063,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         - Pydantic BaseModel instance (when pydantic_type is set)
           → model_dump() → msgspec.convert
 
+        When ``forbid_unknown_fields`` is set on the manager, dict / Pydantic
+        inputs carrying keys outside the resource ``Struct``'s declared
+        top-level fields raise :class:`ValidationError` instead of having
+        those keys silently dropped by ``msgspec.convert``.
+
         This allows Pydantic users to pass native Pydantic instances
         or plain dicts without knowing about msgspec.
         """
@@ -1063,11 +1076,35 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if isinstance(data, Struct):
             return data
         if isinstance(data, dict):
+            if self._forbid_unknown_fields:
+                self._check_no_unknown_fields(data)
             return msgspec.convert(data, self._resource_type)
         # Accept Pydantic instance when RM was configured with pydantic_type
         if self._pydantic_type is not None and isinstance(data, self._pydantic_type):
-            return msgspec.convert(pydantic_to_dict(data), self._resource_type)
+            as_dict = pydantic_to_dict(data)
+            if self._forbid_unknown_fields:
+                self._check_no_unknown_fields(as_dict)
+            return msgspec.convert(as_dict, self._resource_type)
         return data
+
+    def _check_no_unknown_fields(self, data: dict) -> None:
+        """Raise :class:`ValidationError` if ``data`` carries keys outside the
+        resource ``Struct``'s top-level fields.
+
+        Top-level only — nested ``Struct`` fields still rely on msgspec's
+        default permissive behavior. This catches the common typo case
+        without imposing deep-walk overhead on every write.
+        """
+        try:
+            allowed = {f.name for f in msgspec.structs.fields(self._resource_type)}
+        except TypeError:
+            return
+        extra = [k for k in data.keys() if k not in allowed]
+        if extra:
+            raise ValidationError(
+                f"Unknown field(s) for {self._resource_type.__name__}: "
+                f"{sorted(extra)}. Allowed fields: {sorted(allowed)}"
+            )
 
     @property
     def pydantic_type(self) -> type | None:
@@ -1747,7 +1784,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         from specstar.query_types import (
             DataSearchGroup as _DSG,
+        )
+        from specstar.query_types import (
             VectorDistanceCondition as _VC,
+        )
+        from specstar.query_types import (
             VectorDistanceSort as _VS,
         )
         from specstar.resource_manager.encoder_registry import lookup_encoder

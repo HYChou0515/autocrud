@@ -2,7 +2,6 @@ import datetime as dt
 import textwrap
 from typing import TypeVar
 
-import msgspec
 from fastapi import APIRouter, Depends
 from fastapi.params import Body
 
@@ -68,10 +67,11 @@ class CreateRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                data = msgspec.convert(body, resource_type)
-
+                # Pass the raw body through so the manager's ``_coerce_data``
+                # decorator can apply ``forbid_unknown_fields`` checks before
+                # ``msgspec.convert`` drops unknown keys.
                 with resource_manager.using(current_user, current_time):
-                    info = resource_manager.create(data)
+                    info = resource_manager.create(body)
                 return MsgspecResponse(info)
             except Exception as e:
                 raise to_http_exception(e)

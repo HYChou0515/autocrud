@@ -202,6 +202,13 @@ class SpecStar:
             context fields (``user``, ``now``) are not fully resolved from
             any source (explicit kwargs, ``using()`` scope, or manager
             defaults).  Defaults to ``False``.
+        forbid_unknown_fields:
+            When ``True``, ``create()`` / ``update()`` / ``modify()`` reject
+            inputs (dict / JSON body / Pydantic) that contain top-level keys
+            not declared on the registered resource ``Struct``, raising
+            :class:`specstar.types.ValidationError` (HTTP 422 on routes).
+            Defaults to ``False`` for backward compatibility — unknown fields
+            are silently dropped, matching msgspec's default behavior.
 
     See also:
         - `Schema`: declare schema/validation/migration for a resource.
@@ -232,6 +239,7 @@ class SpecStar:
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool = False,
+        forbid_unknown_fields: bool = False,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -252,6 +260,7 @@ class SpecStar:
         self.default_now = UNSET
         self.default_status: RevisionStatus | UnsetType = UNSET
         self.strict_operation_context = False
+        self.forbid_unknown_fields = False
         self._pending_create_actions: list[_PendingCreateAction] = []
         self._pending_update_actions: list[_PendingUpdateAction] = []
         self.backend: BackendConfig | None = None
@@ -277,6 +286,7 @@ class SpecStar:
             default_now=default_now,
             default_status=default_status,
             strict_operation_context=strict_operation_context,
+            forbid_unknown_fields=forbid_unknown_fields,
         )
 
     def _apply_configuration(
@@ -301,6 +311,7 @@ class SpecStar:
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool | UnsetType = UNSET,
+        forbid_unknown_fields: bool | UnsetType = UNSET,
     ) -> None:
         """Apply configuration settings to the SpecStar instance.
 
@@ -456,6 +467,10 @@ class SpecStar:
         if strict_operation_context is not UNSET:
             self.strict_operation_context = strict_operation_context
 
+        # Update forbid_unknown_fields
+        if forbid_unknown_fields is not UNSET:
+            self.forbid_unknown_fields = forbid_unknown_fields
+
     def configure(
         self,
         *,
@@ -477,6 +492,7 @@ class SpecStar:
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool | UnsetType = UNSET,
+        forbid_unknown_fields: bool | UnsetType = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
@@ -518,6 +534,13 @@ class SpecStar:
                 :class:`MissingOperationContextError` if ``user`` and ``now``
                 are not resolved from any source (explicit kwargs,
                 ``using()`` scope, or manager defaults).
+            forbid_unknown_fields: When ``True``, dict / JSON inputs to
+                ``create()`` / ``update()`` / ``modify()`` containing keys
+                that are not declared on the registered ``Struct`` raise
+                :class:`specstar.types.ValidationError` (HTTP 422) instead of
+                being silently dropped. Defaults to ``False`` — kept off to
+                preserve current behavior; turn it on at the start of a new
+                project or as part of a coordinated 1.0 cutover.
 
         Example:
             ```python
@@ -566,6 +589,7 @@ class SpecStar:
             default_now=default_now,
             default_status=default_status,
             strict_operation_context=strict_operation_context,
+            forbid_unknown_fields=forbid_unknown_fields,
         )
 
         # Register vector encoders into the registry
@@ -1302,6 +1326,7 @@ class SpecStar:
             pydantic_type=pydantic_model,
             constraint_checkers=constraint_checkers,
             strict_operation_context=self.strict_operation_context,
+            forbid_unknown_fields=self.forbid_unknown_fields,
             encoder_registry=self.encoder_registry,
             vector_encoders=vector_encoders,
             **other_options,
