@@ -679,6 +679,9 @@ class TestRouteTemplatesUseUsing:
     def test_graphql_route_uses_using(self):
         import inspect
 
+        import pytest
+
+        pytest.importorskip("strawberry")
         from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
 
         src = inspect.getsource(GraphQLRouteTemplate)

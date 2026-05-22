@@ -31,16 +31,13 @@ jobs:
       - name: Documentation examples
         run: uv run pytest --markdown-docs README.md -q
 
-  # NOTE: a full `uv run pytest` is intentionally not run here yet.
-  # The suite contains integration tests that need live Postgres/S3 and that
-  # currently *error* (not skip) when those services are absent. Once those
-  # tests are tagged with the already-declared `integration` marker (and/or
-  # guarded with importorskip), enable a tiered setup:
-  #
-  #   core:
-  #     - run: uv run pytest -m "not integration and not benchmark and not slow" -q
-  #   integration:
-  #     services:
-  #       postgres: { image: postgres:16, env: { POSTGRES_PASSWORD: postgres } }
-  #       minio:    { image: minio/minio }
-  #     - run: uv run pytest -m integration -q
+      # Service-free unit + route tests. Integration tests (Postgres / S3 /
+      # MinIO / RabbitMQ) are tagged via the root tests/conftest.py and
+      # excluded here; benchmarks and known-slow tests are also excluded.
+      - name: Unit + route tests (no external services)
+        run: uv run pytest -m "not integration and not benchmark and not slow" -q
+
+  # NOTE: a separate ``integration`` job (services: postgres + minio +
+  # rabbitmq, ``-m integration``) is intentionally not enabled here yet.
+  # When you're ready, add a sibling job using GitHub Actions ``services:``
+  # to spin those up and run ``uv run pytest -m integration -q``.

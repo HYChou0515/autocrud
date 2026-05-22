@@ -70,7 +70,11 @@ def get_rabbitmq_queue(rm):
 @pytest.fixture(
     params=[
         pytest.param("simple", id="simple"),
-        pytest.param("rabbitmq", id="rabbitmq"),
+        pytest.param(
+            "rabbitmq",
+            marks=pytest.mark.integration,
+            id="rabbitmq",
+        ),
         pytest.param(
             "celery",
             marks=pytest.mark.skipif(
@@ -290,7 +294,11 @@ class TestMessageQueueUnified:
 
         return consumer_ref[0], published_messages  # ty:ignore[invalid-return-type]
 
-    @pytest.mark.parametrize("mq_context", ["simple", "rabbitmq"], indirect=True)
+    @pytest.mark.parametrize(
+        "mq_context",
+        ["simple", pytest.param("rabbitmq", marks=pytest.mark.integration)],
+        indirect=True,
+    )
     def test_workflow(self):
         queue, rm = self.queue, self.rm
         user = "test_user"
@@ -337,7 +345,11 @@ class TestMessageQueueUnified:
             # 7. Empty
             assert queue.pop() is None
 
-    @pytest.mark.parametrize("mq_context", ["simple", "rabbitmq"], indirect=True)
+    @pytest.mark.parametrize(
+        "mq_context",
+        ["simple", pytest.param("rabbitmq", marks=pytest.mark.integration)],
+        indirect=True,
+    )
     def test_missing_resource_resilience(self):
         """Tests that the queue handles cases where the resource is deleted out-of-band."""
         queue, rm = self.queue, self.rm
@@ -398,7 +410,11 @@ class TestMessageQueueUnified:
             assert statuses.get("success_job") == TaskStatus.COMPLETED
             assert statuses.get("fail_job") == TaskStatus.FAILED
 
-    @pytest.mark.parametrize("mq_context", ["simple", "rabbitmq"], indirect=True)
+    @pytest.mark.parametrize(
+        "mq_context",
+        ["simple", pytest.param("rabbitmq", marks=pytest.mark.integration)],
+        indirect=True,
+    )
     def test_error_message_recorded_on_failure(self):
         """Test that error message is recorded in Job.errmsg when task fails."""
         queue, rm = self.queue, self.rm
@@ -462,7 +478,11 @@ class TestMessageQueueUnified:
                     assert "Specific processing error" in res.data.errmsg
                     assert res.data.retries >= 1
 
-    @pytest.mark.parametrize("mq_context", ["simple", "rabbitmq"], indirect=True)
+    @pytest.mark.parametrize(
+        "mq_context",
+        ["simple", pytest.param("rabbitmq", marks=pytest.mark.integration)],
+        indirect=True,
+    )
     def test_retry_count_increments_on_failure(self):
         """Test that retry count increments when jobs fail."""
         queue, rm = self.queue, self.rm
@@ -1032,6 +1052,7 @@ class TestMessageQueueFactories:
         assert isinstance(queue, SimpleMessageQueue)
         assert queue._do == dummy_handler
 
+    @pytest.mark.integration
     def test_rabbitmq_message_queue_factory_default_params(self):
         """Test RabbitMQMessageQueueFactory with default parameters."""
         factory = RabbitMQMessageQueueFactory()
@@ -1054,6 +1075,7 @@ class TestMessageQueueFactories:
         assert queue.max_retries == 3
         assert queue.retry_delay_seconds == 10
 
+    @pytest.mark.integration
     def test_rabbitmq_message_queue_factory_custom_params(self):
         """Test RabbitMQMessageQueueFactory with custom parameters."""
         custom_url = "amqp://user:pass@rabbitmq.example.com:5672/vhost"
@@ -1088,6 +1110,7 @@ class TestMessageQueueFactories:
             assert queue.max_retries == custom_retries
             assert queue.retry_delay_seconds == custom_delay
 
+    @pytest.mark.integration
     def test_factory_builds_multiple_instances(self):
         """Test that factory can build multiple queue instances."""
         factory = RabbitMQMessageQueueFactory(queue_prefix="test:")
