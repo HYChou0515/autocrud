@@ -485,8 +485,16 @@ def test_periodic_job_callback_returns_none_continues(mq_fixture, rm_fixture):
 
 
 @pytest.mark.skipif(not PIKA_AVAILABLE, reason="pika not installed")
+@pytest.mark.integration
 class TestRabbitMQPeriodicJobsImplementation:
-    """Tests for RabbitMQ-specific implementation details of periodic jobs."""
+    """Tests for RabbitMQ-specific implementation details of periodic jobs.
+
+    Each test calls ``RabbitMQMessageQueue(...)`` directly — the
+    constructor opens a real pika connection during queue initialisation
+    before the in-test ``MagicMock`` channel is ever used. So even
+    though the tests mock the channel for assertions, they still need a
+    live broker at construction time; mark them integration.
+    """
 
     def test_enqueue_periodic_job_creates_delay_queue(self, rm_fixture):
         """Test that _enqueue_periodic_job creates a delay queue with correct TTL."""
