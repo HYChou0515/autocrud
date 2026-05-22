@@ -141,14 +141,16 @@ class TestOnDelete:
         assert OnDelete.dangling == "dangling"
         assert OnDelete.set_null == "set_null"
         assert OnDelete.cascade == "cascade"
+        assert OnDelete.restrict == "restrict"
 
     def test_membership(self):
-        assert len(OnDelete) == 3
+        assert len(OnDelete) == 4
 
     def test_string_conversion(self):
         assert OnDelete("dangling") is OnDelete.dangling
         assert OnDelete("set_null") is OnDelete.set_null
         assert OnDelete("cascade") is OnDelete.cascade
+        assert OnDelete("restrict") is OnDelete.restrict
 
     def test_invalid_value(self):
         with pytest.raises(ValueError):

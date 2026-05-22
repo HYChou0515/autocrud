@@ -13,7 +13,6 @@ subverted the simulated "package is missing" scenario.
 import subprocess
 import sys
 
-
 _HARNESS = """\
 import sys
 import importlib.abc

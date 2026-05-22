@@ -207,6 +207,33 @@ SpecStar has two update modes with different revision semantics:
   * Sets `parent_revision_id` to the previous current revision
   * Revision history is append-only under this mode
 
+> #### Optimistic concurrency (``If-Match`` / ``expected_revision_id``)
+>
+> By default, concurrent PUT/PATCH writes are last-write-wins on the
+> current revision pointer (history is still preserved). To protect
+> against lost updates, opt into per-request **optimistic concurrency**:
+>
+> * Pass ``If-Match: <revision_id>`` header *(HTTP-standard)*, or
+> * Pass ``?expected_revision_id=<revision_id>`` query param.
+>
+> SpecStar checks the resource's current ``revision_id`` against the
+> asserted value before applying the write; if they differ, the request
+> is refused with **412 Precondition Failed** and a structured detail:
+>
+> ```json
+> {
+>   "detail": {
+>     "code": "PRECONDITION_FAILED",
+>     "message": "Precondition failed for 'user:abc': expected current revision 'user:abc:3', got 'user:abc:5'.",
+>     "expected_revision_id": "user:abc:3",
+>     "actual_revision_id": "user:abc:5"
+>   }
+> }
+> ```
+>
+> Clients can fetch, merge, and retry. The check is opt-in per request,
+> so callers that don't care still get last-write-wins behavior.
+
 > #### Same-content writes are de-duplicated
 >
 > If a `PUT` (or no-op `PATCH`) produces a payload byte-identical to the

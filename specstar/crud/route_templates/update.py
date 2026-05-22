@@ -3,7 +3,7 @@ import textwrap
 from typing import Literal, TypeVar
 
 import msgspec
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.params import Body
 
 from specstar.crud.route_templates.basic import (
@@ -15,6 +15,7 @@ from specstar.crud.route_templates.basic import (
 from specstar.crud.route_templates.exception_handlers import to_http_exception
 from specstar.types import (
     IResourceManager,
+    PreconditionFailedError,
     RevisionInfo,
     RevisionStatus,
 )
@@ -80,6 +81,21 @@ class UpdateRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
             change_status: RevisionStatus | None = None,
             mode: Literal["update", "modify"] = "update",
+            expected_revision_id: str | None = Query(
+                None,
+                description=(
+                    "Optimistic concurrency: assert the resource is currently "
+                    "at this revision_id. Mismatch → 412 Precondition Failed."
+                ),
+            ),
+            if_match: str | None = Header(
+                None,
+                alias="If-Match",
+                description=(
+                    "Alternative to expected_revision_id (HTTP-standard "
+                    "optimistic concurrency)."
+                ),
+            ),
         ):
             if mode != "modify" and change_status is not None:
                 raise HTTPException(
@@ -87,6 +103,7 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                     detail="change_status can only be used with mode 'modify'",
                 )
             try:
+                _check_precondition(resource_manager, resource_id, expected_revision_id, if_match)
                 # Pass the raw body through so the manager's ``_coerce_data``
                 # decorator can apply ``forbid_unknown_fields`` checks before
                 # ``msgspec.convert`` drops unknown keys.
@@ -106,3 +123,36 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                 return MsgspecResponse(info)
             except Exception as e:
                 raise to_http_exception(e)
+
+
+def _check_precondition(
+    resource_manager,
+    resource_id: str,
+    expected_revision_id: str | None,
+    if_match: str | None,
+) -> None:
+    """Enforce ``If-Match`` / ``expected_revision_id`` optimistic-concurrency
+    precondition before allowing a write.
+
+    Both forms are accepted; if both are present they must agree. ``If-Match``
+    may arrive with surrounding double quotes (HTTP standard ETag syntax).
+    """
+    expected = expected_revision_id
+    if if_match is not None:
+        cleaned = if_match.strip().strip('"')
+        if expected is None:
+            expected = cleaned
+        elif cleaned != expected:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "If-Match header and expected_revision_id query param "
+                    "disagree; provide one or matching values."
+                ),
+            )
+    if expected is None:
+        return
+    meta = resource_manager.get_meta(resource_id)
+    actual = meta.current_revision_id
+    if actual != expected:
+        raise PreconditionFailedError(resource_id, expected, actual)

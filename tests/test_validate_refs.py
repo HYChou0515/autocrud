@@ -13,7 +13,6 @@ carry either a revision id or a bare resource id.
 from typing import Annotated, Optional
 
 import msgspec
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

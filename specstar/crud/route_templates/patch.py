@@ -3,7 +3,7 @@ import textwrap
 from typing import Any, Literal, TypeVar
 
 import msgspec
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.params import Body
 
 from specstar.crud.route_templates.basic import (
@@ -13,6 +13,7 @@ from specstar.crud.route_templates.basic import (
     struct_to_responses_type,
 )
 from specstar.crud.route_templates.exception_handlers import to_http_exception
+from specstar.crud.route_templates.update import _check_precondition
 from specstar.types import (
     IResourceManager,
     RevisionInfo,
@@ -127,6 +128,21 @@ class PatchRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
             change_status: RevisionStatus | None = None,
             mode: Literal["update", "modify"] = "update",
+            expected_revision_id: str | None = Query(
+                None,
+                description=(
+                    "Optimistic concurrency: assert the resource is currently "
+                    "at this revision_id. Mismatch → 412 Precondition Failed."
+                ),
+            ),
+            if_match: str | None = Header(
+                None,
+                alias="If-Match",
+                description=(
+                    "Alternative to expected_revision_id (HTTP-standard "
+                    "optimistic concurrency)."
+                ),
+            ),
         ):
             from jsonpatch import JsonPatch
 
@@ -136,6 +152,9 @@ class PatchRouteTemplate(BaseRouteTemplate):
                     detail="change_status can only be used with mode 'modify'",
                 )
             try:
+                _check_precondition(
+                    resource_manager, resource_id, expected_revision_id, if_match
+                )
                 with resource_manager.using(current_user, current_time):
                     patch = JsonPatch(body)
                     if mode == "update":

@@ -10,6 +10,8 @@ The default (``structured_errors=False``) keeps the historical mix
 (plain strings / dict for unique constraint / FastAPI's error array).
 """
 
+from typing import Annotated
+
 import msgspec
 import pytest
 from fastapi import FastAPI
@@ -17,7 +19,6 @@ from fastapi.testclient import TestClient
 
 from specstar import Schema, SpecStar
 from specstar.types import Unique
-from typing import Annotated
 
 
 class Note(msgspec.Struct):

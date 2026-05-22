@@ -40,6 +40,7 @@ from fastapi.responses import JSONResponse
 
 from specstar.types import (
     PermissionDeniedError,
+    PreconditionFailedError,
     ResourceConflictError,
     ResourceIsDeletedError,
     ResourceNotFoundError,
@@ -86,6 +87,18 @@ def to_http_exception(e: Exception) -> HTTPException:
     # Permission denied
     if isinstance(e, PermissionDeniedError):
         return HTTPException(status_code=403, detail=str(e))
+
+    # Optimistic-concurrency precondition (If-Match / expected_revision)
+    if isinstance(e, PreconditionFailedError):
+        return HTTPException(
+            status_code=412,
+            detail={
+                "message": str(e),
+                "code": "PRECONDITION_FAILED",
+                "expected_revision_id": e.expected_revision_id,
+                "actual_revision_id": e.actual_revision_id,
+            },
+        )
 
     # Soft-deleted: 410 Gone, distinct from "never existed" 404.
     # Must be checked before ResourceNotFoundError since it is a subclass.
@@ -136,6 +149,7 @@ _STATUS_TO_CODE: dict[int, str] = {
     404: "RESOURCE_NOT_FOUND",
     409: "RESOURCE_CONFLICT",
     410: "RESOURCE_GONE",
+    412: "PRECONDITION_FAILED",
     422: "VALIDATION_ERROR",
     501: "NOT_IMPLEMENTED",
 }

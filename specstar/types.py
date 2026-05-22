@@ -1909,6 +1909,36 @@ class DuplicateResourceError(ResourceConflictError):
         self.resource_id = resource_id
 
 
+class PreconditionFailedError(Exception):
+    """Raised when an optimistic-concurrency precondition fails.
+
+    Use case: a client passes ``If-Match: <revision_id>`` (or
+    ``expected_revision_id=`` on the manager call) to assert that they
+    are updating *the revision they saw*; if the resource has moved on
+    in the meantime, the write is refused. Maps to HTTP **412
+    Precondition Failed**.
+
+    Attributes:
+        resource_id: The resource the precondition was checked on.
+        expected_revision_id: The revision id the client asserted.
+        actual_revision_id: The current revision id at check time.
+    """
+
+    def __init__(
+        self,
+        resource_id: str,
+        expected_revision_id: str,
+        actual_revision_id: str,
+    ) -> None:
+        super().__init__(
+            f"Precondition failed for '{resource_id}': expected current "
+            f"revision '{expected_revision_id}', got '{actual_revision_id}'."
+        )
+        self.resource_id = resource_id
+        self.expected_revision_id = expected_revision_id
+        self.actual_revision_id = actual_revision_id
+
+
 class MissingOperationContextError(Exception):
     """Raised when a write operation is missing required context fields.
 
@@ -2281,6 +2311,7 @@ __all__ = [
     "OnDelete",
     "OnDuplicate",
     "PermissionDeniedError",
+    "PreconditionFailedError",
     "RawResource",
     "Ref",
     "RefRevision",
