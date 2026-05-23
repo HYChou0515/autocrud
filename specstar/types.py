@@ -1095,6 +1095,7 @@ class IResourceManager(ABC, Generic[T]):
         *,
         revision_id: str | UnsetType = UNSET,
         schema_version: str | None | UnsetType = UNSET,
+        include_deleted: bool = False,
     ) -> Resource[T]:
         """Get the current revision of the resource.
 
@@ -1102,12 +1103,17 @@ class IResourceManager(ABC, Generic[T]):
             resource_id (str): the id of the resource to get.
             revision_id (str | UnsetType): the id of a specific revision to get.
               If UNSET, the current revision is returned.
+            include_deleted (bool): if True, return the requested revision even
+              for a soft-deleted resource instead of raising
+              ``ResourceIsDeletedError``. Mirrors ``get_meta()``. Defaults to
+              ``False``.
         Returns:
             resource (Resource[T]): the resource with its data and revision info.
 
         Raises:
             ResourceIDNotFoundError: if resource id does not exist.
-            ResourceIsDeletedError: if resource is soft-deleted.
+            ResourceIsDeletedError: if resource is soft-deleted and
+              *include_deleted* is ``False``.
 
         ---
 
@@ -1116,9 +1122,11 @@ class IResourceManager(ABC, Generic[T]):
 
         This method will raise different exceptions based on the resource state:
         - ResourceIDNotFoundError: The resource ID does not exist in storage
-        - ResourceIsDeletedError: The resource exists but is marked as deleted (is_deleted=True)
+        - ResourceIsDeletedError: The resource exists but is marked as deleted
+          (is_deleted=True) and *include_deleted* is False
 
-        For soft-deleted resources, use restore() first to make them accessible again.
+        To read a soft-deleted resource's revision pass ``include_deleted=True``,
+        or use ``restore()`` first to make it accessible again.
         """
 
     @abstractmethod

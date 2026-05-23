@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`ResourceManager.get(..., include_deleted=True)`** reads a revision of a
+  soft-deleted resource instead of raising `ResourceIsDeletedError`, mirroring
+  `get_meta(include_deleted=...)`. Defaults to `False`, so existing behavior is
+  unchanged. Fixes the Data Versioning quickstart, which showed inspecting an
+  old revision after a soft delete.
+
 ### Changed
 
 - **BREAKING — `resource_id` is rejected in request bodies (was silently

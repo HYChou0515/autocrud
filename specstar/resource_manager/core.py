@@ -2054,6 +2054,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         revision_id: str | UnsetType = UNSET,
         schema_version: str | None | UnsetType = UNSET,
+        include_deleted: bool = False,
     ) -> Resource[T]:
         """
         Get a resource by its ID.
@@ -2062,16 +2063,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id (str): The ID of the resource to retrieve.
             revision_id (str | UnsetType): (Optional) The specific revision ID to retrieve. If not set, retrieves the latest revision.
             schema_version (str | None | UnsetType): (Optional) The schema version of the resource.
+            include_deleted (bool): If True, return the requested revision even
+                for a soft-deleted resource instead of raising
+                ``ResourceIsDeletedError``. Mirrors ``get_meta()``. Defaults to
+                ``False`` so existing behavior is unchanged.
 
         Returns:
             resource (Resource[T]): The resource object containing both data and metadata.
 
         Raises:
             ResourceIDNotFoundError: If the resource ID or revision ID does not exist.
-            ResourceIsDeletedError: If the resource has been soft-deleted.
+            ResourceIsDeletedError: If the resource has been soft-deleted and
+                *include_deleted* is ``False``.
         """
         if revision_id is UNSET or schema_version is UNSET:
-            meta = self.get_meta(resource_id)
+            meta = self.get_meta(resource_id, include_deleted=include_deleted)
             if revision_id is UNSET:
                 revision_id = meta.current_revision_id
             if schema_version is UNSET:

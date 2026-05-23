@@ -196,6 +196,7 @@ _get_context: list[_DefstructField] = [
     ("resource_id", str),
     ("revision_id", str | UnsetType, UNSET),
     ("schema_version", str | None | UnsetType, UNSET),
+    ("include_deleted", bool, False),
 ]
 
 BeforeGet = defstruct(
