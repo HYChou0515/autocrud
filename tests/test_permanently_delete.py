@@ -340,9 +340,9 @@ class TestGetDeletedResourceDetail:
         # Soft delete
         client.delete(f"/item/{rid}")
 
-        # Without include_deleted: should 404
+        # Without include_deleted: should 410 Gone (soft-deleted)
         get_resp_no_flag = client.get(f"/item/{rid}")
-        assert get_resp_no_flag.status_code == 404
+        assert get_resp_no_flag.status_code == 410
 
         # With include_deleted=true: should work
         get_resp = client.get(f"/item/{rid}", params={"include_deleted": True})
@@ -361,9 +361,9 @@ class TestGetDeletedResourceDetail:
         # Soft delete
         client.delete(f"/item/{rid}")
 
-        # Without include_deleted: should 404
+        # Without include_deleted: should 410 Gone (soft-deleted)
         get_resp_no_flag = client.get(f"/item/{rid}/meta")
-        assert get_resp_no_flag.status_code == 404
+        assert get_resp_no_flag.status_code == 410
 
         # With include_deleted=true: should work
         get_resp = client.get(f"/item/{rid}/meta", params={"include_deleted": True})
@@ -381,9 +381,9 @@ class TestGetDeletedResourceDetail:
         # Soft delete
         client.delete(f"/item/{rid}")
 
-        # Without include_deleted: should 404
+        # Without include_deleted: should 410 Gone (soft-deleted)
         get_resp_no_flag = client.get(f"/item/{rid}/revision-list")
-        assert get_resp_no_flag.status_code == 404
+        assert get_resp_no_flag.status_code == 410
 
         # With include_deleted=true: should work
         get_resp = client.get(
@@ -420,9 +420,9 @@ class TestGetDeletedResourceDetail:
         # Soft delete
         client.delete(f"/item/{rid}")
 
-        # Without include_deleted: should 404
+        # Without include_deleted: should 410 Gone (soft-deleted)
         get_resp_no_flag = client.get(f"/item/{rid}", params={"revision_id": rev_id})
-        assert get_resp_no_flag.status_code == 404
+        assert get_resp_no_flag.status_code == 410
 
         # With include_deleted=true: should work
         get_resp = client.get(

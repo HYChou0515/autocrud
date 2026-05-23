@@ -108,9 +108,10 @@ def migrate_v1_to_v2(old: IssueV1) -> Issue:
 Attach the migration step when registering the new schema:
 
 ```python
+from datetime import datetime
 from specstar import spec, Schema
 
-spec.configure()
+spec.configure(default_user="migration", default_now=datetime.utcnow)
 spec.add_model(
     Schema(Issue, "v2").step(
         "v1",
@@ -120,16 +121,37 @@ spec.add_model(
 )
 ```
 
+> Programmatic `resource_manager.migrate(...)` / `.switch(...)` calls require an
+> **operation context** (current user + clock). Pass `default_user` /
+> `default_now` to `configure()` as above, or wrap the call with
+> `rm.using(user=..., now=...)`. Without it, write methods raise
+> `MissingOperationContextError`.
+
 This tells SpecStar how to upgrade data from `v1` → `v2`.
 
 ---
 
 ## 6. Execute migration
 
+The migration endpoints are **not registered by default**. Opt in by adding
+`MigrateRouteTemplate` before `add_model()`:
+
+```python
+from specstar import spec
+from specstar.crud.route_templates.migrate import MigrateRouteTemplate
+
+spec.add_route_template(MigrateRouteTemplate())
+```
+
+This mounts `POST /{model_name}/migrate/execute`,
+`POST /{model_name}/migrate/test`, and
+`POST /{model_name}/migrate/single/{resource_id}` (the path segment follows
+`model_naming`; e.g. an `Issue` model is mounted under `/issue`).
+
 Run migration via API:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/issues/migrate/execute \
+curl -X POST http://127.0.0.1:8000/issue/migrate/execute \
   -H "Content-Type: application/json" \
   -d '{
     "limit": 10000

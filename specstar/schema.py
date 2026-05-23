@@ -147,7 +147,7 @@ class Schema(Generic[T]):
 
     def step(
         self,
-        from_ver: str | re.Pattern[str],
+        from_ver: str | None | re.Pattern[str],
         fn: Callable,
         *,
         to: str | None = None,
@@ -157,8 +157,12 @@ class Schema(Generic[T]):
 
         Parameters
         ----------
-        from_ver : str | re.Pattern[str]
-            Source version that this step handles.  Can be a compiled regex
+        from_ver : str | None | re.Pattern[str]
+            Source version that this step handles.  Pass ``None`` to migrate
+            from data that was written without any ``schema_version`` set —
+            this typically happens for resources registered before a
+            ``Schema(...)`` was introduced (e.g. plain
+            ``spec.add_model(User)``).  Can also be a compiled regex
             pattern (``re.compile(...)``), in which case the step creates
             edges from **every** known version that matches the pattern.
         fn : Callable[[IO[bytes]], Any] | Callable[[source_type], Any]
@@ -209,7 +213,7 @@ class Schema(Generic[T]):
 
     def plus(
         self,
-        from_ver: str | re.Pattern[str],
+        from_ver: str | None | re.Pattern[str],
         fn: Callable,
         *,
         to: str | None = None,
@@ -222,8 +226,9 @@ class Schema(Generic[T]):
 
         Parameters
         ----------
-        from_ver : str | re.Pattern[str]
-            Source version (same as ``.step()``).
+        from_ver : str | None | re.Pattern[str]
+            Source version (same as ``.step()``).  Pass ``None`` to migrate
+            from unversioned data (see ``.step()`` for the use case).
         fn : Callable
             Transform function (same as ``.step()``).
         to : str | None
@@ -243,7 +248,7 @@ class Schema(Generic[T]):
     # Resolution
     # ------------------------------------------------------------------
 
-    def _resolve(self) -> dict[str, list[tuple[str, Callable, type | None]]]:
+    def _resolve(self) -> dict[str | None, list[tuple[str, Callable, type | None]]]:
         """Lazily resolve all chains into a directed graph.
 
         Literal ``from_ver`` strings are placed directly into the graph.
@@ -264,7 +269,7 @@ class Schema(Generic[T]):
 
         # ── Pass 1: resolve to_ver for every step ─────────────────────
         resolved_steps: list[
-            tuple[str | re.Pattern[str], str, Callable, type | None]
+            tuple[str | None | re.Pattern[str], str, Callable, type | None]
         ] = []
 
         for chain_idx, chain in enumerate(all_chains):
@@ -293,7 +298,11 @@ class Schema(Generic[T]):
                 resolved_steps.append((from_ver, to_ver, fn, source_type))
 
         # ── Pass 2: separate literal edges vs regex edges ─────────────
-        graph: dict[str, list[tuple[str, Callable, type | None]]] = defaultdict(list)
+        # ``str | None`` keys: ``None`` is a valid source for migrating from
+        # unversioned data (see ``.step()``).
+        graph: dict[str | None, list[tuple[str, Callable, type | None]]] = defaultdict(
+            list
+        )
         regex_edges: list[tuple[re.Pattern[str], str, Callable, type | None]] = []
 
         for from_ver, to_ver, fn, source_type in resolved_steps:
@@ -310,7 +319,9 @@ class Schema(Generic[T]):
     # Runtime edge lookup
     # ------------------------------------------------------------------
 
-    def _edges_for(self, version: str) -> list[tuple[str, Callable, type | None]]:
+    def _edges_for(
+        self, version: str | None
+    ) -> list[tuple[str, Callable, type | None]]:
         """Return outgoing edges for *version* (literal + regex matches).
 
         Each edge is ``(to_ver, fn, source_type)``.

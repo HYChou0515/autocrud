@@ -192,9 +192,9 @@ QB includes more than basic comparison operators. Common helpers include:
 For HTTP APIs, pass the expression as the `qb` query parameter.
 
 ```text
-GET /users?qb=QB["age"].gt(18)
-GET /users?qb=(QB["age"] > 18) & QB["status"].eq("active")
-GET /users?qb=QB.created_by().eq("admin")
+GET /user?qb=QB["age"].gt(18)
+GET /user?qb=(QB["age"] > 18) & QB["status"].eq("active")
+GET /user?qb=QB.created_by().eq("admin")
 ```
 
 In real clients, the query string should be URL-encoded automatically.

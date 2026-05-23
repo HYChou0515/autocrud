@@ -2,7 +2,6 @@ import datetime as dt
 import textwrap
 from typing import TypeVar
 
-import msgspec
 from fastapi import APIRouter, Depends
 from fastapi.params import Body
 
@@ -10,6 +9,8 @@ from specstar.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
     jsonschema_to_json_schema_extra,
+    reject_resource_id_in_body,
+    struct_declares_resource_id,
     struct_to_responses_type,
 )
 from specstar.crud.route_templates.exception_handlers import to_http_exception
@@ -32,6 +33,14 @@ class CreateRouteTemplate(BaseRouteTemplate):
     ) -> None:
         # 動態創建響應模型
         resource_type = resource_manager.resource_type
+
+        # ``resource_id`` belongs to the server-generated meta, not the
+        # resource's data. Reject it loudly if a client tries to set it via
+        # the POST body unless the Struct actually declares such a field
+        # (rare). This avoids the previous silent-drop behavior where a
+        # client thought they'd set the id but the server generated a
+        # different one anyway.
+        _struct_owns_resource_id = struct_declares_resource_id(resource_type)
 
         @router.post(
             f"/{model_name}",
@@ -67,11 +76,14 @@ class CreateRouteTemplate(BaseRouteTemplate):
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
+            if not _struct_owns_resource_id:
+                reject_resource_id_in_body(body)
             try:
-                data = msgspec.convert(body, resource_type)
-
+                # Pass the raw body through so the manager's ``_coerce_data``
+                # decorator can apply ``forbid_unknown_fields`` checks before
+                # ``msgspec.convert`` drops unknown keys.
                 with resource_manager.using(current_user, current_time):
-                    info = resource_manager.create(data)
+                    info = resource_manager.create(body)
                 return MsgspecResponse(info)
             except Exception as e:
                 raise to_http_exception(e)

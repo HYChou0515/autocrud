@@ -28,6 +28,21 @@ SpecStar returns a unified response envelope:
 
 Each section can be **included or omitted** via `returns`.
 
+> **List endpoints** (`GET /{model}`) wrap each item in the same envelope and
+> return an array — the bare resource body is *not* returned directly.
+
+### The three id fields
+
+A response carries three distinct identifiers, which serve different purposes:
+
+| Field | Where it lives | Role |
+|-------|----------------|------|
+| `resource_id` | `meta.resource_id` | **Path id.** Stable across revisions. Use this in every `/{model}/{resource_id}/…` URL. |
+| `revision_id` | `revision_info.revision_id` | The id of *one* revision of a resource. Required for `switch` and revision-targeted endpoints. Format: `{model}:{resource_id}:{revision_number}`. |
+| `uid` | `meta.uid` (when present) | Internal unique key — **differs per revision**. Do not use in URLs. |
+
+Only `resource_id` appears in default route paths.
+
 ### `returns` query parameter
 
 `returns` is a comma-separated list of sections to include.
@@ -46,21 +61,48 @@ Examples:
 
 * Full response (default)
 
-  `GET /users/123`
+  `GET /user/123`
 
 * Data only
 
-  `GET /users/123?returns=data`
+  `GET /user/123?returns=data`
 
 * Meta only
 
-  `GET /users/123?returns=meta`
+  `GET /user/123?returns=meta`
 
 * Data + meta (no revision info)
 
-  `GET /users/123?returns=data,meta`
+  `GET /user/123?returns=data,meta`
 
 > Note: Any section not listed in `returns` will be returned as `UNSET` (omitted in the serialized output, depending on encoder behavior).
+
+---
+
+## Strictness: unknown fields on write
+
+By default, fields not declared on the resource ``Struct`` are **silently dropped**
+on `POST` / `PUT` writes (matching msgspec's default behavior). A typo'd field
+name therefore looks like a successful write but the value is gone.
+
+Opt into strict mode via `SpecStar(forbid_unknown_fields=True)` or
+`spec.configure(forbid_unknown_fields=True)`. With it on, any unknown top-level
+key in the request body returns `422 Unprocessable Entity` with a list of the
+offending fields.
+
+```bash
+# default (off): silently dropped
+curl -X POST /post -d '{"title":"t","body":"b","ghost":"X"}'   # 200 OK; "ghost" gone
+
+# strict
+curl -X POST /post -d '{"title":"t","body":"b","ghost":"X"}'   # 422
+# detail: Unknown field(s) for Post: ['ghost']. Allowed fields: ['body','title']
+```
+
+This check applies to dict / JSON-body / Pydantic inputs into
+`create()` / `update()` / `modify()` (REST + programmatic). `msgspec.Struct`
+instances pass through unchanged — they can't carry extra fields by
+construction.
 
 ---
 
@@ -90,19 +132,19 @@ Examples:
 
 * Only some fields of `data`
 
-  `GET /users/123?returns=data&partial=/name&partial=/email`
+  `GET /user/123?returns=data&partial=/name&partial=/email`
 
 * Only some fields of `meta`
 
-  `GET /users/123?returns=meta&partial=meta/resource_id&partial=meta/updated_time`
+  `GET /user/123?returns=meta&partial=meta/resource_id&partial=meta/updated_time`
 
 * Only some fields of `revision_info`
 
-  `GET /users/123?returns=revision_info&partial=info/revision_id&partial=info/status`
+  `GET /user/123?returns=revision_info&partial=info/revision_id&partial=info/status`
 
 * Mixed projection across multiple sections
 
-  `GET /users/123?returns=data,meta&partial=/name&partial=meta/updated_time`
+  `GET /user/123?returns=data,meta&partial=/name&partial=meta/updated_time`
 
 ### Default routing of unprefixed `partial`
 
@@ -164,6 +206,46 @@ SpecStar has two update modes with different revision semantics:
   * Creates a **new revision**
   * Sets `parent_revision_id` to the previous current revision
   * Revision history is append-only under this mode
+
+> #### Optimistic concurrency (``If-Match`` / ``expected_revision_id``)
+>
+> By default, concurrent PUT/PATCH writes are last-write-wins on the
+> current revision pointer (history is still preserved). To protect
+> against lost updates, opt into per-request **optimistic concurrency**:
+>
+> * Pass ``If-Match: <revision_id>`` header *(HTTP-standard)*, or
+> * Pass ``?expected_revision_id=<revision_id>`` query param.
+>
+> SpecStar checks the resource's current ``revision_id`` against the
+> asserted value before applying the write; if they differ, the request
+> is refused with **412 Precondition Failed** and a structured detail:
+>
+> ```json
+> {
+>   "detail": {
+>     "code": "PRECONDITION_FAILED",
+>     "message": "Precondition failed for 'user:abc': expected current revision 'user:abc:3', got 'user:abc:5'.",
+>     "expected_revision_id": "user:abc:3",
+>     "actual_revision_id": "user:abc:5"
+>   }
+> }
+> ```
+>
+> Clients can fetch, merge, and retry. The check is opt-in per request,
+> so callers that don't care still get last-write-wins behavior.
+
+> #### Same-content writes are de-duplicated
+>
+> If a `PUT` (or no-op `PATCH`) produces a payload byte-identical to the
+> current revision's stored bytes, SpecStar **does not create a new
+> revision**. The endpoint returns `200` with the existing
+> `revision_id` — `total_revision_count` is unchanged.
+>
+> This keeps history clean (no churn from clients that re-PUT the same
+> body on every save) but it means a successful `200` does **not**
+> guarantee a new revision was recorded. Code that depends on
+> "every successful write = one new audit row" should compare the
+> returned `revision_id` against the prior one to detect a dedup.
 
 ### `modify` (draft update): overwrite the current revision (not immutable)
 

@@ -3,16 +3,19 @@ import textwrap
 from typing import Any, Literal, TypeVar
 
 import msgspec
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.params import Body
 
 from specstar.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
     jsonschema_to_json_schema_extra,
+    reject_resource_id_in_patch,
+    struct_declares_resource_id,
     struct_to_responses_type,
 )
 from specstar.crud.route_templates.exception_handlers import to_http_exception
+from specstar.crud.route_templates.update import _check_precondition
 from specstar.types import (
     IResourceManager,
     RevisionInfo,
@@ -70,6 +73,10 @@ class PatchRouteTemplate(BaseRouteTemplate):
         resource_manager: IResourceManager[T],
         router: APIRouter,
     ) -> None:
+        _struct_owns_resource_id = struct_declares_resource_id(
+            resource_manager.resource_type
+        )
+
         @router.patch(
             f"/{model_name}/{{resource_id}}",
             responses=struct_to_responses_type(RevisionInfo),
@@ -127,6 +134,21 @@ class PatchRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
             change_status: RevisionStatus | None = None,
             mode: Literal["update", "modify"] = "update",
+            expected_revision_id: str | None = Query(
+                None,
+                description=(
+                    "Optimistic concurrency: assert the resource is currently "
+                    "at this revision_id. Mismatch → 412 Precondition Failed."
+                ),
+            ),
+            if_match: str | None = Header(
+                None,
+                alias="If-Match",
+                description=(
+                    "Alternative to expected_revision_id (HTTP-standard "
+                    "optimistic concurrency)."
+                ),
+            ),
         ):
             from jsonpatch import JsonPatch
 
@@ -135,7 +157,12 @@ class PatchRouteTemplate(BaseRouteTemplate):
                     status_code=400,
                     detail="change_status can only be used with mode 'modify'",
                 )
+            if not _struct_owns_resource_id:
+                reject_resource_id_in_patch(body)
             try:
+                _check_precondition(
+                    resource_manager, resource_id, expected_revision_id, if_match
+                )
                 with resource_manager.using(current_user, current_time):
                     patch = JsonPatch(body)
                     if mode == "update":

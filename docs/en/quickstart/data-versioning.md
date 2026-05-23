@@ -41,9 +41,16 @@ class Issue(msgspec.Struct):
 
 app = FastAPI()
 
+spec.configure(default_user="quickstart", default_now=datetime.utcnow)
 spec.add_model(Schema(Issue, "v1"))
 spec.apply(app)
 ```
+
+> Programmatic `mgr.create(...)` / `update(...)` / `migrate(...)` / `switch(...)`
+> calls need an **operation context** (current user + clock). The simplest way is
+> to pass `default_user` and `default_now` to `spec.configure()` as shown above.
+> Alternatively, wrap each call in `mgr.using(user=..., now=...)`. Without a
+> context, manager calls raise `MissingOperationContextError`.
 
 Then get the resource manager:
 

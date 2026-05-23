@@ -199,6 +199,7 @@ plugins:
                 - howto/errors.md
                 - howto/troubleshooting.md
                 - howto/http-errors.md
+                - howto/gotchas.md
 
             - Guides:
                 - guides/index.md
@@ -221,6 +222,7 @@ plugins:
                 - reference/spec-md-syntax.md
                 - reference/ast-rules.md
                 - reference/backend-configuration.md
+                - reference/storage-format.md
                 - reference/query-builder.md
                 - reference/behavior.md
             

@@ -107,13 +107,20 @@ class QueryInputs(BaseModel):
     )
     limit: int = Query(
         DEFAULT_QUERY_LIMIT,
+        ge=1,
         description=(
-            "Maximum number of results. Default comes from the "
-            "SPECSTAR_DEFAULT_QUERY_LIMIT environment variable at startup; "
-            "set limit explicitly or use the /count endpoint if you need the full total."
+            "Maximum number of results (must be >= 1). Default comes from "
+            "the SPECSTAR_DEFAULT_QUERY_LIMIT environment variable at "
+            "startup; set limit explicitly or use the /count endpoint if "
+            "you need the full total. ``limit=0`` is rejected (use the "
+            "``/count`` endpoint for a count-only query)."
         ),
     )
-    offset: int = Query(0, description="Number of results to skip")
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Number of results to skip (must be >= 0).",
+    )
     partial: Optional[list[str]] = Query(
         None,
         description="List of fields to retrieve (e.g. '/field1', '/nested/field2')",

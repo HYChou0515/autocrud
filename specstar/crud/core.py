@@ -26,7 +26,10 @@ from specstar.crud.custom_actions import (
     _PendingCreateAction,
     _PendingUpdateAction,
 )
-from specstar.crud.ref_manager import install_ref_integrity_handlers
+from specstar.crud.ref_manager import (
+    install_ref_existence_validators,
+    install_ref_integrity_handlers,
+)
 from specstar.crud.route_templates.backup import (
     ExportRouteTemplate,
     ImportRouteTemplate,
@@ -174,7 +177,12 @@ class SpecStar:
         message_queue_factory:
             Lower-level message queue factory used for Job models (when enabled).
         admin:
-            If provided and `permission_checker` is not set, enables RBAC with `admin` as root user.
+            **Username** of the root user for RBAC. This is *not* a URL path
+            and does not mount any admin UI — passing
+            ``configure(admin="alice")`` makes the username ``"alice"`` the
+            RBAC root (full access) when no explicit ``permission_checker``
+            is provided. The web admin UI is a separate TypeScript app under
+            ``wizard/``.
         permission_checker:
             Permission checker used by default for models that don't override it.
         dependency_provider:
@@ -202,6 +210,22 @@ class SpecStar:
             context fields (``user``, ``now``) are not fully resolved from
             any source (explicit kwargs, ``using()`` scope, or manager
             defaults).  Defaults to ``False``.
+        forbid_unknown_fields:
+            When ``True``, ``create()`` / ``update()`` / ``modify()`` reject
+            inputs (dict / JSON body / Pydantic) that contain top-level keys
+            not declared on the registered resource ``Struct``, raising
+            :class:`specstar.types.ValidationError` (HTTP 422 on routes).
+            Defaults to ``False`` for backward compatibility — unknown fields
+            are silently dropped, matching msgspec's default behavior.
+        structured_errors:
+            When ``True``, :meth:`apply` registers exception handlers that
+            wrap every error response (``HTTPException`` and FastAPI's
+            ``RequestValidationError``) in a uniform envelope
+            ``{"detail": {"message": str, "code": str, ...extras}}`` so
+            clients can parse errors with a single shape. Defaults to
+            ``False`` — error ``detail`` keeps its current per-endpoint
+            shape (string for most, dict for unique-constraint, FastAPI's
+            array for 422).
 
     See also:
         - `Schema`: declare schema/validation/migration for a resource.
@@ -232,6 +256,9 @@ class SpecStar:
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool = False,
+        forbid_unknown_fields: bool = False,
+        structured_errors: bool = False,
+        validate_refs: bool = False,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -252,6 +279,9 @@ class SpecStar:
         self.default_now = UNSET
         self.default_status: RevisionStatus | UnsetType = UNSET
         self.strict_operation_context = False
+        self.forbid_unknown_fields = False
+        self.structured_errors = False
+        self.validate_refs = False
         self._pending_create_actions: list[_PendingCreateAction] = []
         self._pending_update_actions: list[_PendingUpdateAction] = []
         self.backend: BackendConfig | None = None
@@ -277,6 +307,9 @@ class SpecStar:
             default_now=default_now,
             default_status=default_status,
             strict_operation_context=strict_operation_context,
+            forbid_unknown_fields=forbid_unknown_fields,
+            structured_errors=structured_errors,
+            validate_refs=validate_refs,
         )
 
     def _apply_configuration(
@@ -301,6 +334,9 @@ class SpecStar:
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool | UnsetType = UNSET,
+        forbid_unknown_fields: bool | UnsetType = UNSET,
+        structured_errors: bool | UnsetType = UNSET,
+        validate_refs: bool | UnsetType = UNSET,
     ) -> None:
         """Apply configuration settings to the SpecStar instance.
 
@@ -456,6 +492,18 @@ class SpecStar:
         if strict_operation_context is not UNSET:
             self.strict_operation_context = strict_operation_context
 
+        # Update forbid_unknown_fields
+        if forbid_unknown_fields is not UNSET:
+            self.forbid_unknown_fields = forbid_unknown_fields
+
+        # Update structured_errors
+        if structured_errors is not UNSET:
+            self.structured_errors = structured_errors
+
+        # Update validate_refs
+        if validate_refs is not UNSET:
+            self.validate_refs = validate_refs
+
     def configure(
         self,
         *,
@@ -477,6 +525,9 @@ class SpecStar:
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool | UnsetType = UNSET,
+        forbid_unknown_fields: bool | UnsetType = UNSET,
+        structured_errors: bool | UnsetType = UNSET,
+        validate_refs: bool | UnsetType = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
@@ -499,7 +550,9 @@ class SpecStar:
                 This path offers more direct control than the unified ``backend=`` API.
             message_queue_factory: Lower-level message queue factory for async job
                 processing.
-            admin: Admin user for RBAC permission system.
+            admin: **Username** of the RBAC root user (full access). Not a URL
+                path and does not mount any admin UI; the web admin UI is the
+                separate TypeScript app under ``wizard/``.
             permission_checker: Custom permission checker implementation.
             dependency_provider: Dependency injection provider for routes.
             event_handlers: List of event handlers for lifecycle hooks.
@@ -518,6 +571,18 @@ class SpecStar:
                 :class:`MissingOperationContextError` if ``user`` and ``now``
                 are not resolved from any source (explicit kwargs,
                 ``using()`` scope, or manager defaults).
+            forbid_unknown_fields: When ``True``, dict / JSON inputs to
+                ``create()`` / ``update()`` / ``modify()`` containing keys
+                that are not declared on the registered ``Struct`` raise
+                :class:`specstar.types.ValidationError` (HTTP 422) instead of
+                being silently dropped. Defaults to ``False`` — kept off to
+                preserve current behavior; turn it on at the start of a new
+                project or as part of a coordinated 1.0 cutover.
+            structured_errors: When ``True``, :meth:`apply` registers
+                exception handlers that wrap every error response in a
+                uniform envelope ``{"detail": {"message", "code", ...}}``
+                so clients can parse errors with one shape. Defaults to
+                ``False``.
 
         Example:
             ```python
@@ -566,6 +631,9 @@ class SpecStar:
             default_now=default_now,
             default_status=default_status,
             strict_operation_context=strict_operation_context,
+            forbid_unknown_fields=forbid_unknown_fields,
+            structured_errors=structured_errors,
+            validate_refs=validate_refs,
         )
 
         # Register vector encoders into the registry
@@ -1302,6 +1370,7 @@ class SpecStar:
             pydantic_type=pydantic_model,
             constraint_checkers=constraint_checkers,
             strict_operation_context=self.strict_operation_context,
+            forbid_unknown_fields=self.forbid_unknown_fields,
             encoder_registry=self.encoder_registry,
             vector_encoders=vector_encoders,
             **other_options,
@@ -1381,6 +1450,10 @@ class SpecStar:
 
     def _install_ref_integrity_handlers(self) -> None:
         install_ref_integrity_handlers(self.relationships, self.resource_managers)
+        if self.validate_refs:
+            install_ref_existence_validators(
+                self.relationships, self.resource_managers
+            )
 
     @staticmethod
     def _inline_embedded_schema_ref(schema_extra: dict, source_type: Any) -> dict:
@@ -1524,6 +1597,12 @@ class SpecStar:
         # Auto include_router + auto openapi when app is a FastAPI instance
         is_fastapi = isinstance(app, FastAPI)
         if is_fastapi:
+            if self.structured_errors:
+                from specstar.crud.route_templates.exception_handlers import (
+                    install_structured_error_handlers,
+                )
+
+                install_structured_error_handlers(app)
             if router is not None and auto_include:
                 app.include_router(router)
             # Only generate OpenAPI when routes are actually on the app.

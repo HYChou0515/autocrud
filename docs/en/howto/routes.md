@@ -44,21 +44,46 @@ A model is registered with a resource name:
 * `add_model(User)` → name inferred from model class + `model_naming`
 * `add_model(User, name="people")` → override path base to `/people`
 
+### `model_naming` reference
+
+The `model_naming` setting on `SpecStar` / `spec.configure()` controls how
+**class names** become **URL segments**. The default is `"kebab"` — lowercase
+words joined by hyphens.
+
+| `model_naming` | `User`     | `BlogPost`   | `URLPath`    | `XMLNode`   |
+|----------------|------------|--------------|--------------|-------------|
+| `"kebab"` *(default)* | `/user`    | `/blog-post` | `/u-r-l-path` | `/x-m-l-node` |
+| `"snake"`      | `/user`    | `/blog_post` | `/u_r_l_path` | `/x_m_l_node` |
+| `"camel"`      | `/user`    | `/blogPost`  | `/uRLPath`   | `/xMLNode`  |
+| `"pascal"`     | `/User`    | `/BlogPost`  | `/URLPath`   | `/XMLNode`  |
+| `"same"`       | `/User`    | `/BlogPost`  | `/URLPath`   | `/XMLNode`  |
+| callable       | `model_naming=lambda cls: cls.__name__.lower() + "s"` → `/users` |
+
+Names are **singular by default** (no automatic pluralisation). Pass
+`name=` to `add_model` to override a single model, or supply a callable to
+`model_naming` for project-wide custom rules (including plurals).
+
 ## Default templates (typical endpoints)
 
 When `route_templates` is `None` (default behavior) or a configuration dict, SpecStar installs
 a default set of templates (create/list/read/update/patch/delete/restore/export/import, etc).
 
-For a resource named `users`, you typically get endpoints like:
+For a `User` model (path segment follows `model_naming`, default
+**kebab-case singular** — e.g. `User → /user`, `BlogPost → /blog-post`),
+you typically get endpoints like:
 
-* `POST /users` — create
-* `GET /users/...` — list variants (depending on templates, may include data/meta/full/revision views)
-* `GET /users/{id}/...` — read variants (depending on templates)
-* `PUT /users/{id}` — replace
-* `PATCH /users/{id}` — RFC6902 JSON Patch (if Patch template is enabled)
-* `DELETE /users/{id}` — soft delete (if Delete template is enabled)
-* `POST /users/{id}/restore` — restore (if Restore template is enabled)
+* `POST /user` — create
+* `GET /user` — list (variants under `?returns=…`; see [API conventions](/specstar/howto/api-conventions))
+* `GET /user/{resource_id}` — read (variants under `?returns=…`)
+* `PUT /user/{resource_id}` — **full replace** (not upsert; missing id → `404`)
+* `PATCH /user/{resource_id}` — **RFC 6902 JSON Patch** body (an array of ops,
+  not a partial object). Posting a partial object returns
+  `400 "Document is expected to be sequence of operations"`.
+* `DELETE /user/{resource_id}` — soft delete (if Delete template is enabled)
+* `POST /user/{resource_id}/restore` — restore (if Restore template is enabled)
 * Revision-related endpoints (switch / list / info) depending on templates
+
+> Path params are always named `resource_id` (not `id`).
 
 ### Why the endpoints are not listed exhaustively here
 

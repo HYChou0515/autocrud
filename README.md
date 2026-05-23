@@ -61,7 +61,7 @@ class User(Struct):
 
 Register the model:
 
-```python
+```python continuation
 from fastapi import FastAPI
 from specstar import spec
 
@@ -70,6 +70,11 @@ app = FastAPI()
 spec.add_model(User)
 spec.apply(app)
 ```
+
+> `spec.add_model(User)` is shorthand for `spec.add_model(Schema(User))` — the
+> canonical form once you start tracking schema versions or migrations is
+> `spec.add_model(Schema(User, "v1"))`, which the quickstart docs use.
+> Both run; pick whichever fits your stage.
 
 Start the server:
 
@@ -83,19 +88,25 @@ Optional startup tuning:
 export SPECSTAR_DEFAULT_QUERY_LIMIT=1000
 ```
 
-This controls the default page size for list endpoints. Per-request `limit`
-still overrides it.
+This controls the default page size for **list endpoints** (`GET /{model}` and
+search routes). The built-in fallback is `2**32 - 1` (effectively unlimited)
+— pick a sane value for production. Per-request `limit` and `offset` query
+params still override it.
 
 You now automatically get:
 
 ```
-POST   /users
-GET    /users
-GET    /users/{id}
-PUT    /users/{id}
-PATCH  /users/{id}
-DELETE /users/{id}
+POST   /user
+GET    /user
+GET    /user/{resource_id}
+PUT    /user/{resource_id}
+PATCH  /user/{resource_id}
+DELETE /user/{resource_id}
 ```
+
+The path segment follows `model_naming` (default: kebab-case of the model name,
+e.g. `User` -> `/user`). `PUT` replaces the whole resource; `PATCH` expects a
+JSON Patch (RFC 6902) array of operations rather than a partial object.
 
 OpenAPI documentation is generated automatically.
 
@@ -131,9 +142,20 @@ SpecStar generates APIs directly from Python models.
 Model
   ↓
 REST API
-GraphQL API
+GraphQL API   (opt-in: pip install specstar[graphql] + add_route_template(GraphQLRouteTemplate()))
 OpenAPI
 ```
+
+> REST and OpenAPI are wired up automatically when you call `spec.apply(app)`.
+> GraphQL is **opt-in**: install the extra (`pip install specstar[graphql]`)
+> and register the template explicitly:
+>
+> ```python
+> from specstar import spec
+> from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
+>
+> spec.add_route_template(GraphQLRouteTemplate())
+> ```
 
 ---
 
@@ -200,7 +222,12 @@ SpecStar supports multiple storage backends.
 | S3       | SQLite     | S3       | S3         |
 | Postgres | PostgreSQL | S3       | S3         |
 
-You can also implement custom storage systems.
+The rows above are **typical profiles**, not the only valid combinations. The
+three storage layers (`IMetaStore` / `IResourceStore` / `IBlobStore`) are
+independent — for example, a Postgres `resource_store` exists
+(`resource_data` table with `data BYTEA`), so you can keep revision payloads
+in Postgres instead of S3 if that fits your deployment. You can also implement
+custom storage systems.
 
 ---
 

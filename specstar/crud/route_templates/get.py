@@ -388,8 +388,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
         async def get_resource_revision_list(
             request: Request,
             resource_id: str,
-            limit: int = 10,
-            offset: int = 0,
+            limit: int = Query(10, ge=1, description="Page size (>= 1)"),
+            offset: int = Query(0, ge=0, description="Items to skip (>= 0)"),
             created_time_start: str | None = None,
             created_time_end: str | None = None,
             from_revision_id: str | None = None,
@@ -435,14 +435,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     if sort not in {"created_time", "-created_time"}:
                         raise HTTPException(status_code=400, detail="Invalid sort")
 
-                    if limit < 1:
-                        raise HTTPException(
-                            status_code=400, detail="limit must be >= 1"
-                        )
-                    if offset < 0:
-                        raise HTTPException(
-                            status_code=400, detail="offset must be >= 0"
-                        )
+                    # limit/offset bounds enforced by Query(ge=1) / Query(ge=0)
+                    # on the function signature — FastAPI returns 422 before
+                    # reaching this point if either is out of range.
 
                     revision_ids = resource_manager.list_revisions(resource_id)
                     revision_infos: list[RevisionInfo] = []
