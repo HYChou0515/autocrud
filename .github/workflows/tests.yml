@@ -38,19 +38,20 @@ jobs:
         run: uv sync --extra dev
 
       # Public-API contract tests (fast, no external services).
+      # ``-x`` stops at the first failure so the run fails fast.
       - name: Contract tests
-        run: uv run pytest tests/test_docs_contract.py -q
+        run: uv run pytest tests/test_docs_contract.py -q -x
 
       # Executable documentation: the ```python blocks in these files must run.
       # Expand the list as more pages are annotated (```python continuation / notest).
       - name: Documentation examples
-        run: uv run pytest --markdown-docs README.md -q
+        run: uv run pytest --markdown-docs README.md -q -x
 
       # Service-free unit + route tests. Integration tests (Postgres / S3 /
       # MinIO / RabbitMQ) are tagged via the root tests/conftest.py and
       # excluded here; benchmarks and known-slow tests are also excluded.
       - name: Unit + route tests (no external services)
-        run: uv run pytest -m "not integration and not benchmark and not slow" -q
+        run: uv run pytest -m "not integration and not benchmark and not slow" -q -x
 
   # Single status check that fans in from every required job above.
   # Make THIS the required check in branch protection — that way adding a

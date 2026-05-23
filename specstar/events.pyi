@@ -173,6 +173,7 @@ class BeforeGet(Struct, kw_only=True, tag=True, tag_field="context_type"):
     resource_id: str
     revision_id: str | UnsetType = UNSET
     schema_version: str | None | UnsetType = UNSET
+    include_deleted: bool = False
 
 class AfterGet(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -183,6 +184,7 @@ class AfterGet(Struct, kw_only=True, tag=True, tag_field="context_type"):
     resource_id: str
     revision_id: str | UnsetType = UNSET
     schema_version: str | None | UnsetType = UNSET
+    include_deleted: bool = False
 
 class OnSuccessGet(
     Struct, Generic[T], kw_only=True, tag=True, tag_field="context_type"
@@ -195,6 +197,7 @@ class OnSuccessGet(
     resource_id: str
     revision_id: str | UnsetType = UNSET
     schema_version: str | None | UnsetType = UNSET
+    include_deleted: bool = False
     resource: Resource[T]
 
 class OnFailureGet(Struct, kw_only=True, tag=True, tag_field="context_type"):
@@ -208,6 +211,7 @@ class OnFailureGet(Struct, kw_only=True, tag=True, tag_field="context_type"):
     resource_id: str
     revision_id: str | UnsetType = UNSET
     schema_version: str | None | UnsetType = UNSET
+    include_deleted: bool = False
 
 class BeforeGetMeta(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["before"] = "before"

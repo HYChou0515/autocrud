@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from specstar import SpecStar, Schema
+from specstar import Schema, SpecStar
 from specstar.backend import DiskStorageFactory
 from specstar.crud.route_templates.migrate import MigrateRouteTemplate
 
@@ -114,3 +114,79 @@ def test_breaking_migration_then_rollback(tmp_path):
     rm.migrate(rid, revision_id=oldest)
     rm.switch(rid, oldest)
     assert rm.get(rid).data.name == "Bob"
+
+
+# --- Data Versioning quickstart (docs/en/quickstart/data-versioning.md) ---
+
+
+class _Doc(Struct):
+    title: str
+    body: str = ""
+
+
+def _doc_mgr(tmp_path):
+    sp = _fresh(tmp_path)
+    app = FastAPI()
+    sp.add_model(Schema(_Doc, "v1"))
+    sp.apply(app)
+    return sp.get_resource_manager(_Doc)
+
+
+def test_get_old_revision_after_soft_delete_with_include_deleted(tmp_path):
+    """§5: after a soft delete you can still read an older revision via
+    ``get(..., include_deleted=True)``."""
+    rm = _doc_mgr(tmp_path)
+    info = rm.create(_Doc(title="Onboarding", body="v1"))
+    rm.update(info.resource_id, _Doc(title="Onboarding", body="v2"))
+    rm.delete(info.resource_id)
+
+    old = rm.get(
+        info.resource_id, revision_id=info.revision_id, include_deleted=True
+    )
+    assert old.data.body == "v1"
+
+
+def test_get_after_soft_delete_still_raises_by_default(tmp_path):
+    """Back-compat: ``include_deleted`` defaults to False, so reading a
+    soft-deleted resource still raises (no behavior change)."""
+    from specstar.types import ResourceIsDeletedError
+
+    rm = _doc_mgr(tmp_path)
+    info = rm.create(_Doc(title="Onboarding", body="v1"))
+    rm.delete(info.resource_id)
+
+    with pytest.raises(ResourceIsDeletedError):
+        rm.get(info.resource_id, revision_id=info.revision_id)
+
+
+def test_list_revisions_returns_ids_and_get_revision_info(tmp_path):
+    """§4: list_revisions() returns revision-id *strings*; rich per-revision
+    metadata (revision_id / created_time / created_by) comes from
+    get_revision_info()."""
+    rm = _doc_mgr(tmp_path)
+    info = rm.create(_Doc(title="t", body="v1"))
+    rm.update(info.resource_id, _Doc(title="t", body="v2"))
+
+    rev_ids = rm.list_revisions(info.resource_id)
+    assert len(rev_ids) == 2
+    assert all(isinstance(rid, str) for rid in rev_ids)
+
+    rev = rm.get_revision_info(info.resource_id, revision_id=rev_ids[0])
+    assert isinstance(rev.revision_id, str)
+    assert rev.created_time is not None
+    assert isinstance(rev.created_by, str)
+
+
+def test_delete_returns_resource_meta_not_revision_info(tmp_path):
+    """§5: delete() returns a ResourceMeta (is_deleted=True) — it has
+    current_revision_id, not a .revision_id."""
+    from specstar.types import ResourceMeta
+
+    rm = _doc_mgr(tmp_path)
+    info = rm.create(_Doc(title="t", body="v1"))
+    meta = rm.delete(info.resource_id)
+
+    assert isinstance(meta, ResourceMeta)
+    assert meta.is_deleted is True
+    assert isinstance(meta.current_revision_id, str)
+    assert not hasattr(meta, "revision_id")

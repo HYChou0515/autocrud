@@ -141,12 +141,15 @@ This makes it easy to compare current and historical states of the same resource
 
 ## 4. List revision history
 
-You can inspect the full revision history of a resource:
+You can inspect the full revision history of a resource. `list_revisions()`
+returns the revision **id strings**; use `get_revision_info()` to fetch the
+metadata (created time, author, …) for each one:
 
 ```python
-revision_list = mgr.list_revisions(info.resource_id)
+revision_ids = mgr.list_revisions(info.resource_id)
 
-for rev in revision_list:
+for revision_id in revision_ids:
+    rev = mgr.get_revision_info(info.resource_id, revision_id=revision_id)
     print(rev.revision_id, rev.created_time, rev.created_by)
 ```
 
@@ -163,16 +166,22 @@ This is useful for:
 Deleting a resource does not have to mean losing it forever.
 
 The resource is not physically removed — a new revision marks it as deleted.
+`delete()` returns the resource's `ResourceMeta` (now with `is_deleted=True`),
+not a `RevisionInfo`:
 
 ```python
-deleted_info = mgr.delete(info.resource_id)
-print(deleted_info.revision_id)
+deleted_meta = mgr.delete(info.resource_id)
+print(deleted_meta.is_deleted, deleted_meta.current_revision_id)
 ```
 
-You can still inspect older revisions if needed:
+You can still inspect older revisions if needed. Reading any revision of a
+soft-deleted resource requires `include_deleted=True` (the same flag
+`get_meta()` accepts); without it `get()` raises `ResourceIsDeletedError`:
 
 ```python
-old_issue = mgr.get(info.resource_id, revision_id=info.revision_id)
+old_issue = mgr.get(
+    info.resource_id, revision_id=info.revision_id, include_deleted=True
+)
 print(old_issue.data)
 ```
 
@@ -266,8 +275,9 @@ old_issue = mgr.get(info.resource_id, revision_id=info.revision_id)
 print("latest issue:", latest_issue.data)
 print("old issue:", old_issue.data)
 
-revision_list = mgr.list_revisions(info.resource_id)
-for rev in revision_list:
+revision_ids = mgr.list_revisions(info.resource_id)
+for revision_id in revision_ids:
+    rev = mgr.get_revision_info(info.resource_id, revision_id=revision_id)
     print("history:", rev.revision_id, rev.created_time, rev.created_by)
 ```
 
