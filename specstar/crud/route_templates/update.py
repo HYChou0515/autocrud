@@ -10,6 +10,8 @@ from specstar.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
     jsonschema_to_json_schema_extra,
+    reject_resource_id_in_body,
+    struct_declares_resource_id,
     struct_to_responses_type,
 )
 from specstar.crud.route_templates.exception_handlers import to_http_exception
@@ -33,6 +35,7 @@ class UpdateRouteTemplate(BaseRouteTemplate):
         router: APIRouter,
     ) -> None:
         resource_type = resource_manager.resource_type
+        _struct_owns_resource_id = struct_declares_resource_id(resource_type)
 
         @router.put(
             f"/{model_name}/{{resource_id}}",
@@ -102,6 +105,8 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                     status_code=400,
                     detail="change_status can only be used with mode 'modify'",
                 )
+            if not _struct_owns_resource_id:
+                reject_resource_id_in_body(body)
             try:
                 _check_precondition(resource_manager, resource_id, expected_revision_id, if_match)
                 # Pass the raw body through so the manager's ``_coerce_data``

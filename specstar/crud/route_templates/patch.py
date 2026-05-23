@@ -10,6 +10,8 @@ from specstar.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
     jsonschema_to_json_schema_extra,
+    reject_resource_id_in_patch,
+    struct_declares_resource_id,
     struct_to_responses_type,
 )
 from specstar.crud.route_templates.exception_handlers import to_http_exception
@@ -71,6 +73,10 @@ class PatchRouteTemplate(BaseRouteTemplate):
         resource_manager: IResourceManager[T],
         router: APIRouter,
     ) -> None:
+        _struct_owns_resource_id = struct_declares_resource_id(
+            resource_manager.resource_type
+        )
+
         @router.patch(
             f"/{model_name}/{{resource_id}}",
             responses=struct_to_responses_type(RevisionInfo),
@@ -151,6 +157,8 @@ class PatchRouteTemplate(BaseRouteTemplate):
                     status_code=400,
                     detail="change_status can only be used with mode 'modify'",
                 )
+            if not _struct_owns_resource_id:
+                reject_resource_id_in_patch(body)
             try:
                 _check_precondition(
                     resource_manager, resource_id, expected_revision_id, if_match

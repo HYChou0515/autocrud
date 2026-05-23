@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING — `resource_id` is rejected in request bodies (was silently
+  dropped).** Sending `resource_id` in a `POST` / `PUT` body, or targeting
+  `/resource_id` in a `PATCH` op, now returns **`422`** instead of `200`.
+  Previously the key was silently ignored and the server-generated id was
+  returned anyway, so clients believed they had set an id they hadn't.
+  `resource_id` is server-generated at creation and immutable thereafter; to
+  customise id generation pass `id_generator=` to `add_model(...)`. The guard
+  steps aside only when the resource Struct legitimately declares its own
+  `resource_id` field.
+
+---
+
 ## [0.10.0] — 2026-05-01
 
 The package is renamed from `autocrud` to **`specstar`**. No public method

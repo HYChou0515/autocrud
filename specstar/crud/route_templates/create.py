@@ -2,14 +2,15 @@ import datetime as dt
 import textwrap
 from typing import TypeVar
 
-import msgspec
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.params import Body
 
 from specstar.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
     jsonschema_to_json_schema_extra,
+    reject_resource_id_in_body,
+    struct_declares_resource_id,
     struct_to_responses_type,
 )
 from specstar.crud.route_templates.exception_handlers import to_http_exception
@@ -39,13 +40,7 @@ class CreateRouteTemplate(BaseRouteTemplate):
         # (rare). This avoids the previous silent-drop behavior where a
         # client thought they'd set the id but the server generated a
         # different one anyway.
-        try:
-            _struct_field_names = {
-                f.name for f in msgspec.structs.fields(resource_type)
-            }
-        except TypeError:
-            _struct_field_names = set()
-        _reject_resource_id_in_body = "resource_id" not in _struct_field_names
+        _struct_owns_resource_id = struct_declares_resource_id(resource_type)
 
         @router.post(
             f"/{model_name}",
@@ -81,20 +76,8 @@ class CreateRouteTemplate(BaseRouteTemplate):
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
-            if (
-                _reject_resource_id_in_body
-                and isinstance(body, dict)
-                and "resource_id" in body
-            ):
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        "`resource_id` cannot be supplied in the POST body — "
-                        "the server always generates it. To customise id "
-                        "generation, pass `id_generator=` when calling "
-                        "`spec.add_model(...)`."
-                    ),
-                )
+            if not _struct_owns_resource_id:
+                reject_resource_id_in_body(body)
             try:
                 # Pass the raw body through so the manager's ``_coerce_data``
                 # decorator can apply ``forbid_unknown_fields`` checks before

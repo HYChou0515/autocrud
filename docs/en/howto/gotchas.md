@@ -87,16 +87,23 @@ spec.configure(forbid_unknown_fields=True)
 With it on, unknown fields return `422`. See [API
 conventions § Strictness](./api-conventions.md#strictness-unknown-fields-on-write).
 
-### `POST` with a client-supplied `resource_id` is silently ignored
+### `resource_id` cannot be set through the request body
 
 ```
-POST /note  {"title": "a", "resource_id": "my-id"}
-→ 200 with resource_id = "note:<server-generated-uuid>"
+POST /note  {"title": "a", "resource_id": "my-id"}   # 422
+PUT /note/<id>  {"title": "a", "resource_id": "x"}   # 422
+PATCH /note/<id>  [{"op":"replace","path":"/resource_id","value":"x"}]  # 422
 ```
 
-The server always generates the id. If you need that loud-failure
-behavior, enable `forbid_unknown_fields=True` — `resource_id` is then
-rejected as an unknown field with `422`.
+`resource_id` is server-generated at creation and immutable afterwards, so
+it never belongs in `POST` / `PUT` / `PATCH` bodies. SpecStar rejects it with
+`422` rather than silently dropping it (the previous behavior — see
+[CHANGELOG](https://github.com/HYChou0515/specstar/blob/master/CHANGELOG.md)).
+To customise how ids are generated, pass `id_generator=` to
+`spec.add_model(...)`.
+
+The one exception: if your Struct *legitimately* declares a field named
+`resource_id`, the guard steps aside and treats it as ordinary data.
 
 ### `PUT` is full-replace, not upsert
 

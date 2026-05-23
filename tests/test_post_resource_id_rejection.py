@@ -60,3 +60,45 @@ def test_struct_with_legitimate_resource_id_field_still_allowed():
         json={"resource_id": "user-defined-id", "note": "hi"},
     )
     assert resp.status_code == 200
+
+
+def _create_note(client: TestClient) -> str:
+    resp = client.post("/note", json={"title": "a"})
+    assert resp.status_code == 200
+    return resp.json()["resource_id"]
+
+
+def test_put_with_resource_id_in_body_rejected_with_422():
+    client = _client_for(Note)
+    rid = _create_note(client)
+    resp = client.put(f"/note/{rid}", json={"title": "b", "resource_id": "x"})
+    assert resp.status_code == 422
+    assert "resource_id" in resp.json()["detail"]
+
+
+def test_put_without_resource_id_still_succeeds():
+    client = _client_for(Note)
+    rid = _create_note(client)
+    resp = client.put(f"/note/{rid}", json={"title": "b"})
+    assert resp.status_code == 200
+
+
+def test_patch_targeting_resource_id_rejected_with_422():
+    client = _client_for(Note)
+    rid = _create_note(client)
+    resp = client.patch(
+        f"/note/{rid}",
+        json=[{"op": "replace", "path": "/resource_id", "value": "x"}],
+    )
+    assert resp.status_code == 422
+    assert "resource_id" in resp.json()["detail"]
+
+
+def test_patch_on_other_field_still_succeeds():
+    client = _client_for(Note)
+    rid = _create_note(client)
+    resp = client.patch(
+        f"/note/{rid}",
+        json=[{"op": "replace", "path": "/title", "value": "b"}],
+    )
+    assert resp.status_code == 200

@@ -24,6 +24,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TypeVar
 
+import msgspec
 from fastapi import APIRouter, HTTPException
 
 from specstar.crud.route_templates.dependency_provider import DependencyProvider
@@ -64,10 +65,25 @@ __all__ = [
     "jsonschema_to_json_schema_extra",
     "jsonschema_to_openapi",
     "raise_unique_conflict",
+    "reject_resource_id_in_body",
+    "reject_resource_id_in_patch",
+    "struct_declares_resource_id",
     "struct_to_responses_type",
 ]
 
 T = TypeVar("T")
+
+# ``resource_id`` is part of the server-generated meta, never resource data.
+# A client that puts it in a create/replace body or a patch op thinks it is
+# choosing/changing the id, but the server owns it — so we fail loudly rather
+# than silently dropping it. The "server always generates" wording is relied
+# on by tests; keep it when editing.
+RESOURCE_ID_IN_BODY_DETAIL = (
+    "`resource_id` cannot be supplied in the request body — the server "
+    "always generates it at creation and it is immutable thereafter. "
+    "To customise id generation, pass `id_generator=` when calling "
+    "`spec.add_model(...)`."
+)
 
 
 def raise_unique_conflict(e: UniqueConstraintError) -> None:
@@ -80,6 +96,48 @@ def raise_unique_conflict(e: UniqueConstraintError) -> None:
             "conflicting_resource_id": e.conflicting_resource_id,
         },
     )
+
+
+def struct_declares_resource_id(resource_type) -> bool:
+    """Return ``True`` if the resource Struct declares its own ``resource_id``
+    field.
+
+    In that (rare) case a body-level ``resource_id`` is legitimate data rather
+    than an attempt to set the server-managed identity, so the rejection guards
+    below should step aside.
+    """
+    try:
+        return any(
+            f.name == "resource_id" for f in msgspec.structs.fields(resource_type)
+        )
+    except TypeError:
+        return False
+
+
+def reject_resource_id_in_body(body) -> None:
+    """Reject a create/replace body that carries ``resource_id`` with HTTP 422.
+
+    Call only when the Struct does not declare a ``resource_id`` field (see
+    :func:`struct_declares_resource_id`).
+    """
+    if isinstance(body, dict) and "resource_id" in body:
+        raise HTTPException(status_code=422, detail=RESOURCE_ID_IN_BODY_DETAIL)
+
+
+def reject_resource_id_in_patch(body) -> None:
+    """Reject a JSON Patch body whose operations target ``/resource_id``.
+
+    The patch analogue of :func:`reject_resource_id_in_body`: a client cannot
+    rewrite the server-managed identity through a patch op either. Call only
+    when the Struct does not declare a ``resource_id`` field.
+    """
+    if not isinstance(body, list):
+        return
+    for op in body:
+        if isinstance(op, dict) and op.get("path") == "/resource_id":
+            raise HTTPException(
+                status_code=422, detail=RESOURCE_ID_IN_BODY_DETAIL
+            )
 
 
 class IRouteTemplate(ABC):
