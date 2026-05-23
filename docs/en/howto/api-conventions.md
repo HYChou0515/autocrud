@@ -191,6 +191,42 @@ Route templates typically call `get_meta(...)` first, so `include_deleted` is a 
 
 ---
 
+## PATCH: two flavors
+
+`PATCH /{model}/{resource_id}` accepts **both** standard REST patch formats on
+the same endpoint:
+
+| Body shape | Standard | Meaning |
+|------------|----------|---------|
+| JSON **array** of ops | RFC 6902 (JSON Patch) | `[{"op":"replace","path":"/qty","value":50}]` |
+| JSON **object** | RFC 7386 (JSON Merge Patch) | `{"qty": 50}` — partial update; `null` deletes a field |
+
+Disambiguation:
+
+* If you send an explicit `Content-Type` it wins —
+  `application/json-patch+json` (6902) or `application/merge-patch+json` (7386).
+* Otherwise the **body shape** decides: array → 6902, object → 7386. The two
+  are structurally disjoint for object resources, so there's no ambiguity.
+
+The intuitive partial update (`PATCH {"qty": 50}`) therefore "just works" as a
+merge patch. A `PUT` remains a full replacement of the whole resource.
+
+Programmatically, both flavors are first-class manager operations — pass a
+`jsonpatch.JsonPatch` (6902) or a `MergePatch` (7386) to
+`ResourceManager.patch()` / `.modify()`:
+
+```python
+from specstar import MergePatch
+
+mgr.patch(rid, MergePatch({"qty": 50}))   # merge: keep other fields; null deletes
+```
+
+> A single stray RFC 6902 op sent as an object (e.g. `{"op": "replace", ...}`
+> without the surrounding array) returns `422` with a hint, rather than being
+> silently merged.
+
+---
+
 ## Revisions and mutability
 
 SpecStar has two update modes with different revision semantics:

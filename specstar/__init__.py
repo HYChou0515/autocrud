@@ -22,9 +22,9 @@ from specstar.types import (
     Embedding,
     IConstraintChecker,
     IValidator,
-    ValidationError,
     Job,
     JobRedirectInfo,
+    MergePatch,
     OnDelete,
     OnDuplicate,
     Ref,
@@ -33,6 +33,7 @@ from specstar.types import (
     SearchedResource,
     TaskStatus,
     Unique,
+    ValidationError,
     Vector,
 )
 
@@ -56,6 +57,7 @@ __all__ = [
     "Job",
     "JobRedirectInfo",
     "LoadStats",
+    "MergePatch",
     "OnDelete",
     "OnDuplicate",
     "QB",

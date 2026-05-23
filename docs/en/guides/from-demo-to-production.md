@@ -135,7 +135,39 @@ interactive admin action.
 
 ---
 
-## 5. Production checklist
+## 5. Harden permissive defaults
+
+SpecStar's defaults favor flexibility. A few are worth tightening for an
+internal / production system, gathered here instead of scattered across pages:
+
+```python
+spec.configure(
+    forbid_unknown_fields=True,   # reject typo'd / unknown fields with 422
+                                  # instead of silently dropping them
+    default_user="svc",           # populate created_by/updated_by; or supply a real get_user
+)
+```
+
+Then, outside `configure()`:
+
+* **List page size** — set the `SPECSTAR_DEFAULT_QUERY_LIMIT` environment
+  variable to a finite number. The default is effectively unlimited, so one
+  `GET /{model}` can pull an entire table into memory. To scan everything
+  safely, use `mgr.iter_all(...)` or page on the `X-Has-More` response header
+  (add `?with_total=true` for an `X-Total-Count` header).
+* **Permanent delete** — lock `DELETE /{model}/{id}/permanently` behind
+  stricter permissions. It is **irreversible**, unlike soft delete + restore,
+  and the route differs from soft delete only by the `/permanently` suffix.
+* **Audit fields** — confirm `created_by` / `updated_by` are populated for real
+  users. `configure(default_user=...)` (or a real `get_user` dependency) wires
+  the HTTP user; `add_model(default_user=...)` overrides it for one model. A
+  real `get_user` always wins. Without either, writes record `"anonymous"`.
+
+If you start without these, SpecStar emits a one-time `SpecStarWarning` for the
+unset query limit and for `forbid_unknown_fields` being off — silence it via the
+standard `warnings` filters once you've made a deliberate choice.
+
+## 6. Production checklist
 
 Before calling a system production-ready, verify that:
 

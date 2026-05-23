@@ -359,12 +359,18 @@ class ListRouteTemplate(BaseRouteTemplate):
                 query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
 
+                # Fetch one extra row than requested so we can report whether
+                # more results exist beyond this page without a count query.
+                probe = msgspec.structs.replace(query, limit=query.limit + 1)
                 with resource_manager.using(current_user, current_time):
                     results = resource_manager.list_resources(
-                        query,
+                        probe,
                         returns=returns,
                         partial=fields,
                     )
+                has_more = len(results) > query.limit
+                if has_more:
+                    results = results[: query.limit]
 
                 # Map SearchedResource back to FullResourceResponse for API compat
                 responses = []
@@ -376,7 +382,22 @@ class ListRouteTemplate(BaseRouteTemplate):
                             meta=item.meta,  # ty:ignore[invalid-argument-type]
                         )
                     )
-                return MsgspecResponse(responses)
+                # Truncation is never silent: X-Has-More is always present;
+                # X-Total-Count is opt-in (it costs an extra count query).
+                headers = {"X-Has-More": "true" if has_more else "false"}
+                if request.query_params.get("with_total", "").lower() in (
+                    "true",
+                    "1",
+                    "yes",
+                ):
+                    count_query = msgspec.structs.replace(
+                        query, limit=2**63 - 1, offset=0
+                    )
+                    with resource_manager.using(current_user, current_time):
+                        headers["X-Total-Count"] = str(
+                            resource_manager.count_resources(count_query)
+                        )
+                return MsgspecResponse(responses, headers=headers)
             except Exception as e:
                 raise to_http_exception(e)
 

@@ -16,9 +16,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `get_meta(include_deleted=...)`. Defaults to `False`, so existing behavior is
   unchanged. Fixes the Data Versioning quickstart, which showed inspecting an
   old revision after a soft delete.
+- **RFC 7386 JSON Merge Patch support.** `PATCH` now accepts a partial-update
+  object (e.g. `{"qty": 50}`) in addition to RFC 6902 JSON Patch (the op array).
+  The same endpoint disambiguates by explicit `Content-Type`
+  (`application/merge-patch+json` vs `application/json-patch+json`) or, for a
+  generic `application/json`, by body shape (object → merge, array → ops).
+  Previously a partial object returned `400`; this is additive (error → success).
+  Programmatically, `ResourceManager.patch()` and `.modify()` now accept a
+  `MergePatch(...)` (new, exported from `specstar`) alongside a `JsonPatch`,
+  mirroring the RFC 6902 path — the HTTP route delegates to these.
+- **`ResourceManager.iter_all(query=None, *, batch_size=1000)`** yields every
+  matching resource by paging internally, so a full scan can never silently
+  truncate (unlike a `search`/list bounded by `limit`).
+- **List truncation signals on `GET /{model}`**: an always-present `X-Has-More`
+  header (computed cheaply via a limit+1 probe) and an opt-in `X-Total-Count`
+  header (`?with_total=true`). The response body is unchanged (a bare array).
+- **`SpecStarWarning`** advisory category, emitted once at `apply()` when
+  permissive defaults are left in place: `forbid_unknown_fields` off, or no
+  `SPECSTAR_DEFAULT_QUERY_LIMIT` configured. Silence via standard `warnings`
+  filters.
+- **Production Hardening guide** section consolidating the above into one
+  copy-pasteable baseline (`docs/en/guides/from-demo-to-production.md`).
 
 ### Changed
 
+- **`add_model(default_user=...)` now propagates to HTTP audit fields.**
+  Resources created over HTTP for that model record the per-model
+  `created_by` / `updated_by` instead of `"anonymous"`. Precedence: a real
+  `get_user` (authentication) > per-model `default_user` > global
+  `configure(default_user=...)` > `"anonymous"`. Only affects apps that set a
+  per-model `default_user` (others are unchanged).
 - **BREAKING — `resource_id` is rejected in request bodies (was silently
   dropped).** Sending `resource_id` in a `POST` / `PUT` body, or targeting
   `/resource_id` in a `PATCH` op, now returns **`422`** instead of `200`.

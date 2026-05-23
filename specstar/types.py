@@ -867,6 +867,28 @@ class IMigration(ABC, Generic[T]):
         ...
 
 
+class MergePatch(dict):
+    """An RFC 7386 JSON Merge Patch payload.
+
+    A thin ``dict`` marker so :meth:`IResourceManager.patch` /
+    :meth:`IResourceManager.modify` can tell a *merge patch* (partial update;
+    ``null`` deletes a field) apart from full replacement data — mirroring how
+    ``jsonpatch.JsonPatch`` marks an RFC 6902 operation list. Construct it
+    around the changed fields::
+
+        mgr.patch(rid, MergePatch({"qty": 50}))   # merge, keep other fields
+    """
+
+    @property
+    def patch(self) -> dict:
+        """The merge-patch payload.
+
+        Mirrors ``jsonpatch.JsonPatch.patch`` so the Patch event payload (which
+        reads ``patch_data.patch``) resolves uniformly for both flavors.
+        """
+        return dict(self)
+
+
 class IResourceManager(ABC, Generic[T]):
     """Interface for managing versioned resources with full lifecycle support.
 
@@ -1409,7 +1431,7 @@ class IResourceManager(ABC, Generic[T]):
     def modify(
         self,
         resource_id: str,
-        data: T | JsonPatch | UnsetType = UNSET,
+        data: "T | JsonPatch | MergePatch | UnsetType" = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
         *,
         user: str | UnsetType = UNSET,
@@ -1432,12 +1454,12 @@ class IResourceManager(ABC, Generic[T]):
     def patch(
         self,
         resource_id: str,
-        patch_data: JsonPatch,
+        patch_data: "JsonPatch | MergePatch",
         *,
         user: str | UnsetType = UNSET,
         now: dt.datetime | UnsetType = UNSET,
     ) -> RevisionInfo:
-        """Apply RFC 6902 JSON Patch operations to the resource.
+        """Apply an RFC 6902 JSON Patch or RFC 7386 Merge Patch to the resource.
 
         Args:
             resource_id (str): the id of the resource to patch.
@@ -1808,6 +1830,14 @@ class IResourceManager(ABC, Generic[T]):
 
 class PermissionDeniedError(Exception):
     pass
+
+
+class SpecStarWarning(UserWarning):
+    """Category for SpecStar advisory warnings (e.g. permissive defaults).
+
+    Suppress with the standard ``warnings`` machinery, e.g.
+    ``warnings.filterwarnings("ignore", category=SpecStarWarning)``.
+    """
 
 
 class ResourceNotFoundError(Exception):
