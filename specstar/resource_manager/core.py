@@ -883,10 +883,19 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 f"migration must be Schema, IMigration, or None, got {type(migration).__name__}"
             )
 
+        # When no default is configured we fall back to the same values an
+        # unauthenticated HTTP request records ("anonymous" + UTC now), so a
+        # programmatic ``create``/``update`` without a ``using()`` context
+        # behaves like the HTTP path instead of leaking a raw ``LookupError``.
+        # In strict mode we leave the context defaultless so a missing context
+        # raises ``MissingOperationContextError`` (see _validate_write_context).
         self.user_ctx: Ctx[str]
         self.now_ctx: Ctx[dt.datetime]
         if default_user is UNSET:
-            self.user_ctx = Ctx("user_ctx", strict_type=str)
+            if strict_operation_context:
+                self.user_ctx = Ctx("user_ctx", strict_type=str)
+            else:
+                self.user_ctx = Ctx("user_ctx", strict_type=str, default="anonymous")
         elif isinstance(default_user, str):
             self.user_ctx = Ctx("user_ctx", strict_type=str, default=default_user)
         else:
@@ -895,11 +904,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 strict_type=str,
                 default_factory=default_user,
             )
-        if default_now is UNSET:
+        if default_now is not UNSET:
+            self.now_ctx = Ctx(
+                "now_ctx", strict_type=dt.datetime, default_factory=default_now
+            )
+        elif strict_operation_context:
             self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
         else:
             self.now_ctx = Ctx(
-                "now_ctx", strict_type=dt.datetime, default_factory=default_now
+                "now_ctx",
+                strict_type=dt.datetime,
+                default_factory=lambda: dt.datetime.now(dt.timezone.utc),
             )
         self.id_ctx = Ctx[str | UnsetType]("id_ctx", default=UNSET)
         self._resource_type = resource_type

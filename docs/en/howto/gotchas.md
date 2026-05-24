@@ -192,16 +192,26 @@ spec.configure(admin="/admin")  # username "/admin" — almost certainly NOT wha
 
 The web admin UI is the separate TypeScript app under `wizard/`.
 
-### Programmatic `mgr.create/update/migrate/switch` need an operation context
+### Programmatic `mgr.create/update/...` use `anonymous` + `now()` if you don't set a user
 
-Without one, they raise `MissingOperationContextError` (which surfaces as
-a bare `LookupError` for the underlying `ContextVar`). Either:
+By default (non-strict) a programmatic write with no operation context records
+the same values an unauthenticated HTTP request would — `created_by="anonymous"`
+and the current UTC time — so it "just works". To attribute writes to a real
+user, set a default or wrap the call:
 
 ```python
 spec.configure(default_user="me", default_now=datetime.utcnow)
 # or, per-call
 with mgr.using(user="me", now=datetime.utcnow()):
     mgr.create(...)
+```
+
+If you'd rather a missing context be a hard error (no silent `anonymous`), opt
+into strict mode — then `create`/`update`/`migrate`/`switch` without a context
+raise `MissingOperationContextError`:
+
+```python
+spec.configure(strict_operation_context=True)
 ```
 
 ### `MigrateRouteTemplate` is opt-in

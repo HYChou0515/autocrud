@@ -145,12 +145,14 @@ class TestSpecStar:
         assert info.created_by == "system"
 
     def test_add_model_without_default_user(self):
+        # Non-strict (default): a missing user falls back to "anonymous"
+        # (now is supplied here via the context).
         spec = SpecStar()
         spec.add_model(User)
         mgr = spec.get_resource_manager(User)
-        with pytest.raises(LookupError):
-            with mgr.meta_provide(now=dt.datetime.now()):
-                mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        with mgr.meta_provide(now=dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.created_by == "anonymous"
 
     @pytest.mark.parametrize("level", ["spec", "model"])
     def test_add_model_with_default_now(self, level: str):
@@ -166,12 +168,15 @@ class TestSpecStar:
         assert info.created_time == dt.datetime(2023, 1, 1)
 
     def test_add_model_without_default_now(self):
+        # Non-strict (default): a missing now falls back to now()
+        # (user is supplied here via the context).
         spec = SpecStar()
         spec.add_model(User)
         mgr = spec.get_resource_manager(User)
-        with pytest.raises(LookupError):
-            with mgr.meta_provide("system"):
-                mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        with mgr.meta_provide("system"):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.created_by == "system"
+        assert isinstance(info.created_time, dt.datetime)
 
     def test_add_model_with_default_user_and_now(self):
         spec = SpecStar()

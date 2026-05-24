@@ -40,6 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Programmatic writes without an operation context now fall back to
+  `anonymous` + `now()` (non-strict mode).** `ResourceManager.create()` /
+  `update()` / `modify()` / etc. called without a `using()` context and with no
+  configured `default_user` / `default_now` previously leaked a raw
+  `LookupError`; they now record `created_by="anonymous"` and the current UTC
+  time — the same values an unauthenticated HTTP request produces. Set
+  `strict_operation_context=True` to restore the hard failure (a friendly
+  `MissingOperationContextError`).
 - **`add_model(default_user=...)` now propagates to HTTP audit fields.**
   Resources created over HTTP for that model record the per-model
   `created_by` / `updated_by` instead of `"anonymous"`. Precedence: a real
