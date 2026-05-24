@@ -3,6 +3,7 @@ import datetime as dt
 import inspect
 import io
 import json
+import logging
 import threading
 import traceback
 import warnings
@@ -162,6 +163,8 @@ from specstar.util.type_utils import (
 )
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 class IndexedValueExtractor:
@@ -2053,21 +2056,42 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # 5. Execute — single-threaded or parallel
         worker_num = self._default_worker_num(len(metas))
         results: list[SearchedResource[T]] = []
+        skipped_ids: list[str] = []
 
         if worker_num <= 1:
             for meta in metas:
                 item = _fetch_one(meta)
                 if item is not None:
                     results.append(item)
+                else:
+                    skipped_ids.append(meta.resource_id)
         else:
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=worker_num,
             ) as executor:
-                futures = [executor.submit(_fetch_one, meta) for meta in metas]
+                futures = {executor.submit(_fetch_one, meta): meta for meta in metas}
                 for future in futures:
                     item = future.result()
                     if item is not None:
                         results.append(item)
+                    else:
+                        skipped_ids.append(futures[future].resource_id)
+
+        # A matched resource whose data can't be fetched/decoded is skipped here
+        # (defensive — one bad row shouldn't 500 the whole page), but ``count``
+        # still counts it, so the two endpoints diverge. Make that divergence
+        # non-silent: most often it means an incompatible schema change at the
+        # same version. See the schema-migration guide.
+        if skipped_ids:
+            logger.warning(
+                "%s.list: skipped %d undecodable resource(s) that /count still "
+                "counts (e.g. %s). This usually means an incompatible schema "
+                "change without a version bump; migrate or bump the schema "
+                "version. See docs/en/quickstart/schema-migration.md.",
+                self.resource_name,
+                len(skipped_ids),
+                skipped_ids[:5],
+            )
 
         return results
 
