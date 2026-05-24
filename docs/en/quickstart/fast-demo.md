@@ -37,6 +37,24 @@ class Issue(msgspec.Struct):
 
 This schema is enough for SpecStar to understand the resource shape, form fields, and API payloads.
 
+> **Keep your model to domain fields only.** You don't add an `id`, timestamps,
+> author, or version fields — SpecStar tracks these for you and returns them
+> *alongside* your data (in `ResourceMeta` and `RevisionInfo`), never inside the
+> model:
+>
+> - **identity** — `resource_id`, `current_revision_id` / `revision_id` (so no `id` field)
+> - **timestamps** — `created_time`, `updated_time` (no `created_at` / `updated_at`)
+> - **authorship** — `created_by`, `updated_by`
+> - **versioning** — `total_revision_count`, `schema_version`
+> - **soft delete** — `is_deleted`
+>
+> (`resolved_at` above *is* a domain field — it carries business meaning, unlike
+> the framework's automatic `updated_time`.) You get this metadata back in the
+> API response and from `get_meta()` / `list_revisions()`.
+>
+> Read more: [Data model — ResourceMeta vs RevisionInfo](/specstar/concepts/data-model)
+> for the full field list and timestamp semantics.
+
 Why `msgspec`? Check [here](/specstar/concepts/schema).
 
 ## 2. Create the app
