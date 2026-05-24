@@ -19,11 +19,12 @@ An event handler receives an event context object describing:
 A simple handler looks like this:
 
 ```python
-from specstar.resource_manager.events import do
-from specstar.types import EventContext, ResourceAction
+from specstar.events import do
+from specstar.events import EventContextProto
+from specstar.types import ResourceAction
 
 
-def audit_log(context: EventContext) -> None:
+def audit_log(context: EventContextProto) -> None:
     print(context.phase, context.action, context.resource_name)
 
 
@@ -104,7 +105,7 @@ Use it for:
 You can define several handlers in one fluent expression:
 
 ```python
-from specstar.resource_manager.events import do
+from specstar.events import do
 from specstar.types import ResourceAction
 
 
@@ -139,7 +140,7 @@ You can also attach one function to multiple actions by using the grouped action
 ### Audit every write
 
 ```python
-from specstar.resource_manager.events import do
+from specstar.events import do
 from specstar.types import ResourceAction
 
 
@@ -153,10 +154,11 @@ event_handlers = do(audit).on_success(ResourceAction.write)
 ### Block invalid input early
 
 ```python
-from specstar.types import EventContext, ResourceAction
+from specstar.events import EventContextProto
+from specstar.types import ResourceAction
 
 
-def validate_title(context: EventContext) -> None:
+def validate_title(context: EventContextProto) -> None:
     if context.action == ResourceAction.create and not context.data.title.strip():
         raise ValueError("title must not be empty")
 ```
@@ -164,7 +166,7 @@ def validate_title(context: EventContext) -> None:
 ### Log failures
 
 ```python
-from specstar.resource_manager.events import do
+from specstar.events import do
 from specstar.types import ResourceAction
 
 

@@ -52,10 +52,10 @@ words joined by hyphens.
 
 | `model_naming` | `User`     | `BlogPost`   | `URLPath`    | `XMLNode`   |
 |----------------|------------|--------------|--------------|-------------|
-| `"kebab"` *(default)* | `/user`    | `/blog-post` | `/u-r-l-path` | `/x-m-l-node` |
-| `"snake"`      | `/user`    | `/blog_post` | `/u_r_l_path` | `/x_m_l_node` |
-| `"camel"`      | `/user`    | `/blogPost`  | `/uRLPath`   | `/xMLNode`  |
-| `"pascal"`     | `/User`    | `/BlogPost`  | `/URLPath`   | `/XMLNode`  |
+| `"kebab"` *(default)* | `/user`    | `/blog-post` | `/url-path` | `/xml-node` |
+| `"snake"`      | `/user`    | `/blog_post` | `/url_path` | `/xml_node` |
+| `"camel"`      | `/user`    | `/blogPost`  | `/urlPath`   | `/xmlNode`  |
+| `"pascal"`     | `/User`    | `/BlogPost`  | `/UrlPath`   | `/XmlNode`  |
 | `"same"`       | `/User`    | `/BlogPost`  | `/URLPath`   | `/XMLNode`  |
 | callable       | `model_naming=lambda cls: cls.__name__.lower() + "s"` → `/users` |
 

@@ -325,6 +325,20 @@ def classify_partial_fields(
     if not fields:
         return PartialFieldsSpec()
 
+    if any(f.strip().lstrip("/").lower() in ("true", "false") for f in fields):
+        import warnings
+
+        from specstar.types import SpecStarWarning
+
+        warnings.warn(
+            "partial received a boolean-looking value ('true'/'false'). "
+            "`partial` is a slash-path field selector, not a boolean — e.g. "
+            "partial=true selects a (non-existent) field named 'true' and "
+            "clears the section. Use partial=/field paths, or omit it.",
+            SpecStarWarning,
+            stacklevel=2,
+        )
+
     data_fields: list[str] = []
     meta_fields: list[str] = []
     info_fields: list[str] = []

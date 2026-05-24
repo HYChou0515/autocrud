@@ -86,6 +86,36 @@ Examples:
 
 > Note: Any section not listed in `returns` will be returned as `UNSET` (omitted in the serialized output, depending on encoder behavior).
 
+#### Bare objects: `only-*`
+
+`returns=data` still wraps the result in the `{ "data": ... }` envelope. To get
+a **bare, unwrapped** section (a front end that wants a plain object), use a
+single `only-*` value:
+
+* `only-data` → the data object itself, e.g. `{"title": "..."}`
+* `only-meta` → the bare `ResourceMeta`
+* `only-revision_info` (alias `only-revision-info`) → the bare `RevisionInfo`
+
+An `only-*` value **must be used alone** — combining it with any other value
+(e.g. `only-data,meta`) is a **422**, as is an unknown section. `revision-info`
+(hyphen) is accepted as an alias of `revision_info` in the regular list too.
+
+#### Server default: `default_get_returns`
+
+When the client omits `?returns=`, the response shape comes from
+`default_get_returns` (set on `SpecStar(...)` / `configure(...)` /
+`add_model(...)`; accepts a list or comma-string). It defaults to the full
+envelope `data,revision_info,meta`. Set it to `only-data` if your clients
+expect bare objects by default:
+
+```python
+spec.configure(default_get_returns="only-data")  # GET /{model}/{id} → bare data
+```
+
+Leaving it unset emits a one-time `SpecStarWarning` at startup (the envelope is
+the default and surprises front ends); setting it explicitly — to any value,
+including the envelope — silences that.
+
 ---
 
 ## Strictness: unknown fields on write
@@ -188,6 +218,11 @@ SpecStar supports field-level projection through `partial` (or `partial[]` for a
 * If the user passes `field` (no leading slash), SpecStar normalizes it to `/field`.
 
 > `partial` is treated as a structural selector (similar to JSON Pointer style paths), and is passed into `filter_struct_partial()` / `get_partial()`.
+
+> ⚠️ `partial` is **not a boolean**. `partial=true` selects a (non-existent)
+> field literally named `true` and so clears the section to `{}`. Passing a
+> boolean-looking value emits a `SpecStarWarning`. Use field paths
+> (`partial=/name`) or omit it.
 
 ### Prefix routing: project across `data`, `meta`, `revision_info`
 

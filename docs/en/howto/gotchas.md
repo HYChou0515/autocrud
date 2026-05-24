@@ -18,10 +18,19 @@ these are 0.x trade-offs that may sharpen up before 1.0.
 | `GET /user/123` → `{name: "...", email: "..."}` | `GET /user/123` → `{"data": {...}, "revision_info": {...}, "meta": {...}}` |
 
 The envelope is intentional: the same endpoint can return data, revision
-info, and metadata together. To get the bare data only:
+info, and metadata together. To get the bare data **object**:
 
-* `GET /user/123/data` — single-section read, or
-* `GET /user/123?returns=data` — same effect via `returns` selector.
+* `GET /user/123/data`, or
+* `GET /user/123?returns=only-data` — the `only-*` selector unwraps the
+  section. (Plain `?returns=data` still wraps it as `{"data": {...}}`.)
+
+To change the default shape for every GET, set `default_get_returns`
+(e.g. `spec.configure(default_get_returns="only-data")`).
+
+Note the asymmetry: `POST` / `PUT` return a **flat** `RevisionInfo` (top-level
+`resource_id`, `revision_id`, `created_by`, …) — a different shape from this GET
+envelope. A client reads the new id from the flat write response, then reads the
+resource back through the envelope.
 
 See [API conventions](./api-conventions.md#canonical-read-api-get-modelresource_id).
 
@@ -29,7 +38,8 @@ See [API conventions](./api-conventions.md#canonical-read-api-get-modelresource_
 
 `partial` is a **field selector** (slash-prefixed paths), not a boolean.
 `?partial=true` is normalised to the path `/true` which matches no field in
-your struct, so the projector strips data down to an empty object. Use
+your struct, so the projector strips data down to an empty object (a
+boolean-looking `partial` value also emits a `SpecStarWarning`). Use
 slash-prefixed field names instead:
 
 ```
@@ -143,6 +153,49 @@ delete, capture timestamps). If you only care about success, just check
 Distinct from "never existed" `404`. Pass `?include_deleted=true` to
 read them through the same endpoints.
 
+### `Unique()` ignores soft-deleted rows
+
+A `Unique()` constraint only considers **live** resources. After you soft-delete
+a row, its value (SKU, employee id, …) can be reused by a new resource. This is
+often desirable, but surprising if you expected the value to stay reserved.
+Permanently delete (or keep the row) if you need the value held.
+
+---
+
+## Blobs / attachments
+
+### Deleting a resource does **not** delete its blobs
+
+Blobs (`Binary` / `file_id`) are **not** reference-counted or garbage-collected
+on delete, so deleting a resource leaves its uploaded files behind. Do **not**
+naively delete a resource's blobs in an on-delete handler: the same `file_id`
+can be referenced by **other resources, other fields, or older revisions** of
+the same resource (and soft-deleted resources can still be restored). Deleting
+it would corrupt those references.
+
+Safe cleanup is a refcount-aware sweep, not an on-delete hook. Recipe:
+
+```python
+# Run as a periodic / manual GC, never inline on delete.
+# A blob is an orphan only if NO live resource/revision references it.
+def collect_orphan_blobs(manager, *, dry_run=True):
+    referenced: set[str] = set()
+    # 1. gather every file_id referenced by any live revision of any resource
+    for meta in manager.iter_all():                  # all live resources
+        for rev_id in manager.list_revisions(meta.resource_id):
+            data = manager.get_resource_revision(meta.resource_id, rev_id).data
+            referenced |= file_ids_in(data)          # your model-specific extractor
+    # 2. delete blobs that nothing references
+    orphans = [bid for bid in manager.blob_store.list_blobs() if bid not in referenced]
+    if not dry_run:
+        for bid in orphans:
+            manager.blob_store.delete(bid)
+    return orphans
+```
+
+Adapt `file_ids_in(...)` and the blob-store listing to your storage backend;
+both a full revision scan and blob enumeration are required to be correct.
+
 ---
 
 ## Versioning / migration
@@ -231,12 +284,13 @@ The mounted paths follow `model_naming` and are singular —
 
 ## Backup / restore
 
-### `/import` accepts `multipart/form-data` even though `/export` returns raw bytes
+### `/import` accepts both a `multipart` `file` field and a raw body
 
-`GET /{model}/export` streams `application/octet-stream`, but
-`POST /{model}/import` expects `multipart/form-data` with a `file`
-field. Sending the export body raw → `422`. See [Backup &
-Restore](./backup-restore.md#per-model-import) for a `curl` recipe.
+`GET /{model}/export` streams `application/octet-stream`.
+`POST /{model}/import` accepts **either** `multipart/form-data` with a `file`
+field **or** the archive as a raw `application/octet-stream` body — so the
+export bytes round-trip directly (`--data-binary @dump.acbak`). See [Backup &
+Restore](./backup-restore.md#per-model-import) for `curl` recipes.
 
 ---
 
@@ -260,7 +314,8 @@ spec.add_route_template(GraphQLRouteTemplate())
 
 ### Multi-word class names are kebab-cased, not snake-cased
 
-`BlogPost → /blog-post`, `XMLNode → /x-m-l-node`. The default
+`BlogPost → /blog-post`, `XMLNode → /xml-node` (acronyms are treated as one
+word, not split letter-by-letter). The default
 `model_naming="kebab"` is lowercase with hyphens; see [Routes howto §
 `model_naming` reference](./routes.md#model_naming-reference) for a full
 matrix and an example of supplying a callable (e.g. to pluralise).

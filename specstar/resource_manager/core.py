@@ -851,6 +851,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         forbid_unknown_fields: bool = False,
         on_decode_error: OnDecodeError = OnDecodeError.skip,
         on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn,
+        default_get_returns: "str | list[str]" = "data,revision_info,meta",
         encoder_registry: "Any | None" = None,
         vector_encoders: "dict[str, str | Callable] | None" = None,
     ):
@@ -877,6 +878,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._forbid_unknown_fields = forbid_unknown_fields
         self._on_decode_error = OnDecodeError(on_decode_error)
         self._on_unindexed_query = OnUnindexedQuery(on_unindexed_query)
+        self._default_get_returns = (
+            ",".join(default_get_returns)
+            if isinstance(default_get_returns, (list, tuple))
+            else default_get_returns
+        )
         self._warned_lazy_migration = False
 
         # ── Resolve Schema vs legacy migration/validator ──────────────
@@ -1188,6 +1194,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @property
     def resource_type(self):
         return self._resource_type
+
+    @property
+    def default_get_returns(self) -> str:
+        """Default value for the GET ``returns`` query param (the response shape
+        when the client omits ``?returns=``). See ``OnUnindexedQuery`` siblings."""
+        return self._default_get_returns
 
     @property
     def schema_version(self) -> str:
