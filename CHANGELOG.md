@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.2] — 2026-05-24
+
+
+### Added
+
+- Production-hardening pass — audit fields, PATCH 7386, safety nets
+- Programmatic writes without a context fall back to anonymous + now()
+
 
 ## [0.11.1] — 2026-05-23
 
