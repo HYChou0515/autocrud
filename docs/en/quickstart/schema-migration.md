@@ -65,6 +65,14 @@ These include:
 - narrowing Union / Literal types (removing variants)
 - changing field types
 
+> **Don't make a breaking change without bumping the schema version.** If you
+> alter the struct incompatibly but keep the **same** version, existing rows can
+> no longer be decoded. The list endpoints defensively **skip** such rows (one
+> bad row won't fail the whole page), but `/{model}/count` still counts them —
+> so `count` and the list disagree. SpecStar logs a warning when this happens
+> (`… skipped N undecodable resource(s) that /count still counts …`); the fix is
+> to give the new shape a new version and a migration step, as below.
+
 ---
 
 ## 3. Define versioned schemas

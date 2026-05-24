@@ -31,6 +31,15 @@ Each section can be **included or omitted** via `returns`.
 > **List endpoints** (`GET /{model}`) wrap each item in the same envelope and
 > return an array — the bare resource body is *not* returned directly.
 
+### Detecting truncation on lists
+
+`GET /{model}` always sets an **`X-Has-More`** response header (`true`/`false`)
+so a page is never silently truncated, regardless of the configured page size.
+Add **`?with_total=true`** for an **`X-Total-Count`** header (an extra count
+query, hence opt-in). For a guaranteed full scan in code, use
+`ResourceManager.iter_all(query=None, *, batch_size=1000)`, which pages through
+every match internally instead of relying on a single `limit`.
+
 ### The three id fields
 
 A response carries three distinct identifiers, which serve different purposes:
