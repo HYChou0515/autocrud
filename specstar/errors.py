@@ -16,6 +16,7 @@ from specstar.types import (
     RevisionNotMigratedError,
     SchemaConflictError,
     SpecStarWarning,
+    UnindexedQueryError,
     UniqueConstraintError,
     ValidationError,
 )
@@ -37,5 +38,6 @@ __all__ = [
     "SchemaConflictError",
     "SpecStarWarning",
     "UniqueConstraintError",
+    "UnindexedQueryError",
     "ValidationError",
 ]

@@ -101,6 +101,26 @@ class OnDecodeError(StrEnum):
     model type — i.e. ``Resource[UndecodableData]`` / ``SearchedResource[...]``."""
 
 
+class OnUnindexedQuery(StrEnum):
+    """What to do when a search filters on a field that is neither an indexed
+    field nor a ``ResourceMeta`` attribute.
+
+    Such a field is never written to ``indexed_data``, so the condition can
+    never match — the query silently under-returns (often "returns nothing").
+    This policy makes that footgun visible. Honoured by the ``ResourceManager``
+    search paths, so HTTP routes behave identically to programmatic calls.
+    """
+
+    warn = "warn"
+    """Emit a :class:`SpecStarWarning` naming the offending field(s) and run the
+    query anyway (it will under-return). Suppress with the standard ``warnings``
+    machinery. (default)"""
+
+    error = "error"
+    """Raise :class:`UnindexedQueryError` naming the offending field(s) instead
+    of running a query that can only under-return."""
+
+
 class OnDuplicate(StrEnum):
     """Strategy for handling duplicate resource IDs during incremental load."""
 
@@ -1877,13 +1897,32 @@ class ResourceDecodeError(Exception):
 
     Raised by read paths when ``on_decode_error=OnDecodeError.error``. Usually
     means an incompatible schema change without a version bump (the persisted
-    bytes no longer fit the Struct). Maps to HTTP 500.
+    bytes no longer fit the Struct). Maps to HTTP 422.
     """
 
     def __init__(self, resource_id: str, reason: str = ""):
         self.resource_id = resource_id
         self.reason = reason
         super().__init__(f"Cannot decode resource {resource_id!r}: {reason}")
+
+
+class UnindexedQueryError(Exception):
+    """A search filtered on a field that is neither indexed nor a
+    ``ResourceMeta`` attribute, so the condition can never match.
+
+    Raised by search paths when ``on_unindexed_query=OnUnindexedQuery.error``.
+    Maps to HTTP 400 (the query references a field that cannot be filtered).
+    """
+
+    def __init__(self, fields: list[str], indexed: list[str]):
+        self.fields = list(fields)
+        self.indexed = list(indexed)
+        super().__init__(
+            f"Query filters on non-indexed field(s) {self.fields!r}; such "
+            f"conditions match nothing. Indexed fields: {self.indexed!r}. Add "
+            f"them via indexed_fields=/add_indexed_field(), or filter on a "
+            f"ResourceMeta attribute."
+        )
 
 
 class SpecStarWarning(UserWarning):

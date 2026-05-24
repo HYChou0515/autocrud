@@ -96,6 +96,7 @@ from specstar.types import (
     OnDecodeError,
     OnDelete,
     OnDuplicate,
+    OnUnindexedQuery,
     Resource,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
@@ -287,6 +288,7 @@ class SpecStar:
         structured_errors: bool = False,
         validate_refs: bool = False,
         on_decode_error: OnDecodeError = OnDecodeError.skip,
+        on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -316,6 +318,7 @@ class SpecStar:
         self.strict_operation_context = False
         self.forbid_unknown_fields = False
         self.on_decode_error: OnDecodeError = OnDecodeError.skip
+        self.on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn
         self.structured_errors = False
         self.validate_refs = False
         self._pending_create_actions: list[_PendingCreateAction] = []
@@ -347,6 +350,7 @@ class SpecStar:
             structured_errors=structured_errors,
             validate_refs=validate_refs,
             on_decode_error=on_decode_error,
+            on_unindexed_query=on_unindexed_query,
         )
 
     def _apply_configuration(
@@ -375,6 +379,7 @@ class SpecStar:
         structured_errors: bool | UnsetType = UNSET,
         validate_refs: bool | UnsetType = UNSET,
         on_decode_error: OnDecodeError | UnsetType = UNSET,
+        on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
     ) -> None:
         """Apply configuration settings to the SpecStar instance.
 
@@ -538,6 +543,10 @@ class SpecStar:
         if on_decode_error is not UNSET:
             self.on_decode_error = OnDecodeError(on_decode_error)
 
+        # Update on_unindexed_query
+        if on_unindexed_query is not UNSET:
+            self.on_unindexed_query = OnUnindexedQuery(on_unindexed_query)
+
         # Update structured_errors
         if structured_errors is not UNSET:
             self.structured_errors = structured_errors
@@ -571,6 +580,7 @@ class SpecStar:
         structured_errors: bool | UnsetType = UNSET,
         validate_refs: bool | UnsetType = UNSET,
         on_decode_error: OnDecodeError | UnsetType = UNSET,
+        on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
@@ -678,6 +688,7 @@ class SpecStar:
             structured_errors=structured_errors,
             validate_refs=validate_refs,
             on_decode_error=on_decode_error,
+            on_unindexed_query=on_unindexed_query,
         )
 
         # Register vector encoders into the registry
@@ -1112,6 +1123,7 @@ class SpecStar:
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
         vector_encoders: dict[str, str | Callable] | None = None,
         on_decode_error: OnDecodeError | UnsetType = UNSET,
+        on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
     ) -> None:
         """Register a resource model (or `Schema`) and create its `ResourceManager`.
 
@@ -1430,6 +1442,11 @@ class SpecStar:
                 on_decode_error
                 if on_decode_error is not UNSET
                 else self.on_decode_error
+            ),
+            on_unindexed_query=(
+                on_unindexed_query
+                if on_unindexed_query is not UNSET
+                else self.on_unindexed_query
             ),
             encoder_registry=self.encoder_registry,
             vector_encoders=vector_encoders,

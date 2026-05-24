@@ -146,6 +146,35 @@ Under `raw`, the envelope is unchanged (`meta` / `revision_info`, including
 
 ---
 
+## Filtering on a non-indexed field: `on_unindexed_query`
+
+Only **indexed** fields (and `ResourceMeta` attributes such as `created_by`,
+`is_deleted`, `created_time`) live in the searchable `indexed_data`. A filter
+condition on any other field can never match, so the query silently
+**under-returns** — usually "returns nothing". This is a common footgun, so the
+behavior is configurable via `SpecStar(on_unindexed_query=...)` /
+`spec.configure(on_unindexed_query=...)` (or per-model `add_model(...,
+on_unindexed_query=...)`). Like `on_decode_error`, the policy lives in the
+`ResourceManager`, so search/list/count over HTTP behave identically to
+programmatic calls:
+
+| Policy | Behavior when a condition names a non-indexed field |
+|--------|------------------------------------------------------|
+| `warn` (default) | emit a `SpecStarWarning` naming the field(s), then run the query anyway (it under-returns) |
+| `error` | raise `UnindexedQueryError` → **HTTP 400**, naming the field(s) and listing the indexed ones |
+
+```python
+spec.add_model(Doc, indexed_fields=[("name", str)])
+# filtering on "note" (not indexed) → SpecStarWarning by default, or HTTP 400
+# under on_unindexed_query="error". Index it, or filter on a meta attribute.
+```
+
+Only filter conditions are checked; vector-distance conditions have their own
+validation. The default `warn` is non-breaking — it only adds a warning, the
+result set is unchanged.
+
+---
+
 ## Field projection: `partial` / `partial[]`
 
 SpecStar supports field-level projection through `partial` (or `partial[]` for axios / repeated-query compatibility).

@@ -122,6 +122,7 @@ from specstar.types import (
     MergePatch,
     OnDecodeError,
     OnDuplicate,
+    OnUnindexedQuery,
     PermissionDeniedError,
     RawResource,
     Resource,
@@ -136,7 +137,9 @@ from specstar.types import (
     RevisionStatus,
     SearchedResource,
     SpecialIndex,
+    SpecStarWarning,
     UndecodableData,
+    UnindexedQueryError,
     ValidationError,
 )
 
@@ -845,6 +848,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         strict_operation_context: bool = False,
         forbid_unknown_fields: bool = False,
         on_decode_error: OnDecodeError = OnDecodeError.skip,
+        on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn,
         encoder_registry: "Any | None" = None,
         vector_encoders: "dict[str, str | Callable] | None" = None,
     ):
@@ -870,6 +874,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._strict_operation_context = strict_operation_context
         self._forbid_unknown_fields = forbid_unknown_fields
         self._on_decode_error = OnDecodeError(on_decode_error)
+        self._on_unindexed_query = OnUnindexedQuery(on_unindexed_query)
         self._warned_lazy_migration = False
 
         # ── Resolve Schema vs legacy migration/validator ──────────────
@@ -1800,6 +1805,67 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             for t in threads:
                 t.join()
 
+    def _queryable_field_names(self) -> set[str]:
+        """Field paths a search condition can actually match against: the
+        ``ResourceMeta`` attributes plus the configured indexed keys (an
+        indexed field is queried under ``index_key or field_path``)."""
+        names = set(ResourceMeta.__struct_fields__)
+        names.discard("indexed_data")
+        for f in self._indexed_fields:
+            names.add(f.index_key or f.field_path)
+        return names
+
+    def _collect_condition_fields(self, query: ResourceMetaSearchQuery) -> list[str]:
+        """Field paths referenced by scalar data conditions, recursing through
+        groups. Vector conditions have their own validation, so they are
+        skipped here."""
+        from specstar.query_types import DataSearchCondition, DataSearchGroup
+
+        found: list[str] = []
+
+        def walk(cond: object) -> None:
+            if isinstance(cond, DataSearchCondition):
+                found.append(cond.field_path)
+            elif isinstance(cond, DataSearchGroup):
+                for sub in cond.conditions:
+                    walk(sub)
+
+        for bucket in (query.conditions, query.data_conditions):
+            if bucket is not UNSET:
+                for cond in bucket:
+                    walk(cond)
+        return found
+
+    def _validate_query_fields(self, query: ResourceMetaSearchQuery) -> None:
+        """Surface conditions that filter on a field which is neither indexed
+        nor a ``ResourceMeta`` attribute — such a condition matches nothing, so
+        the query silently under-returns. Behaviour set by ``on_unindexed_query``
+        (``warn`` by default, ``error`` to raise)."""
+        refs = self._collect_condition_fields(query)
+        if not refs:
+            return
+        valid = self._queryable_field_names()
+        seen: set[str] = set()
+        missing: list[str] = []
+        for f in refs:
+            if f not in valid and f not in seen:
+                seen.add(f)
+                missing.append(f)
+        if not missing:
+            return
+        indexed = sorted(f.index_key or f.field_path for f in self._indexed_fields)
+        if self._on_unindexed_query == OnUnindexedQuery.error:
+            raise UnindexedQueryError(missing, indexed)
+        warnings.warn(
+            f"Search on {self._resource_name!r} filters on non-indexed "
+            f"field(s) {missing!r}; these conditions match nothing, so the "
+            f"query will under-return. Indexed fields: {indexed!r}. Add them "
+            f"via indexed_fields=/add_indexed_field(), or filter on a "
+            f"ResourceMeta attribute.",
+            SpecStarWarning,
+            stacklevel=3,
+        )
+
     def count_resources(self, query: ResourceMetaSearchQuery | Query) -> int:
         """
         Count the number of resources matching the query.
@@ -1812,6 +1878,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """
         if isinstance(query, Query):
             query = query.build()
+        self._validate_query_fields(query)
         query = self._resolve_str_query_vectors(query)
         return self.storage.count(query)
 
@@ -1931,6 +1998,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """
         if isinstance(query, Query):
             query = query.build()
+        self._validate_query_fields(query)
         query = self._resolve_str_query_vectors(query)
         return self.storage.search(query)
 

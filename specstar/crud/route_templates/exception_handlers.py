@@ -45,6 +45,7 @@ from specstar.types import (
     ResourceDecodeError,
     ResourceIsDeletedError,
     ResourceNotFoundError,
+    UnindexedQueryError,
     UniqueConstraintError,
     ValidationError,
 )
@@ -115,6 +116,11 @@ def to_http_exception(e: Exception) -> HTTPException:
     # msgspec.ValidationError produced before this was a typed error).
     if isinstance(e, ResourceDecodeError):
         return HTTPException(status_code=422, detail=str(e))
+
+    # Query filters on a field that isn't indexed (and isn't a ResourceMeta
+    # attribute): the request references something that can't be filtered → 400.
+    if isinstance(e, UnindexedQueryError):
+        return HTTPException(status_code=400, detail=str(e))
 
     # File not found (e.g. blob storage)
     if isinstance(e, FileNotFoundError):
