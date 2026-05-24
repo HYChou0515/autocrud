@@ -47,11 +47,29 @@ jobs:
       - name: Documentation examples
         run: uv run pytest --markdown-docs README.md -q -x
 
-      # Service-free unit + route tests. Integration tests (Postgres / S3 /
-      # MinIO / RabbitMQ) are tagged via the root tests/conftest.py and
-      # excluded here; benchmarks and known-slow tests are also excluded.
+      # Service-free unit + route tests, instrumented for coverage. Integration
+      # tests (Postgres / S3 / MinIO / RabbitMQ) are tagged via the root
+      # tests/conftest.py and excluded here; benchmarks and known-slow tests are
+      # also excluded. ``coverage run`` uses [tool.coverage.run] from pyproject
+      # (measures the ``specstar`` package); ``-x`` still fails fast.
       - name: Unit + route tests (no external services)
-        run: uv run pytest -m "not integration and not benchmark and not slow" -q -x
+        run: uv run coverage run -m pytest -m "not integration and not benchmark and not slow" -q -x
+
+      # Print a summary in the log and emit coverage.xml for Codecov. These run
+      # only when the test step above succeeded (no ``if: always()``), so a
+      # fail-fast (-x) partial run is never reported as the coverage number.
+      - name: Coverage report
+        run: |
+          uv run coverage report
+          uv run coverage xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          slug: HYChou0515/specstar
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   # Single status check that fans in from every required job above.
   # Make THIS the required check in branch protection — that way adding a
