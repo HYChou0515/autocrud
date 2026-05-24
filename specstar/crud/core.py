@@ -93,6 +93,7 @@ from specstar.types import (
     IResourceManager,
     IValidator,
     Job,
+    OnDecodeError,
     OnDelete,
     OnDuplicate,
     Resource,
@@ -262,6 +263,7 @@ class SpecStar:
         forbid_unknown_fields: bool = False,
         structured_errors: bool = False,
         validate_refs: bool = False,
+        on_decode_error: OnDecodeError = OnDecodeError.skip,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -290,6 +292,7 @@ class SpecStar:
         self.default_status: RevisionStatus | UnsetType = UNSET
         self.strict_operation_context = False
         self.forbid_unknown_fields = False
+        self.on_decode_error: OnDecodeError = OnDecodeError.skip
         self.structured_errors = False
         self.validate_refs = False
         self._pending_create_actions: list[_PendingCreateAction] = []
@@ -320,6 +323,7 @@ class SpecStar:
             forbid_unknown_fields=forbid_unknown_fields,
             structured_errors=structured_errors,
             validate_refs=validate_refs,
+            on_decode_error=on_decode_error,
         )
 
     def _apply_configuration(
@@ -347,6 +351,7 @@ class SpecStar:
         forbid_unknown_fields: bool | UnsetType = UNSET,
         structured_errors: bool | UnsetType = UNSET,
         validate_refs: bool | UnsetType = UNSET,
+        on_decode_error: OnDecodeError | UnsetType = UNSET,
     ) -> None:
         """Apply configuration settings to the SpecStar instance.
 
@@ -506,6 +511,10 @@ class SpecStar:
         if forbid_unknown_fields is not UNSET:
             self.forbid_unknown_fields = forbid_unknown_fields
 
+        # Update on_decode_error
+        if on_decode_error is not UNSET:
+            self.on_decode_error = OnDecodeError(on_decode_error)
+
         # Update structured_errors
         if structured_errors is not UNSET:
             self.structured_errors = structured_errors
@@ -538,6 +547,7 @@ class SpecStar:
         forbid_unknown_fields: bool | UnsetType = UNSET,
         structured_errors: bool | UnsetType = UNSET,
         validate_refs: bool | UnsetType = UNSET,
+        on_decode_error: OnDecodeError | UnsetType = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
@@ -644,6 +654,7 @@ class SpecStar:
             forbid_unknown_fields=forbid_unknown_fields,
             structured_errors=structured_errors,
             validate_refs=validate_refs,
+            on_decode_error=on_decode_error,
         )
 
         # Register vector encoders into the registry
@@ -1068,6 +1079,7 @@ class SpecStar:
         validator: "Callable[[T], None] | IValidator | type | None" = None,
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
         vector_encoders: dict[str, str | Callable] | None = None,
+        on_decode_error: OnDecodeError | UnsetType = UNSET,
     ) -> None:
         """Register a resource model (or `Schema`) and create its `ResourceManager`.
 
@@ -1381,6 +1393,11 @@ class SpecStar:
             constraint_checkers=constraint_checkers,
             strict_operation_context=self.strict_operation_context,
             forbid_unknown_fields=self.forbid_unknown_fields,
+            on_decode_error=(
+                on_decode_error
+                if on_decode_error is not UNSET
+                else self.on_decode_error
+            ),
             encoder_registry=self.encoder_registry,
             vector_encoders=vector_encoders,
             **other_options,

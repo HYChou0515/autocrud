@@ -1,3 +1,4 @@
+import base64
 import concurrent.futures
 import datetime as dt
 import inspect
@@ -119,11 +120,13 @@ from specstar.types import (
     IResourceManager,
     IValidator,
     MergePatch,
+    OnDecodeError,
     OnDuplicate,
     PermissionDeniedError,
     RawResource,
     Resource,
     ResourceAction,
+    ResourceDecodeError,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceMeta,
@@ -133,6 +136,7 @@ from specstar.types import (
     RevisionStatus,
     SearchedResource,
     SpecialIndex,
+    UndecodableData,
     ValidationError,
 )
 
@@ -840,6 +844,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
         strict_operation_context: bool = False,
         forbid_unknown_fields: bool = False,
+        on_decode_error: OnDecodeError = OnDecodeError.skip,
         encoder_registry: "Any | None" = None,
         vector_encoders: "dict[str, str | Callable] | None" = None,
     ):
@@ -864,6 +869,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._pydantic_type = pydantic_type
         self._strict_operation_context = strict_operation_context
         self._forbid_unknown_fields = forbid_unknown_fields
+        self._on_decode_error = OnDecodeError(on_decode_error)
 
         # ── Resolve Schema vs legacy migration/validator ──────────────
         from specstar.schema import Schema as _Schema
@@ -1970,6 +1976,35 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return 1
         return max(1, min(16, nr_work // 3))
 
+    def _undecodable_data(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: "str | None | UnsetType",
+        error: str,
+    ) -> UndecodableData:
+        """Build an :class:`UndecodableData` for a row whose data can't be
+        decoded into the model: best-effort parsed dict, else raw bytes
+        (base64). Used by the ``raw`` decode-error policy."""
+        raw = b""
+        try:
+            with self.storage.get_data_bytes(
+                resource_id, revision_id, schema_version
+            ) as fh:
+                raw = fh.read()
+        except Exception:
+            pass
+        try:
+            parsed = self._data_serializer.decode_to_builtins(raw)
+            if isinstance(parsed, dict):
+                return UndecodableData(decode_error=error, data=parsed)
+        except Exception:
+            pass
+        return UndecodableData(
+            decode_error=error,
+            raw_base64=base64.b64encode(raw).decode("ascii"),
+        )
+
     def list_resources(
         self,
         query: ResourceMetaSearchQuery | Query,
@@ -2022,9 +2057,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                             schema_version=meta.schema_version,
                         )
                     else:
-                        resource = self.get(
+                        # low-level read (no policy) — list applies the
+                        # on_decode_error policy itself in the except below.
+                        resource = self.get_resource_revision(
                             meta.resource_id,
-                            revision_id=meta.current_revision_id,
+                            meta.current_revision_id,
                             schema_version=meta.schema_version,
                         )
                         data = resource.data
@@ -2050,8 +2087,33 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     info = filter_struct_partial(info, spec.info_fields)
 
                 return SearchedResource(data=data, info=info, meta=meta_out)
-            except Exception:
-                return None
+            except Exception as e:
+                if self._on_decode_error == OnDecodeError.error:
+                    raise ResourceDecodeError(meta.resource_id, str(e)) from e
+                if self._on_decode_error == OnDecodeError.raw:
+                    info_out: Any = UNSET
+                    if "info" in returns:
+                        try:
+                            info_out = self.get_revision_info(
+                                meta.resource_id,
+                                meta.current_revision_id,
+                                schema_version=meta.schema_version,
+                            )
+                        except Exception:
+                            info_out = UNSET
+                    return SearchedResource(
+                        data=self._undecodable_data(
+                            meta.resource_id,
+                            meta.current_revision_id,
+                            meta.schema_version,
+                            str(e),
+                        )
+                        if "data" in returns
+                        else UNSET,
+                        info=info_out,
+                        meta=meta if "meta" in returns else UNSET,
+                    )
+                return None  # skip
 
         # 5. Execute — single-threaded or parallel
         worker_num = self._default_worker_num(len(metas))
@@ -2178,9 +2240,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 revision_id = meta.current_revision_id
             if schema_version is UNSET:
                 schema_version = meta.schema_version
-        return self.get_resource_revision(
-            resource_id, revision_id, schema_version=schema_version
-        )
+        try:
+            return self.get_resource_revision(
+                resource_id, revision_id, schema_version=schema_version
+            )
+        except (msgspec.ValidationError, msgspec.DecodeError) as e:
+            # Honour on_decode_error. For a single get there is nothing to
+            # "skip", so skip degrades to error.
+            if self._on_decode_error == OnDecodeError.raw:
+                info = self.get_revision_info(
+                    resource_id, revision_id, schema_version=schema_version
+                )
+                return Resource(
+                    info=info,
+                    data=self._undecodable_data(
+                        resource_id, revision_id, schema_version, str(e)
+                    ),
+                )
+            raise ResourceDecodeError(resource_id, str(e)) from e
 
     def get_partial(
         self,

@@ -115,6 +115,37 @@ construction.
 
 ---
 
+## Undecodable stored data: `on_decode_error`
+
+If a stored row can't be decoded into the current model (typically an
+incompatible schema change without a version bump), the read behavior is
+configurable via `SpecStar(on_decode_error=...)` /
+`spec.configure(on_decode_error=...)` (or per-model `add_model(...,
+on_decode_error=...)`). The policy lives in the `ResourceManager`, so HTTP
+routes behave identically to programmatic calls:
+
+| Policy | `GET /{model}` (list) | `GET /{model}/{id}` (single) |
+|--------|------------------------|-------------------------------|
+| `skip` (default) | omit the row + log a `SpecStarWarning`; `/count` still counts it | degrades to `error` (nothing to skip) |
+| `error` | raise `ResourceDecodeError` → **HTTP 422** | raise → **HTTP 422** |
+| `raw` | return the row with `data` as an `UndecodableData` | same |
+
+Under `raw`, the envelope is unchanged (`meta` / `revision_info`, including
+`schema_version`, are still valid) — only `data` becomes an `UndecodableData`:
+
+```json
+{"data": {"decode_error": "Object missing required field 'x'",
+          "data": { /* best-effort parsed dict */ },
+          "raw_base64": null},
+ "revision_info": "...", "meta": "..."}
+```
+
+`UndecodableData.data` holds the parsed dict when the bytes are still parseable
+(the common case); if even that fails (e.g. the encoding was changed),
+`data` is `null` and `raw_base64` preserves the original bytes losslessly.
+
+---
+
 ## Field projection: `partial` / `partial[]`
 
 SpecStar supports field-level projection through `partial` (or `partial[]` for axios / repeated-query compatibility).
