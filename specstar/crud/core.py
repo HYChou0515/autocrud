@@ -4,6 +4,7 @@ import asyncio
 import datetime as dt
 import inspect
 import logging
+import os
 import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
@@ -63,6 +64,7 @@ from specstar.permission.rbac import RBACPermissionChecker
 from specstar.permission.simple import AllowAll
 from specstar.query import Query
 from specstar.query_types import (
+    DEFAULT_QUERY_LIMIT_ENV_VAR,
     DataSearchCondition,
     DataSearchOperator,
     ResourceMetaSearchQuery,
@@ -98,6 +100,7 @@ from specstar.types import (
     ResourceIsDeletedError,
     RevisionInfo,
     RevisionStatus,
+    SpecStarWarning,
     TaskStatus,
     _RefInfo,
     extract_refs,
@@ -265,6 +268,13 @@ class SpecStar:
         self.message_queues: OrderedDict[str, IMessageQueue] = OrderedDict()
         self.model_names: dict[type, str | None] = {}
         self.relationships: list[_RefInfo] = []
+        # Per-model ``default_user`` set *explicitly* on ``add_model`` (not the
+        # global fallback). Used at ``apply()`` to give that model's routes a
+        # DependencyProvider whose default user is the per-model one, so the
+        # audit fields (created_by / updated_by) reflect it over HTTP.
+        self._model_default_user: dict[str, "str | Callable[[], str]"] = {}
+        # One-shot guard so re-``apply()`` doesn't repeat startup advisories.
+        self._emitted_startup_warnings = False
 
         # Initialize attributes with defaults before applying configuration
         self.storage_factory = MemoryStorageFactory()
@@ -1376,6 +1386,11 @@ class SpecStar:
             **other_options,
         )
         self.resource_managers[model_name] = resource_manager
+        # Remember an *explicit* per-model default_user so apply() can route
+        # it into this model's HTTP DependencyProvider (a real ``get_user``
+        # still wins; see DependencyProvider.with_default_user).
+        if default_user is not UNSET:
+            self._model_default_user[model_name] = default_user
 
         # If meta store supports native vector indexing, register pgvector
         # columns + HNSW indices for each Vector / Embedding field
@@ -1473,6 +1488,37 @@ class SpecStar:
 
         OpenAPIBuilder._promote_defs_to_components(schema)
 
+    def _warn_permissive_defaults(self) -> None:
+        """Emit one-shot advisories for permissive defaults left in place.
+
+        These surface the footguns on the *default* path — the operator most
+        at risk is the one who never opted into a safer setting. Each warning
+        uses :class:`SpecStarWarning` so it is easy to silence, and fires at
+        most once per instance.
+        """
+        if self._emitted_startup_warnings:
+            return
+        self._emitted_startup_warnings = True
+        if not self.forbid_unknown_fields:
+            warnings.warn(
+                "forbid_unknown_fields is off (the default): unknown / "
+                "misspelled fields in writes are silently dropped and the "
+                "request still succeeds. Set forbid_unknown_fields=True in "
+                "production.",
+                SpecStarWarning,
+                stacklevel=3,
+            )
+        if os.getenv(DEFAULT_QUERY_LIMIT_ENV_VAR) is None:
+            warnings.warn(
+                f"No {DEFAULT_QUERY_LIMIT_ENV_VAR} is configured: list "
+                "endpoints default to an effectively unlimited page size, so "
+                "a single GET can load an entire table. Set "
+                f"{DEFAULT_QUERY_LIMIT_ENV_VAR}, pass an explicit ?limit=, or "
+                "use iter_all() / the X-Has-More header to page safely.",
+                SpecStarWarning,
+                stacklevel=3,
+            )
+
     def apply(
         self,
         app: FastAPI | APIRouter,
@@ -1543,6 +1589,8 @@ class SpecStar:
               skipped (``APIRouter`` has no OpenAPI schema).
             - ``structs`` is ignored when ``app`` is not a ``FastAPI`` instance.
         """
+        self._warn_permissive_defaults()
+
         # Determine the target router for route generation. ``FastAPI``
         # is not an ``APIRouter``, but it owns one at ``.router``; the
         # downstream route templates only need an APIRouter-shaped
@@ -1576,11 +1624,24 @@ class SpecStar:
 
         self.route_templates.sort(key=lambda rt: rt.order)
         for model_name, resource_manager in self.resource_managers.items():
+            per_model_user = self._model_default_user.get(model_name)
             for route_template in self.route_templates:
+                # When this model declared its own ``default_user``, generate
+                # its routes with a DependencyProvider whose default user is
+                # that value, so HTTP-created revisions record it. A real
+                # ``get_user`` (auth) is never overridden — ``with_default_user``
+                # returns the provider unchanged in that case.
+                base_deps = getattr(route_template, "deps", None)
+                swap = per_model_user is not None and base_deps is not None
+                if swap:
+                    route_template.deps = base_deps.with_default_user(per_model_user)
                 try:
                     route_template.apply(model_name, resource_manager, target)
                 except Exception:
                     pass
+                finally:
+                    if swap:
+                        route_template.deps = base_deps
 
         # Register custom create action routes
         self._apply_create_actions(target)

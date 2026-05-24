@@ -5,7 +5,7 @@ import threading
 import warnings
 
 import pytest
-from msgspec import UNSET, Struct
+from msgspec import Struct
 
 from specstar.resource_manager.core import ResourceManager, SimpleStorage
 from specstar.resource_manager.meta_store.simple import MemoryMetaStore
@@ -129,11 +129,12 @@ class TestUsingBasic:
     def test_using_context_cleanup(self):
         rm = make_rm()
         with rm.using(user="alice", now=NOW):
-            pass
-        # After scope exits, context should be cleaned up.
-        # Without defaults, accessing user should raise.
-        assert rm.user_or_unset is UNSET
-        assert rm.now_or_unset is UNSET
+            assert rm.user == "alice"
+        # After scope exits the explicit context is popped. A non-strict RM
+        # then falls back to its HTTP-matching defaults ("anonymous" + now()),
+        # which proves "alice" no longer lingers.
+        assert rm.user_or_unset == "anonymous"
+        assert isinstance(rm.now_or_unset, dt.datetime)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -297,12 +298,14 @@ class TestStrictMode:
             rm.create(Item(name="a"), user="bob")
         assert exc_info.value.missing_fields == ["now"]
 
-    def test_non_strict_missing_context_no_error(self):
-        """Non-strict mode: missing context causes LookupError from ContextVar,
-        not MissingOperationContextError."""
+    def test_non_strict_missing_context_falls_back_to_anonymous(self):
+        """Non-strict mode (default): a missing operation context falls back to
+        "anonymous" + now() — matching an unauthenticated HTTP request —
+        instead of leaking a raw LookupError."""
         rm = make_rm(strict=False)
-        with pytest.raises(LookupError):
-            rm.create(Item(name="a"))
+        info = rm.create(Item(name="a"))
+        assert info.created_by == "anonymous"
+        assert isinstance(info.created_time, dt.datetime)
 
     def test_strict_update_without_context_raises(self):
         storage = _make_storage()

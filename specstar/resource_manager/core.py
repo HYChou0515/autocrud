@@ -117,6 +117,7 @@ from specstar.types import (
     IndexableField,
     IResourceManager,
     IValidator,
+    MergePatch,
     OnDuplicate,
     PermissionDeniedError,
     RawResource,
@@ -470,6 +471,25 @@ class PermissionEventHandler(IEventHandler):
                 f"Permission denied for user '{context.user}' "
                 f"to perform '{context.action}' on '{context.resource_name}'",
             )
+
+
+def _rfc7386_merge(target, patch):
+    """Apply an RFC 7386 JSON Merge Patch to ``target`` and return the result.
+
+    A non-object patch replaces the target wholesale; ``null`` values delete the
+    corresponding key; nested objects merge recursively.
+    """
+    if not isinstance(patch, dict):
+        return patch
+    result = dict(target) if isinstance(target, dict) else {}
+    for key, value in patch.items():
+        if value is None:
+            result.pop(key, None)
+        elif isinstance(value, dict):
+            result[key] = _rfc7386_merge(result.get(key), value)
+        else:
+            result[key] = value
+    return result
 
 
 def coerce_data_to_resource_type(func):
@@ -863,10 +883,19 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 f"migration must be Schema, IMigration, or None, got {type(migration).__name__}"
             )
 
+        # When no default is configured we fall back to the same values an
+        # unauthenticated HTTP request records ("anonymous" + UTC now), so a
+        # programmatic ``create``/``update`` without a ``using()`` context
+        # behaves like the HTTP path instead of leaking a raw ``LookupError``.
+        # In strict mode we leave the context defaultless so a missing context
+        # raises ``MissingOperationContextError`` (see _validate_write_context).
         self.user_ctx: Ctx[str]
         self.now_ctx: Ctx[dt.datetime]
         if default_user is UNSET:
-            self.user_ctx = Ctx("user_ctx", strict_type=str)
+            if strict_operation_context:
+                self.user_ctx = Ctx("user_ctx", strict_type=str)
+            else:
+                self.user_ctx = Ctx("user_ctx", strict_type=str, default="anonymous")
         elif isinstance(default_user, str):
             self.user_ctx = Ctx("user_ctx", strict_type=str, default=default_user)
         else:
@@ -875,11 +904,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 strict_type=str,
                 default_factory=default_user,
             )
-        if default_now is UNSET:
+        if default_now is not UNSET:
+            self.now_ctx = Ctx(
+                "now_ctx", strict_type=dt.datetime, default_factory=default_now
+            )
+        elif strict_operation_context:
             self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
         else:
             self.now_ctx = Ctx(
-                "now_ctx", strict_type=dt.datetime, default_factory=default_now
+                "now_ctx",
+                strict_type=dt.datetime,
+                default_factory=lambda: dt.datetime.now(dt.timezone.utc),
             )
         self.id_ctx = Ctx[str | UnsetType]("id_ctx", default=UNSET)
         self._resource_type = resource_type
@@ -1071,7 +1106,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         This allows Pydantic users to pass native Pydantic instances
         or plain dicts without knowing about msgspec.
         """
-        if data is UNSET or type(data) is JsonPatch:
+        if data is UNSET or type(data) is JsonPatch or type(data) is MergePatch:
             return data
         if isinstance(data, Struct):
             return data
@@ -1889,6 +1924,43 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         query = self._resolve_str_query_vectors(query)
         return self.storage.search(query)
 
+    def iter_all(
+        self,
+        query: "ResourceMetaSearchQuery | Query | None" = None,
+        *,
+        batch_size: int = 1000,
+    ) -> Generator[ResourceMeta]:
+        """Yield *every* resource matching ``query``, paging internally.
+
+        Unlike :meth:`search_resources` — which is bounded by the query's
+        ``limit`` and can silently truncate — this walks the full result set
+        in ``batch_size`` chunks. Use it whenever you genuinely want "all
+        rows" so a forgotten ``limit`` can't drop data. ``query`` defaults to
+        "all resources".
+
+        Arguments:
+            query: search query (or ``Query`` builder); ``None`` matches all.
+            batch_size: page size used internally for the scan.
+
+        Yields:
+            ResourceMeta: one per matching resource, oldest page first.
+        """
+        if query is None:
+            query = ResourceMetaSearchQuery()
+        elif isinstance(query, Query):
+            query = query.build()
+        offset = 0
+        while True:
+            page = self.search_resources(
+                msgspec.structs.replace(query, limit=batch_size, offset=offset)
+            )
+            if not page:
+                return
+            yield from page
+            if len(page) < batch_size:
+                return
+            offset += batch_size
+
     def _default_worker_num(self, nr_work: int) -> int:
         """Calculate the number of worker threads for parallel fetch."""
         if nr_work <= 10:
@@ -2291,7 +2363,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def modify(
         self,
         resource_id: str,
-        data: T | JsonPatch | UnsetType = UNSET,
+        data: "T | JsonPatch | MergePatch | UnsetType" = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
         *,
         user: str | UnsetType = UNSET,
@@ -2330,6 +2402,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise CannotModifyResourceError(resource_id)
         if type(data) is JsonPatch:
             data = self._apply_patch(resource_id, data)
+        elif type(data) is MergePatch:
+            data = self._apply_merge_patch(resource_id, data)
 
         if data is not UNSET:
             data = self._process_binary_fields(data)
@@ -2381,17 +2455,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def patch(
         self,
         resource_id: str,
-        patch_data: JsonPatch,
+        patch_data: "JsonPatch | MergePatch",
         *,
         user: str | UnsetType = UNSET,
         now: dt.datetime | UnsetType = UNSET,
     ) -> RevisionInfo:
         """
-        Apply RFC 6902 JSON Patch operations to the resource.
+        Apply an RFC 6902 JSON Patch or RFC 7386 Merge Patch to the resource.
 
         Arguments:
             resource_id (str): the id of the resource to patch.
-            patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
+            patch_data (JsonPatch | MergePatch): RFC 6902 operations
+                (``JsonPatch``) or an RFC 7386 merge patch (``MergePatch``).
             user (str | UnsetType): The user performing the action.
             now (datetime | UnsetType): The current timestamp.
 
@@ -2402,7 +2477,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             ResourceIDNotFoundError: if resource id does not exist.
             ResourceIsDeletedError: if resource is soft-deleted.
         """
-        data = self._apply_patch(resource_id, patch_data)
+        if type(patch_data) is MergePatch:
+            data = self._apply_merge_patch(resource_id, patch_data)
+        else:
+            data = self._apply_patch(resource_id, patch_data)
         return self.update(resource_id, data)
 
     def _apply_patch(self, resource_id: str, patch_data: JsonPatch) -> T:
@@ -2413,6 +2491,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             d = msgspec.to_builtins(data)
         patch_data.apply(d, in_place=True)
         return msgspec.convert(d, self.resource_type)
+
+    def _apply_merge_patch(self, resource_id: str, merge_patch: dict) -> T:
+        """RFC 7386 analogue of :meth:`_apply_patch`: merge ``merge_patch`` into
+        the current data and return the resulting full resource."""
+        data = self.get(resource_id).data
+        if isinstance(data, msgspec.Raw):
+            d = json.loads(bytes(data))
+        else:
+            d = msgspec.to_builtins(data)
+        return msgspec.convert(_rfc7386_merge(d, merge_patch), self.resource_type)
 
     @execute_with_events(
         (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),

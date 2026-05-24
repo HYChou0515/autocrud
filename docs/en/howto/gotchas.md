@@ -111,12 +111,19 @@ The one exception: if your Struct *legitimately* declares a field named
 |-----------------|-----------------|
 | `PUT /user/unknown-id` creates the user | Returns `404` — `PUT` requires the resource to exist. Use `POST /user` to create. |
 
-### `PATCH` requires a JSON Patch **array of ops**, not a partial object
+### `PATCH` accepts two flavors — pick by shape (array = ops, object = merge)
+
+`PATCH` understands **both** REST patch standards on the same endpoint:
 
 ```
-PATCH /user/123  {"name": "new"}                          # 400 "expected sequence of operations"
-PATCH /user/123  [{"op":"replace","path":"/name","value":"new"}]   # works
+PATCH /user/123  [{"op":"replace","path":"/name","value":"new"}]   # RFC 6902 JSON Patch (array)
+PATCH /user/123  {"name": "new"}                                   # RFC 7386 Merge Patch (object)
 ```
+
+A JSON **array** is treated as RFC 6902 operations; a JSON **object** is a
+RFC 7386 merge patch (partial update; `null` deletes a field). Set
+`Content-Type: application/json-patch+json` or `application/merge-patch+json`
+to be explicit. See [API conventions § PATCH](./api-conventions.md#patch-two-flavors).
 
 ### Same-content writes are de-duplicated
 
@@ -185,16 +192,26 @@ spec.configure(admin="/admin")  # username "/admin" — almost certainly NOT wha
 
 The web admin UI is the separate TypeScript app under `wizard/`.
 
-### Programmatic `mgr.create/update/migrate/switch` need an operation context
+### Programmatic `mgr.create/update/...` use `anonymous` + `now()` if you don't set a user
 
-Without one, they raise `MissingOperationContextError` (which surfaces as
-a bare `LookupError` for the underlying `ContextVar`). Either:
+By default (non-strict) a programmatic write with no operation context records
+the same values an unauthenticated HTTP request would — `created_by="anonymous"`
+and the current UTC time — so it "just works". To attribute writes to a real
+user, set a default or wrap the call:
 
 ```python
 spec.configure(default_user="me", default_now=datetime.utcnow)
 # or, per-call
 with mgr.using(user="me", now=datetime.utcnow()):
     mgr.create(...)
+```
+
+If you'd rather a missing context be a hard error (no silent `anonymous`), opt
+into strict mode — then `create`/`update`/`migrate`/`switch` without a context
+raise `MissingOperationContextError`:
+
+```python
+spec.configure(strict_operation_context=True)
 ```
 
 ### `MigrateRouteTemplate` is opt-in
