@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.4] — 2026-05-24
+
+
+### Added
+
+- GET only-* returns + default_get_returns, raw-body import, partial nudge
+
+
+### Documentation
+
+- Note id/timestamps/author/version are built-in metadata
+- Fix verified doc bugs (event-handler imports, resource_id, kebab)
+
 ## [0.11.3] — 2026-05-24
 
 
