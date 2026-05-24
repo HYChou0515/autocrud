@@ -194,6 +194,10 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             include_deleted=False,
         ):
             # 獲取資源和元數據
+            if returns is None:
+                returns = getattr(
+                    resource_manager, "default_get_returns", "data,revision_info,meta"
+                )
             try:
                 fields = partial or partial_brackets
                 if fields is None:
@@ -205,6 +209,53 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     if raw:
                         fields = raw
                 returns_list = [r.strip() for r in returns.split(",")]
+                # hyphen aliases for the underscore section name
+                _RETURNS_ALIASES = {
+                    "revision-info": "revision_info",
+                    "only-revision-info": "only-revision_info",
+                }
+                returns_list = [_RETURNS_ALIASES.get(r, r) for r in returns_list]
+
+                if any(r.startswith("only-") for r in returns_list):
+                    # ``only-<section>`` returns that section *bare* (unwrapped),
+                    # unlike ``<section>`` which keeps the {data,meta,...} envelope.
+                    # It must be used alone.
+                    if len(returns_list) != 1:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=(
+                                "An 'only-*' returns value must be used alone; "
+                                f"got {returns!r}."
+                            ),
+                        )
+                    section = returns_list[0][len("only-") :]
+                    if section not in ("data", "meta", "revision_info"):
+                        raise HTTPException(
+                            status_code=422,
+                            detail=(
+                                f"Unknown returns value {returns_list[0]!r}. "
+                                "Use only-data, only-meta, or only-revision_info."
+                            ),
+                        )
+                    meta = resource_manager.get_meta(
+                        resource_id, include_deleted=include_deleted
+                    )
+                    target_revision_id = revision_id or meta.current_revision_id
+                    if section == "data":
+                        bare = resource_manager.get_resource_revision(
+                            resource_id,
+                            target_revision_id,
+                            schema_version=meta.schema_version,
+                        ).data
+                    elif section == "meta":
+                        bare = meta
+                    else:  # revision_info
+                        bare = resource_manager.get_revision_info(
+                            resource_id,
+                            target_revision_id,
+                            schema_version=meta.schema_version,
+                        )
+                    return MsgspecResponse(bare)
 
                 # Classify partial fields by prefix
                 spec = classify_partial_fields(fields, default_category="data")
@@ -315,9 +366,14 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
-            returns: str = Query(
-                default="data,revision_info,meta",
-                description="Fields to return, comma-separated. Options: data, revision_info, meta",
+            returns: Optional[str] = Query(
+                default=None,
+                description=(
+                    "Sections to return, comma-separated: data, revision_info, "
+                    "meta (the envelope). Or a single only-data / only-meta / "
+                    "only-revision_info for a bare (unwrapped) object. Omit to "
+                    "use the server default (default_get_returns)."
+                ),
             ),
         ):
             return await _handle_get_with_returns(
@@ -741,9 +797,14 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
-            returns: str = Query(
-                default="data,revision_info,meta",
-                description="Fields to return, comma-separated. Options: data, revision_info, meta",
+            returns: Optional[str] = Query(
+                default=None,
+                description=(
+                    "Sections to return, comma-separated: data, revision_info, "
+                    "meta (the envelope). Or a single only-data / only-meta / "
+                    "only-revision_info for a bare (unwrapped) object. Omit to "
+                    "use the server default (default_get_returns)."
+                ),
             ),
         ):
             return await _handle_get_with_returns(

@@ -289,6 +289,7 @@ class SpecStar:
         validate_refs: bool = False,
         on_decode_error: OnDecodeError = OnDecodeError.skip,
         on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn,
+        default_get_returns: "str | list[str] | UnsetType" = UNSET,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -319,6 +320,9 @@ class SpecStar:
         self.forbid_unknown_fields = False
         self.on_decode_error: OnDecodeError = OnDecodeError.skip
         self.on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn
+        # UNSET = caller never chose a GET shape → the envelope is used and the
+        # startup advisory fires. Setting it (even to the envelope) silences it.
+        self.default_get_returns: "str | list[str] | UnsetType" = UNSET
         self.structured_errors = False
         self.validate_refs = False
         self._pending_create_actions: list[_PendingCreateAction] = []
@@ -351,6 +355,7 @@ class SpecStar:
             validate_refs=validate_refs,
             on_decode_error=on_decode_error,
             on_unindexed_query=on_unindexed_query,
+            default_get_returns=default_get_returns,
         )
 
     def _apply_configuration(
@@ -380,6 +385,7 @@ class SpecStar:
         validate_refs: bool | UnsetType = UNSET,
         on_decode_error: OnDecodeError | UnsetType = UNSET,
         on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
+        default_get_returns: "str | list[str] | UnsetType" = UNSET,
     ) -> None:
         """Apply configuration settings to the SpecStar instance.
 
@@ -547,6 +553,10 @@ class SpecStar:
         if on_unindexed_query is not UNSET:
             self.on_unindexed_query = OnUnindexedQuery(on_unindexed_query)
 
+        # Update default_get_returns
+        if default_get_returns is not UNSET:
+            self.default_get_returns = default_get_returns
+
         # Update structured_errors
         if structured_errors is not UNSET:
             self.structured_errors = structured_errors
@@ -581,6 +591,7 @@ class SpecStar:
         validate_refs: bool | UnsetType = UNSET,
         on_decode_error: OnDecodeError | UnsetType = UNSET,
         on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
+        default_get_returns: "str | list[str] | UnsetType" = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
@@ -689,6 +700,7 @@ class SpecStar:
             validate_refs=validate_refs,
             on_decode_error=on_decode_error,
             on_unindexed_query=on_unindexed_query,
+            default_get_returns=default_get_returns,
         )
 
         # Register vector encoders into the registry
@@ -1124,6 +1136,7 @@ class SpecStar:
         vector_encoders: dict[str, str | Callable] | None = None,
         on_decode_error: OnDecodeError | UnsetType = UNSET,
         on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
+        default_get_returns: "str | list[str] | UnsetType" = UNSET,
     ) -> None:
         """Register a resource model (or `Schema`) and create its `ResourceManager`.
 
@@ -1448,6 +1461,15 @@ class SpecStar:
                 if on_unindexed_query is not UNSET
                 else self.on_unindexed_query
             ),
+            default_get_returns=(
+                default_get_returns
+                if default_get_returns is not UNSET
+                else (
+                    self.default_get_returns
+                    if self.default_get_returns is not UNSET
+                    else "data,revision_info,meta"
+                )
+            ),
             encoder_registry=self.encoder_registry,
             vector_encoders=vector_encoders,
             **other_options,
@@ -1582,6 +1604,26 @@ class SpecStar:
                 "a single GET can load an entire table. Set "
                 f"{DEFAULT_QUERY_LIMIT_ENV_VAR}, pass an explicit ?limit=, or "
                 "use iter_all() / the X-Has-More header to page safely.",
+                SpecStarWarning,
+                stacklevel=3,
+            )
+        if not self.validate_refs:
+            warnings.warn(
+                "validate_refs is off (the default): writes accept Ref(...) "
+                "values pointing at non-existent targets, creating dangling "
+                "references silently. Set validate_refs=True to reject them at "
+                "write time.",
+                SpecStarWarning,
+                stacklevel=3,
+            )
+        if self.default_get_returns is UNSET:
+            # Never chose a GET shape → the envelope is in effect.
+            warnings.warn(
+                "default_get_returns is unset, so GET /{model}/{id} returns the "
+                'full envelope {"data": ..., "meta": ..., "revision_info": ...}, '
+                "not a bare object. Set default_get_returns='only-data' (or pass "
+                "?returns=only-data) if your clients expect a plain object; set "
+                "it explicitly to silence this.",
                 SpecStarWarning,
                 stacklevel=3,
             )

@@ -152,23 +152,29 @@ class ImportRouteTemplate(BaseRouteTemplate):
                 Use ``on_duplicate`` to control behaviour when a resource ID
                 already exists.
 
-                **Upload format:** ``multipart/form-data`` with a single
-                ``file`` field carrying the archive bytes — NOT a raw
-                ``application/octet-stream`` body. Sending the archive as
-                the raw request body (as ``GET /{model_name}/export``
-                returns it) will fail with ``422`` because FastAPI cannot
-                find the ``file`` form field.
+                **Upload format:** either ``multipart/form-data`` with a single
+                ``file`` field, or the archive as a raw
+                ``application/octet-stream`` request body — the latter so the
+                bytes from ``GET /{model_name}/export`` round-trip directly.
 
-                Example with ``curl``:
+                Examples with ``curl``:
                 ```
+                # multipart form field
                 curl -X POST -F 'file=@dump.acbak' \\
-                     -F 'on_duplicate=overwrite' \\
-                     http://localhost:8000/{model_name}/import
+                     'http://localhost:8000/{model_name}/import?on_duplicate=overwrite'
+
+                # raw body (round-trips with export)
+                curl -X POST --data-binary @dump.acbak \\
+                     -H 'Content-Type: application/octet-stream' \\
+                     'http://localhost:8000/{model_name}/import?on_duplicate=overwrite'
                 ```
             """),
         )
         async def import_model(
-            file: UploadFile = File(..., description=".acbak archive file"),
+            request: Request,
+            file: UploadFile | None = File(
+                None, description=".acbak archive file (multipart)"
+            ),
             on_duplicate: str = Query(
                 "overwrite",
                 description="Strategy: overwrite | skip | raise_error",
@@ -198,7 +204,17 @@ class ImportRouteTemplate(BaseRouteTemplate):
                 )
 
             # --- read & validate archive ------------------------------
-            data = await file.read()
+            # Accept either a multipart ``file`` field or a raw request body so
+            # the bytes from ``GET /{model}/export`` can be POSTed back directly.
+            data = await file.read() if file is not None else await request.body()
+            if not data:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Empty import: send the archive as a multipart 'file' "
+                        "field or as a raw application/octet-stream body."
+                    ),
+                )
             reader = DumpStreamReader(io.BytesIO(data))
 
             try:

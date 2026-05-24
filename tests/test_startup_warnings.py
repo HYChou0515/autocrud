@@ -35,11 +35,23 @@ def test_warns_when_no_query_limit_configured(monkeypatch):
         sp.apply(FastAPI())
 
 
+def test_warns_when_validate_refs_off(monkeypatch):
+    monkeypatch.setenv("SPECSTAR_DEFAULT_QUERY_LIMIT", "1000")  # silence
+    sp = SpecStar(forbid_unknown_fields=True, default_get_returns="only-data")  # silence
+    sp.add_model(Schema(Item, "v1"))
+    with pytest.warns(SpecStarWarning, match="validate_refs"):
+        sp.apply(FastAPI())
+
+
 def test_hardened_config_emits_no_warning(monkeypatch):
     import warnings as w
 
     monkeypatch.setenv("SPECSTAR_DEFAULT_QUERY_LIMIT", "1000")
-    sp = SpecStar(forbid_unknown_fields=True)
+    sp = SpecStar(
+        forbid_unknown_fields=True,
+        validate_refs=True,
+        default_get_returns="data,revision_info,meta",  # explicit shape: silences advisory
+    )
     sp.add_model(Schema(Item, "v1"))
     with w.catch_warnings(record=True) as rec:
         w.simplefilter("always")
