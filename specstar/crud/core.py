@@ -117,6 +117,29 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+def _flatten_event_handlers(handlers):
+    """Expand ``do(...)`` builders passed inside an ``event_handlers`` list.
+
+    ``do(fn).after(...)`` returns a ``SimpleEventHandlerBuilder`` (a *Sequence*
+    of handlers), which is the natural thing to drop into
+    ``event_handlers=[...]`` — but as a list item it isn't itself a handler.
+    Flatten any such builder (anything iterable that isn't a handler) into its
+    individual handlers so the natural usage just works.
+    """
+    if not handlers:
+        return handlers
+    flat = []
+    for h in handlers:
+        if hasattr(h, "is_supported"):  # a real event handler
+            flat.append(h)
+        else:
+            try:
+                flat.extend(h)  # a builder / sequence of handlers
+            except TypeError:
+                flat.append(h)  # not iterable — leave it to fail clearly later
+    return flat
+
+
 class LoadStats:
     """Per-model statistics returned by :meth:`SpecStar.load`."""
 
@@ -485,7 +508,7 @@ class SpecStar:
 
         # Update event_handlers
         if event_handlers is not UNSET:
-            self.event_handlers = event_handlers
+            self.event_handlers = _flatten_event_handlers(event_handlers)
 
         # Update encoding
         if encoding is not UNSET:
@@ -1382,7 +1405,8 @@ class SpecStar:
             id_generator=id_generator,
             migration=cast("IMigration | Schema | None", resolved_schema or migration),
             indexed_fields=_indexed_fields,
-            event_handlers=self.event_handlers or event_handlers,
+            event_handlers=self.event_handlers
+            or _flatten_event_handlers(event_handlers),
             permission_checker=self.permission_checker or permission_checker,
             encoding=encoding,
             name=model_name,
