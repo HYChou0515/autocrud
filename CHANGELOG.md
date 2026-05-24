@@ -6,6 +6,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.3] — 2026-05-24
+
+
+### Added
+
+- Configurable on_decode_error policy (skip/error/raw)
+- On_unindexed_query policy (warn/error) for non-indexed filters
+- No-arg search_resources / count_resources (match-all, = QB.all())
+
+
+### Documentation
+
+- Audit-user how-to + list-truncation & schema-divergence notes
+- Surface that on_delete defaults to dangling
+
+
+### Fixed
+
+- Warn when count/list diverge on undecodable rows
+- Apply registered migrations lazily on the read path
+- Accept do(...) builders inside event_handlers=[...]
+- Discoverable get_resource_manager error + no-arg list_resources
+
 ## [0.11.2] — 2026-05-24
 
 
