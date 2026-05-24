@@ -4529,11 +4529,15 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+admin-ui = [
+    { name = "jinja2" },
+]
 all = [
     { name = "boto3" },
     { name = "celery" },
     { name = "datamodel-code-generator", extra = ["http"] },
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "oracledb" },
     { name = "pika" },
     { name = "psycopg2-binary" },
@@ -4568,6 +4572,7 @@ dev = [
     { name = "datamodel-code-generator", extra = ["http"] },
     { name = "git-cliff" },
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "matplotlib" },
     { name = "mkdocs" },
     { name = "mkdocs-gen-files" },
@@ -4690,6 +4695,9 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
+    { name = "jinja2", marker = "extra == 'admin-ui'", specifier = ">=3.1.0" },
+    { name = "jinja2", marker = "extra == 'all'", specifier = ">=3.1.0" },
+    { name = "jinja2", marker = "extra == 'dev'", specifier = ">=3.1.0" },
     { name = "jsonpatch", specifier = ">=1.33" },
     { name = "jsonpointer", specifier = ">=3.0.0" },
     { name = "litellm", marker = "extra == 'gen'", specifier = ">=1.50" },
@@ -4764,7 +4772,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'dev'", specifier = ">=0.20.0" },
     { name = "xxhash", specifier = ">=3.5.0" },
 ]
-provides-extras = ["all", "benchmark", "celery", "cli", "dev", "docs", "gen", "graphql", "magic", "mq", "mysql", "oracle", "postgresql", "redis", "s3", "sqlalchemy"]
+provides-extras = ["admin-ui", "all", "benchmark", "celery", "cli", "dev", "docs", "gen", "graphql", "magic", "mq", "mysql", "oracle", "postgresql", "redis", "s3", "sqlalchemy"]
 
 [package.metadata.requires-dev]
 dev = [

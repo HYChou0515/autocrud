@@ -1635,6 +1635,7 @@ class SpecStar:
         router: APIRouter | None = None,
         structs: list[type] | None = None,
         auto_include: bool = True,
+        admin_ui: str | None = None,
     ) -> APIRouter:
         """Apply all route templates to generate API endpoints.
 
@@ -1781,6 +1782,23 @@ class SpecStar:
             # so skip openapi and let the user call it manually.
             if router is None or auto_include:
                 self.openapi(app, structs or [])
+
+        # Optional read-only admin UI, mounted on ``app`` (opt-in; needs the
+        # ``[admin-ui]`` extra). Its routes are include_in_schema=False.
+        if admin_ui is not None:
+            from specstar.admin import build_admin_router
+
+            # Reuse the same get_user the route templates use, so the admin
+            # reads run as the request user (and obey permission_checker).
+            admin_get_user = None
+            for rt in self.route_templates:
+                deps = getattr(rt, "deps", None)
+                if deps is not None and getattr(deps, "get_user", None) is not None:
+                    admin_get_user = deps.get_user
+                    break
+            app.include_router(
+                build_admin_router(self, admin_ui, get_user=admin_get_user)
+            )
 
         # Return the externally-meaningful router/app: the caller's ``router``
         # if one was provided, otherwise the original ``app`` (FastAPI or

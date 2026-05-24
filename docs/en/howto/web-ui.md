@@ -1,8 +1,38 @@
 # Web UI
 
-SpecStar can generate a complete React admin application from your backend's OpenAPI schema.
+SpecStar offers **two** ways to get an admin UI:
 
-This is useful when you want a working internal tool quickly without building list pages, forms, clients, and revision views by hand.
+1. **Python-only, read-only admin** (no Node) — a server-rendered browse UI you
+   mount from Python. Best when you just want to *see* your data and don't want
+   a JS toolchain. See [below](#python-only-read-only-admin).
+2. **Generated React app** — a full CRUD single-page app generated from your
+   OpenAPI schema (needs Node / pnpm / vite). Best when you want a rich,
+   customisable internal tool. That's the rest of this page.
+
+---
+
+## Python-only read-only admin
+
+A server-rendered (Jinja2) admin for **browsing** resources — list, detail, and
+revision history — with **no Node, pnpm, or vite**. Install the extra and mount
+it on `apply()`:
+
+```bash
+pip install 'specstar[admin-ui]'
+```
+
+```python
+spec.add_model(Issue)
+spec.apply(app, admin_ui="/admin")   # browse at /admin
+```
+
+- Renders directly from your registered models; nothing to generate or rebuild.
+- Reuses the app's `get_user` and `permission_checker` — a denied read returns
+  `403`, never leaks data.
+- **Read-only** by design: no create/edit/delete. For writes (forms) use the
+  generated React app below, or the API directly.
+- Without the `[admin-ui]` extra, `apply(admin_ui=...)` raises a clear
+  `ImportError` telling you to install it.
 
 ---
 

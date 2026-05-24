@@ -108,8 +108,11 @@ benchmark = [
     "rich>=13.0",
     "matplotlib>=3.8",
 ]
+admin-ui = [
+    "jinja2>=3.1.0",
+]
 all = [
-    "specstar[s3,magic,mq,graphql,cli,postgresql,redis,sqlalchemy,mysql,oracle,celery]",
+    "specstar[s3,magic,mq,graphql,cli,postgresql,redis,sqlalchemy,mysql,oracle,celery,admin-ui]",
 ]
 [project.urls]
 Homepage = "https://github.com/HYChou0515/specstar"
