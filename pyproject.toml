@@ -57,6 +57,7 @@ docs = [
 ]
 dev = [
     "coverage>=7.9.2",
+    "git-cliff>=2.0.0",
     "pytest>=8.4.1",
     "pytest-rerunfailures>=15.0",
     "ruff>=0.12.4",

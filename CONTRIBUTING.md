@@ -122,6 +122,35 @@ perf: 效能優化
 - 為新功能添加範例
 - 更新 API 參考文檔
 
+### 變更紀錄（Changelog）
+
+`CHANGELOG.md` 的新版本區段由 [git-cliff](https://git-cliff.org/) 從
+**Conventional Commits** 自動生成,**不要直接手改尚未釋出的區段**(手寫的
+歷史區段 ≤ 0.11.1 會保留不動)。
+
+因此面向使用者的變更請用規範化的 commit 訊息,它才會進 changelog:
+
+```
+feat: 新增 XXX          → Added
+fix: 修復 XXX           → Fixed
+perf: 效能優化          → Performance
+refactor: 重構 XXX      → Changed
+docs: 文件             → Documentation
+```
+
+> **注意**:不符合格式的 commit(例如 `--`、`wip`)以及 `ci`/`chore`/`test`/
+> 合併 commit **會被忽略,不會出現在 changelog**。真正面向使用者的變更請務必
+> 用上面的前綴。
+
+```bash
+make changelog-preview          # 預覽尚未釋出的紀錄(從 commit 生成)
+```
+
+釋出時由維護者執行 `make release patch|minor|major`(版本由 git-cliff 依語意化
+規則自動算出),或 `make release VERSION=X.Y.Z` 指定明確版本。它會:bump
+`__version__` → 把尚未釋出的 commit 收成 `## [X.Y.Z]` 區段(插到既有歷史之前)
+→ commit `bump vX.Y.Z`。接著照原本流程打上 `vX.Y.Z` tag 並發佈。
+
 ## 開發工作流程
 
 ### 本地測試

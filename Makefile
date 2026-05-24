@@ -152,6 +152,37 @@ stubs-check:
 		exit 1)
 	@rm -f /tmp/events.pyi.expected
 
+# 預覽尚未釋出的變更紀錄（從 conventional commits 生成；非規範 commit 會被忽略）
+.PHONY: changelog-preview
+changelog-preview:
+	uv run git-cliff --unreleased
+
+# 釋出第一步:bump 版本 → 生成 CHANGELOG 區段 → commit "bump vX.Y.Z"。
+# 用法:  make release patch        # 0.11.1 → 0.11.2
+#        make release minor        # 0.11.1 → 0.12.0
+#        make release major        # 0.11.1 → 1.0.0
+#        make release VERSION=1.2.3 # 指定明確版本
+# 版本由 git-cliff 依語意化規則算出;之後接原本流程(打 tag → build → PyPI)。
+.PHONY: release patch minor major
+# patch/minor/major 是 release 的參數,被當成 no-op goal 消化掉
+patch minor major:
+	@:
+release:
+	@git diff --quiet && git diff --cached --quiet || { \
+		echo "工作區不乾淨,請先 commit 或 stash 再 release"; exit 1; }; \
+	bump="$(filter patch minor major,$(MAKECMDGOALS))"; \
+	if [ -n "$(VERSION)" ]; then new="$(VERSION)"; \
+	elif [ -n "$$bump" ]; then \
+		new="$$(uv run git-cliff --bumped-version --bump $$bump 2>/dev/null | tail -1 | sed 's/^v//')"; \
+	else echo "用法: make release patch|minor|major  或  make release VERSION=X.Y.Z"; exit 1; fi; \
+	[ -n "$$new" ] || { echo "無法決定版本"; exit 1; }; \
+	echo "release → v$$new"; \
+	sed -i "s/^__version__ = .*/__version__ = \"$$new\"/" specstar/__init__.py; \
+	uv run git-cliff --unreleased --tag "v$$new" --prepend CHANGELOG.md; \
+	git add specstar/__init__.py CHANGELOG.md; \
+	git commit -m "bump v$$new"; \
+	echo "✅ 已 commit \"bump v$$new\"。接著:git tag v$$new → build → 發佈。"
+
 # 清理所有暫存和構建文件
 .PHONY: clean
 clean: clean-dev clean-docs
