@@ -1,8 +1,10 @@
+import base64
 import concurrent.futures
 import datetime as dt
 import inspect
 import io
 import json
+import logging
 import threading
 import traceback
 import warnings
@@ -118,11 +120,14 @@ from specstar.types import (
     IResourceManager,
     IValidator,
     MergePatch,
+    OnDecodeError,
     OnDuplicate,
+    OnUnindexedQuery,
     PermissionDeniedError,
     RawResource,
     Resource,
     ResourceAction,
+    ResourceDecodeError,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceMeta,
@@ -132,6 +137,9 @@ from specstar.types import (
     RevisionStatus,
     SearchedResource,
     SpecialIndex,
+    SpecStarWarning,
+    UndecodableData,
+    UnindexedQueryError,
     ValidationError,
 )
 
@@ -162,6 +170,8 @@ from specstar.util.type_utils import (
 )
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 class IndexedValueExtractor:
@@ -747,13 +757,15 @@ class ResourceOps(Generic[T]):
         ) -> ResourceMeta: ...
         def exists(self, resource_id: str) -> bool: ...
         def revision_exists(self, resource_id: str, revision_id: str) -> bool: ...
-        def count_resources(self, query: ResourceMetaSearchQuery) -> int: ...
+        def count_resources(
+            self, query: ResourceMetaSearchQuery | None = ...
+        ) -> int: ...
         def search_resources(
-            self, query: ResourceMetaSearchQuery
+            self, query: ResourceMetaSearchQuery | None = ...
         ) -> list[ResourceMeta]: ...
         def list_resources(
             self,
-            query: ResourceMetaSearchQuery,
+            query: ResourceMetaSearchQuery | None = ...,
             *,
             returns: list[str] | None = ...,
             partial: list[str] | None = ...,
@@ -837,6 +849,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
         strict_operation_context: bool = False,
         forbid_unknown_fields: bool = False,
+        on_decode_error: OnDecodeError = OnDecodeError.skip,
+        on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn,
         encoder_registry: "Any | None" = None,
         vector_encoders: "dict[str, str | Callable] | None" = None,
     ):
@@ -861,6 +875,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._pydantic_type = pydantic_type
         self._strict_operation_context = strict_operation_context
         self._forbid_unknown_fields = forbid_unknown_fields
+        self._on_decode_error = OnDecodeError(on_decode_error)
+        self._on_unindexed_query = OnUnindexedQuery(on_unindexed_query)
+        self._warned_lazy_migration = False
 
         # ── Resolve Schema vs legacy migration/validator ──────────────
         from specstar.schema import Schema as _Schema
@@ -1790,18 +1807,86 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             for t in threads:
                 t.join()
 
-    def count_resources(self, query: ResourceMetaSearchQuery | Query) -> int:
+    def _queryable_field_names(self) -> set[str]:
+        """Field paths a search condition can actually match against: the
+        ``ResourceMeta`` attributes plus the configured indexed keys (an
+        indexed field is queried under ``index_key or field_path``)."""
+        names = set(ResourceMeta.__struct_fields__)
+        names.discard("indexed_data")
+        for f in self._indexed_fields:
+            names.add(f.index_key or f.field_path)
+        return names
+
+    def _collect_condition_fields(self, query: ResourceMetaSearchQuery) -> list[str]:
+        """Field paths referenced by scalar data conditions, recursing through
+        groups. Vector conditions have their own validation, so they are
+        skipped here."""
+        from specstar.query_types import DataSearchCondition, DataSearchGroup
+
+        found: list[str] = []
+
+        def walk(cond: object) -> None:
+            if isinstance(cond, DataSearchCondition):
+                found.append(cond.field_path)
+            elif isinstance(cond, DataSearchGroup):
+                for sub in cond.conditions:
+                    walk(sub)
+
+        for bucket in (query.conditions, query.data_conditions):
+            if bucket is not UNSET:
+                for cond in bucket:
+                    walk(cond)
+        return found
+
+    def _validate_query_fields(self, query: ResourceMetaSearchQuery) -> None:
+        """Surface conditions that filter on a field which is neither indexed
+        nor a ``ResourceMeta`` attribute — such a condition matches nothing, so
+        the query silently under-returns. Behaviour set by ``on_unindexed_query``
+        (``warn`` by default, ``error`` to raise)."""
+        refs = self._collect_condition_fields(query)
+        if not refs:
+            return
+        valid = self._queryable_field_names()
+        seen: set[str] = set()
+        missing: list[str] = []
+        for f in refs:
+            if f not in valid and f not in seen:
+                seen.add(f)
+                missing.append(f)
+        if not missing:
+            return
+        indexed = sorted(f.index_key or f.field_path for f in self._indexed_fields)
+        if self._on_unindexed_query == OnUnindexedQuery.error:
+            raise UnindexedQueryError(missing, indexed)
+        warnings.warn(
+            f"Search on {self._resource_name!r} filters on non-indexed "
+            f"field(s) {missing!r}; these conditions match nothing, so the "
+            f"query will under-return. Indexed fields: {indexed!r}. Add them "
+            f"via indexed_fields=/add_indexed_field(), or filter on a "
+            f"ResourceMeta attribute.",
+            SpecStarWarning,
+            stacklevel=3,
+        )
+
+    def count_resources(
+        self, query: "ResourceMetaSearchQuery | Query | None" = None
+    ) -> int:
         """
         Count the number of resources matching the query.
 
         Arguments:
-            query (ResourceMetaSearchQuery | Query): The search query object or Query builder.
+            query (ResourceMetaSearchQuery | Query | None): The search query
+                object or Query builder. ``None`` (the default) counts all
+                resources — equivalent to passing ``QB.all()``.
 
         Returns:
             count (int): The number of matching resources.
         """
-        if isinstance(query, Query):
+        if query is None:
+            query = ResourceMetaSearchQuery()
+        elif isinstance(query, Query):
             query = query.build()
+        self._validate_query_fields(query)
         query = self._resolve_str_query_vectors(query)
         return self.storage.count(query)
 
@@ -1898,6 +1983,27 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return query
         return msgspec.structs.replace(query, **changes)
 
+    def search_resources(
+        self, query: "ResourceMetaSearchQuery | Query | None" = None
+    ) -> list[ResourceMeta]:
+        """
+        Search resources based on the provided query.
+
+        Arguments:
+            query (ResourceMetaSearchQuery | Query | None): The search query
+                object or Query builder. ``None`` (the default) lists all
+                resources — equivalent to passing ``QB.all()``.
+
+        Returns:
+            results (list[ResourceMeta]): A list of ResourceMeta objects matching the query.
+        """
+        # Normalise "no query" → match-all *before* the event-emitting method,
+        # so the SearchResources event contexts always carry a real query
+        # (matching how list_resources / iter_all already work).
+        if query is None:
+            query = ResourceMetaSearchQuery()
+        return self._search_resources(query)
+
     @execute_with_events(
         (
             BeforeSearchResources,
@@ -1907,20 +2013,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         ),
         "results",
     )
-    def search_resources(
+    def _search_resources(
         self, query: ResourceMetaSearchQuery | Query
     ) -> list[ResourceMeta]:
-        """
-        Search resources based on the provided query.
-
-        Arguments:
-            query (ResourceMetaSearchQuery | Query): The search query object or Query builder.
-
-        Returns:
-            results (list[ResourceMeta]): A list of ResourceMeta objects matching the query.
-        """
         if isinstance(query, Query):
             query = query.build()
+        self._validate_query_fields(query)
         query = self._resolve_str_query_vectors(query)
         return self.storage.search(query)
 
@@ -1967,9 +2065,38 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return 1
         return max(1, min(16, nr_work // 3))
 
+    def _undecodable_data(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: "str | None | UnsetType",
+        error: str,
+    ) -> UndecodableData:
+        """Build an :class:`UndecodableData` for a row whose data can't be
+        decoded into the model: best-effort parsed dict, else raw bytes
+        (base64). Used by the ``raw`` decode-error policy."""
+        raw = b""
+        try:
+            with self.storage.get_data_bytes(
+                resource_id, revision_id, schema_version
+            ) as fh:
+                raw = fh.read()
+        except Exception:
+            pass
+        try:
+            parsed = self._data_serializer.decode_to_builtins(raw)
+            if isinstance(parsed, dict):
+                return UndecodableData(decode_error=error, data=parsed)
+        except Exception:
+            pass
+        return UndecodableData(
+            decode_error=error,
+            raw_base64=base64.b64encode(raw).decode("ascii"),
+        )
+
     def list_resources(
         self,
-        query: ResourceMetaSearchQuery | Query,
+        query: "ResourceMetaSearchQuery | Query | None" = None,
         *,
         returns: list[str] | None = None,
         partial: list[str] | None = None,
@@ -1992,7 +2119,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Returns:
             resources (list[SearchedResource[T]]): one item per matched resource.
         """
-        # 1. Search — triggers SearchResources events
+        # 1. Search — triggers SearchResources events. ``None`` lists all.
+        if query is None:
+            query = ResourceMetaSearchQuery()
         metas = self.search_resources(query)
         if not metas:
             return []
@@ -2019,9 +2148,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                             schema_version=meta.schema_version,
                         )
                     else:
-                        resource = self.get(
+                        # low-level read (no policy) — list applies the
+                        # on_decode_error policy itself in the except below.
+                        resource = self.get_resource_revision(
                             meta.resource_id,
-                            revision_id=meta.current_revision_id,
+                            meta.current_revision_id,
                             schema_version=meta.schema_version,
                         )
                         data = resource.data
@@ -2047,27 +2178,73 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     info = filter_struct_partial(info, spec.info_fields)
 
                 return SearchedResource(data=data, info=info, meta=meta_out)
-            except Exception:
-                return None
+            except Exception as e:
+                if self._on_decode_error == OnDecodeError.error:
+                    raise ResourceDecodeError(meta.resource_id, str(e)) from e
+                if self._on_decode_error == OnDecodeError.raw:
+                    info_out: Any = UNSET
+                    if "info" in returns:
+                        try:
+                            info_out = self.get_revision_info(
+                                meta.resource_id,
+                                meta.current_revision_id,
+                                schema_version=meta.schema_version,
+                            )
+                        except Exception:
+                            info_out = UNSET
+                    return SearchedResource(
+                        data=self._undecodable_data(
+                            meta.resource_id,
+                            meta.current_revision_id,
+                            meta.schema_version,
+                            str(e),
+                        )
+                        if "data" in returns
+                        else UNSET,
+                        info=info_out,
+                        meta=meta if "meta" in returns else UNSET,
+                    )
+                return None  # skip
 
         # 5. Execute — single-threaded or parallel
         worker_num = self._default_worker_num(len(metas))
         results: list[SearchedResource[T]] = []
+        skipped_ids: list[str] = []
 
         if worker_num <= 1:
             for meta in metas:
                 item = _fetch_one(meta)
                 if item is not None:
                     results.append(item)
+                else:
+                    skipped_ids.append(meta.resource_id)
         else:
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=worker_num,
             ) as executor:
-                futures = [executor.submit(_fetch_one, meta) for meta in metas]
+                futures = {executor.submit(_fetch_one, meta): meta for meta in metas}
                 for future in futures:
                     item = future.result()
                     if item is not None:
                         results.append(item)
+                    else:
+                        skipped_ids.append(futures[future].resource_id)
+
+        # A matched resource whose data can't be fetched/decoded is skipped here
+        # (defensive — one bad row shouldn't 500 the whole page), but ``count``
+        # still counts it, so the two endpoints diverge. Make that divergence
+        # non-silent: most often it means an incompatible schema change at the
+        # same version. See the schema-migration guide.
+        if skipped_ids:
+            logger.warning(
+                "%s.list: skipped %d undecodable resource(s) that /count still "
+                "counts (e.g. %s). This usually means an incompatible schema "
+                "change without a version bump; migrate or bump the schema "
+                "version. See docs/en/quickstart/schema-migration.md.",
+                self.resource_name,
+                len(skipped_ids),
+                skipped_ids[:5],
+            )
 
         return results
 
@@ -2154,9 +2331,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 revision_id = meta.current_revision_id
             if schema_version is UNSET:
                 schema_version = meta.schema_version
-        return self.get_resource_revision(
-            resource_id, revision_id, schema_version=schema_version
-        )
+        try:
+            return self.get_resource_revision(
+                resource_id, revision_id, schema_version=schema_version
+            )
+        except (msgspec.ValidationError, msgspec.DecodeError) as e:
+            # Honour on_decode_error. For a single get there is nothing to
+            # "skip", so skip degrades to error.
+            if self._on_decode_error == OnDecodeError.raw:
+                info = self.get_revision_info(
+                    resource_id, revision_id, schema_version=schema_version
+                )
+                return Resource(
+                    info=info,
+                    data=self._undecodable_data(
+                        resource_id, revision_id, schema_version, str(e)
+                    ),
+                )
+            raise ResourceDecodeError(resource_id, str(e)) from e
 
     def get_partial(
         self,
@@ -2246,7 +2438,30 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         with self.storage.get_data_bytes(
             resource_id, revision_id, schema_version
         ) as data_io:
-            data = self.decode(data_io.read())
+            raw = data_io.read()
+        if (
+            self._migration is not None
+            and info.schema_version != self._schema_version
+        ):
+            # Lazy read-time migration: the row is stored at an older version,
+            # so apply the registered migration to present it as the current
+            # model. Storage is NOT rewritten — ``info.schema_version`` keeps
+            # the stored version (honest about what's persisted); run an
+            # explicit migrate() to persist the upgrade. Warn once so the
+            # "looks migrated but isn't persisted" gap is visible.
+            data = self._migration.migrate(io.BytesIO(raw), info.schema_version)
+            if not self._warned_lazy_migration:
+                self._warned_lazy_migration = True
+                logger.warning(
+                    "%s: applying registered migration on read (%s -> %s) — "
+                    "storage is NOT rewritten and schema_version stays at the "
+                    "stored value; run migrate() to persist the upgrade.",
+                    self.resource_name,
+                    info.schema_version,
+                    self._schema_version,
+                )
+        else:
+            data = self.decode(raw)
         return Resource(info=info, data=data)
 
     @execute_with_events(

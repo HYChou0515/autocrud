@@ -504,6 +504,14 @@ class MsgspecSerializer(Generic[T]):
     def decode(self, b: bytes) -> T:
         return self.decoder.decode(b)
 
+    def decode_to_builtins(self, b: bytes):
+        """Decode to plain Python builtins (no target type), using the
+        configured codec. Best-effort recovery when the typed :meth:`decode`
+        fails (e.g. an incompatible schema change)."""
+        if self.encoding == "msgpack":
+            return msgspec.msgpack.decode(b)
+        return msgspec.json.decode(b)
+
     def decode_and_validate(self, b: bytes) -> None:
         """Decode and validate the data by re-encoding it and comparing hashes."""
         self.decode(b)

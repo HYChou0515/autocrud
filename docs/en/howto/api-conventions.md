@@ -31,6 +31,15 @@ Each section can be **included or omitted** via `returns`.
 > **List endpoints** (`GET /{model}`) wrap each item in the same envelope and
 > return an array — the bare resource body is *not* returned directly.
 
+### Detecting truncation on lists
+
+`GET /{model}` always sets an **`X-Has-More`** response header (`true`/`false`)
+so a page is never silently truncated, regardless of the configured page size.
+Add **`?with_total=true`** for an **`X-Total-Count`** header (an extra count
+query, hence opt-in). For a guaranteed full scan in code, use
+`ResourceManager.iter_all(query=None, *, batch_size=1000)`, which pages through
+every match internally instead of relying on a single `limit`.
+
 ### The three id fields
 
 A response carries three distinct identifiers, which serve different purposes:
@@ -103,6 +112,66 @@ This check applies to dict / JSON-body / Pydantic inputs into
 `create()` / `update()` / `modify()` (REST + programmatic). `msgspec.Struct`
 instances pass through unchanged — they can't carry extra fields by
 construction.
+
+---
+
+## Undecodable stored data: `on_decode_error`
+
+If a stored row can't be decoded into the current model (typically an
+incompatible schema change without a version bump), the read behavior is
+configurable via `SpecStar(on_decode_error=...)` /
+`spec.configure(on_decode_error=...)` (or per-model `add_model(...,
+on_decode_error=...)`). The policy lives in the `ResourceManager`, so HTTP
+routes behave identically to programmatic calls:
+
+| Policy | `GET /{model}` (list) | `GET /{model}/{id}` (single) |
+|--------|------------------------|-------------------------------|
+| `skip` (default) | omit the row + log a `SpecStarWarning`; `/count` still counts it | degrades to `error` (nothing to skip) |
+| `error` | raise `ResourceDecodeError` → **HTTP 422** | raise → **HTTP 422** |
+| `raw` | return the row with `data` as an `UndecodableData` | same |
+
+Under `raw`, the envelope is unchanged (`meta` / `revision_info`, including
+`schema_version`, are still valid) — only `data` becomes an `UndecodableData`:
+
+```json
+{"data": {"decode_error": "Object missing required field 'x'",
+          "data": { /* best-effort parsed dict */ },
+          "raw_base64": null},
+ "revision_info": "...", "meta": "..."}
+```
+
+`UndecodableData.data` holds the parsed dict when the bytes are still parseable
+(the common case); if even that fails (e.g. the encoding was changed),
+`data` is `null` and `raw_base64` preserves the original bytes losslessly.
+
+---
+
+## Filtering on a non-indexed field: `on_unindexed_query`
+
+Only **indexed** fields (and `ResourceMeta` attributes such as `created_by`,
+`is_deleted`, `created_time`) live in the searchable `indexed_data`. A filter
+condition on any other field can never match, so the query silently
+**under-returns** — usually "returns nothing". This is a common footgun, so the
+behavior is configurable via `SpecStar(on_unindexed_query=...)` /
+`spec.configure(on_unindexed_query=...)` (or per-model `add_model(...,
+on_unindexed_query=...)`). Like `on_decode_error`, the policy lives in the
+`ResourceManager`, so search/list/count over HTTP behave identically to
+programmatic calls:
+
+| Policy | Behavior when a condition names a non-indexed field |
+|--------|------------------------------------------------------|
+| `warn` (default) | emit a `SpecStarWarning` naming the field(s), then run the query anyway (it under-returns) |
+| `error` | raise `UnindexedQueryError` → **HTTP 400**, naming the field(s) and listing the indexed ones |
+
+```python
+spec.add_model(Doc, indexed_fields=[("name", str)])
+# filtering on "note" (not indexed) → SpecStarWarning by default, or HTTP 400
+# under on_unindexed_query="error". Index it, or filter on a meta attribute.
+```
+
+Only filter conditions are checked; vector-distance conditions have their own
+validation. The default `warn` is non-breaking — it only adds a warning, the
+result set is unchanged.
 
 ---
 

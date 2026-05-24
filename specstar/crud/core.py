@@ -93,8 +93,10 @@ from specstar.types import (
     IResourceManager,
     IValidator,
     Job,
+    OnDecodeError,
     OnDelete,
     OnDuplicate,
+    OnUnindexedQuery,
     Resource,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
@@ -114,6 +116,29 @@ from specstar.util.type_utils import (
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
+
+
+def _flatten_event_handlers(handlers):
+    """Expand ``do(...)`` builders passed inside an ``event_handlers`` list.
+
+    ``do(fn).after(...)`` returns a ``SimpleEventHandlerBuilder`` (a *Sequence*
+    of handlers), which is the natural thing to drop into
+    ``event_handlers=[...]`` — but as a list item it isn't itself a handler.
+    Flatten any such builder (anything iterable that isn't a handler) into its
+    individual handlers so the natural usage just works.
+    """
+    if not handlers:
+        return handlers
+    flat = []
+    for h in handlers:
+        if hasattr(h, "is_supported"):  # a real event handler
+            flat.append(h)
+        else:
+            try:
+                flat.extend(h)  # a builder / sequence of handlers
+            except TypeError:
+                flat.append(h)  # not iterable — leave it to fail clearly later
+    return flat
 
 
 class LoadStats:
@@ -262,6 +287,8 @@ class SpecStar:
         forbid_unknown_fields: bool = False,
         structured_errors: bool = False,
         validate_refs: bool = False,
+        on_decode_error: OnDecodeError = OnDecodeError.skip,
+        on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -290,6 +317,8 @@ class SpecStar:
         self.default_status: RevisionStatus | UnsetType = UNSET
         self.strict_operation_context = False
         self.forbid_unknown_fields = False
+        self.on_decode_error: OnDecodeError = OnDecodeError.skip
+        self.on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn
         self.structured_errors = False
         self.validate_refs = False
         self._pending_create_actions: list[_PendingCreateAction] = []
@@ -320,6 +349,8 @@ class SpecStar:
             forbid_unknown_fields=forbid_unknown_fields,
             structured_errors=structured_errors,
             validate_refs=validate_refs,
+            on_decode_error=on_decode_error,
+            on_unindexed_query=on_unindexed_query,
         )
 
     def _apply_configuration(
@@ -347,6 +378,8 @@ class SpecStar:
         forbid_unknown_fields: bool | UnsetType = UNSET,
         structured_errors: bool | UnsetType = UNSET,
         validate_refs: bool | UnsetType = UNSET,
+        on_decode_error: OnDecodeError | UnsetType = UNSET,
+        on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
     ) -> None:
         """Apply configuration settings to the SpecStar instance.
 
@@ -480,7 +513,7 @@ class SpecStar:
 
         # Update event_handlers
         if event_handlers is not UNSET:
-            self.event_handlers = event_handlers
+            self.event_handlers = _flatten_event_handlers(event_handlers)
 
         # Update encoding
         if encoding is not UNSET:
@@ -505,6 +538,14 @@ class SpecStar:
         # Update forbid_unknown_fields
         if forbid_unknown_fields is not UNSET:
             self.forbid_unknown_fields = forbid_unknown_fields
+
+        # Update on_decode_error
+        if on_decode_error is not UNSET:
+            self.on_decode_error = OnDecodeError(on_decode_error)
+
+        # Update on_unindexed_query
+        if on_unindexed_query is not UNSET:
+            self.on_unindexed_query = OnUnindexedQuery(on_unindexed_query)
 
         # Update structured_errors
         if structured_errors is not UNSET:
@@ -538,6 +579,8 @@ class SpecStar:
         forbid_unknown_fields: bool | UnsetType = UNSET,
         structured_errors: bool | UnsetType = UNSET,
         validate_refs: bool | UnsetType = UNSET,
+        on_decode_error: OnDecodeError | UnsetType = UNSET,
+        on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
@@ -644,6 +687,8 @@ class SpecStar:
             forbid_unknown_fields=forbid_unknown_fields,
             structured_errors=structured_errors,
             validate_refs=validate_refs,
+            on_decode_error=on_decode_error,
+            on_unindexed_query=on_unindexed_query,
         )
 
         # Register vector encoders into the registry
@@ -681,7 +726,16 @@ class SpecStar:
             ```
         """
         if isinstance(model, str):
-            return self.resource_managers[model]
+            try:
+                return self.resource_managers[model]
+            except KeyError:
+                raise KeyError(
+                    f"No resource registered under name {model!r}. Registered "
+                    f"names: {sorted(self.resource_managers)}. Auto-generated "
+                    f"Job models use an action-derived name (e.g. "
+                    f"'<action>-job'), not the Job class name — or pass the "
+                    f"model class directly."
+                ) from None
         model_name = self.model_names[model]
         if model_name is None:
             raise ValueError(
@@ -1068,6 +1122,8 @@ class SpecStar:
         validator: "Callable[[T], None] | IValidator | type | None" = None,
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
         vector_encoders: dict[str, str | Callable] | None = None,
+        on_decode_error: OnDecodeError | UnsetType = UNSET,
+        on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
     ) -> None:
         """Register a resource model (or `Schema`) and create its `ResourceManager`.
 
@@ -1370,7 +1426,8 @@ class SpecStar:
             id_generator=id_generator,
             migration=cast("IMigration | Schema | None", resolved_schema or migration),
             indexed_fields=_indexed_fields,
-            event_handlers=self.event_handlers or event_handlers,
+            event_handlers=self.event_handlers
+            or _flatten_event_handlers(event_handlers),
             permission_checker=self.permission_checker or permission_checker,
             encoding=encoding,
             name=model_name,
@@ -1381,6 +1438,16 @@ class SpecStar:
             constraint_checkers=constraint_checkers,
             strict_operation_context=self.strict_operation_context,
             forbid_unknown_fields=self.forbid_unknown_fields,
+            on_decode_error=(
+                on_decode_error
+                if on_decode_error is not UNSET
+                else self.on_decode_error
+            ),
+            on_unindexed_query=(
+                on_unindexed_query
+                if on_unindexed_query is not UNSET
+                else self.on_unindexed_query
+            ),
             encoder_registry=self.encoder_registry,
             vector_encoders=vector_encoders,
             **other_options,

@@ -7,6 +7,7 @@ from specstar.types import (
     PermissionDeniedError,
     PreconditionFailedError,
     ResourceConflictError,
+    ResourceDecodeError,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceNotFoundError,
@@ -15,6 +16,7 @@ from specstar.types import (
     RevisionNotMigratedError,
     SchemaConflictError,
     SpecStarWarning,
+    UnindexedQueryError,
     UniqueConstraintError,
     ValidationError,
 )
@@ -26,6 +28,7 @@ __all__ = [
     "PermissionDeniedError",
     "PreconditionFailedError",
     "ResourceConflictError",
+    "ResourceDecodeError",
     "ResourceIDNotFoundError",
     "ResourceIsDeletedError",
     "ResourceNotFoundError",
@@ -35,5 +38,6 @@ __all__ = [
     "SchemaConflictError",
     "SpecStarWarning",
     "UniqueConstraintError",
+    "UnindexedQueryError",
     "ValidationError",
 ]

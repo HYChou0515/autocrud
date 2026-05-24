@@ -197,6 +197,25 @@ This is useful for generated clients or integrations that prefer explicit JSON-l
 
 ---
 
+## Listing everything (no query)
+
+`search_resources`, `count_resources`, `list_resources`, and `iter_all` all
+accept **no argument**, which matches every resource — equivalent to passing
+`QB.all()` (or an empty `ResourceMetaSearchQuery()`):
+
+```python
+manager.search_resources()       # every resource's meta
+manager.count_resources()        # total count
+manager.list_resources()         # every resource, with data
+for meta in manager.iter_all():  # paged full scan
+    ...
+```
+
+Prefer `iter_all()` when you genuinely want *all* rows — it pages internally, so
+a forgotten `limit` can't silently truncate the result.
+
+---
+
 ## Important limitations
 
 - queries only work reliably on metadata fields and indexed fields

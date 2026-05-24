@@ -65,6 +65,16 @@ These include:
 - narrowing Union / Literal types (removing variants)
 - changing field types
 
+> **Don't make a breaking change without bumping the schema version.** If you
+> alter the struct incompatibly but keep the **same** version, existing rows can
+> no longer be decoded. The list endpoints defensively **skip** such rows (one
+> bad row won't fail the whole page), but `/{model}/count` still counts them —
+> so `count` and the list disagree. By default SpecStar logs a warning
+> (`… skipped N undecodable resource(s) that /count still counts …`). You can
+> change this with `on_decode_error` (`skip` / `error` / `raw`) — see
+> [API conventions](../howto/api-conventions.md#undecodable-stored-data-on_decode_error).
+> The real fix is to give the new shape a new version and a migration step, as below.
+
 ---
 
 ## 3. Define versioned schemas
@@ -173,6 +183,28 @@ After migration:
 - all new writes use the latest schema (`v2`)
 - old data is preserved as historical revisions
 - your system continues to support revision history seamlessly
+
+---
+
+## Reads apply migrations lazily (you don't have to migrate first)
+
+You don't *need* to run the explicit migration above just to read old data:
+when a row is stored at an older version, reads (`GET`, list, `get()` /
+`list_resources()`) **apply the registered `step(...)` migrations on the fly**
+and return the current-version object. So `count` and the list agree, and a
+correctly-registered migration never surfaces as a `422`.
+
+Lazy migration is **read-only** — it does **not** rewrite storage:
+
+- `revision_info.schema_version` keeps the **stored** version (honest about what
+  is persisted), even though `data` is returned in the current shape.
+- SpecStar logs a one-time warning the first time it migrates on read.
+- Run the explicit `migrate()` (section 6) to **persist** the upgrade and bump
+  the stored `schema_version`.
+
+(If a stored version has no registered migration path to the current schema,
+the read falls back to the [`on_decode_error`](../howto/api-conventions.md#undecodable-stored-data-on_decode_error)
+policy.)
 
 ---
 

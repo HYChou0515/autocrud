@@ -42,6 +42,14 @@ from specstar import spec
 spec.configure(event_handlers=event_handlers)
 ```
 
+A `do(...)` builder is a *Sequence* of handlers, so you can pass it directly,
+or drop one (or several) into a list — both work and are flattened for you:
+
+```python
+spec.configure(event_handlers=[do(audit_log).before(ResourceAction.create),
+                               do(notify).after(ResourceAction.delete)])
+```
+
 Or pass them for a specific model when registering it.
 
 ---

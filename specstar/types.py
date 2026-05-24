@@ -79,6 +79,48 @@ class RefType(StrEnum):
     and are excluded from referrers queries."""
 
 
+class OnDecodeError(StrEnum):
+    """What to do when a stored row can't be decoded into the current model
+    (e.g. an incompatible schema change without a version bump).
+
+    The policy is honoured by the ``ResourceManager`` read paths, so HTTP routes
+    (which delegate to the manager) behave identically to programmatic calls.
+    """
+
+    skip = "skip"
+    """Omit the undecodable row from list results and log a warning. ``count``
+    still counts it, so the two can differ — but no longer silently. For a
+    single ``get`` (nothing to skip), this degrades to ``error``. (default)"""
+
+    error = "error"
+    """Raise :class:`ResourceDecodeError` (HTTP 422) on the undecodable row."""
+
+    raw = "raw"
+    """Return the row in the normal envelope but with ``data`` set to an
+    :class:`UndecodableData` (best-effort dict, else raw bytes) instead of the
+    model type — i.e. ``Resource[UndecodableData]`` / ``SearchedResource[...]``."""
+
+
+class OnUnindexedQuery(StrEnum):
+    """What to do when a search filters on a field that is neither an indexed
+    field nor a ``ResourceMeta`` attribute.
+
+    Such a field is never written to ``indexed_data``, so the condition can
+    never match — the query silently under-returns (often "returns nothing").
+    This policy makes that footgun visible. Honoured by the ``ResourceManager``
+    search paths, so HTTP routes behave identically to programmatic calls.
+    """
+
+    warn = "warn"
+    """Emit a :class:`SpecStarWarning` naming the offending field(s) and run the
+    query anyway (it will under-return). Suppress with the standard ``warnings``
+    machinery. (default)"""
+
+    error = "error"
+    """Raise :class:`UnindexedQueryError` naming the offending field(s) instead
+    of running a query that can only under-return."""
+
+
 class OnDuplicate(StrEnum):
     """Strategy for handling duplicate resource IDs during incremental load."""
 
@@ -595,6 +637,24 @@ class RevisionInfo(Struct, kw_only=True):
 class Resource(Struct, Generic[T]):
     info: RevisionInfo
     data: T
+
+
+class UndecodableData(Struct):
+    """Stand-in for a resource's ``data`` that couldn't be decoded into the
+    model type, used when ``on_decode_error=OnDecodeError.raw``.
+
+    It fills the ``data`` slot of the normal envelope — i.e. you get a
+    ``Resource[UndecodableData]`` / ``SearchedResource[UndecodableData]`` whose
+    ``meta`` / ``revision_info`` (including ``schema_version``) are still valid.
+    Best-effort: ``data`` holds the parsed dict when the bytes are still
+    parseable (the common incompatible-schema case); if even that fails (e.g.
+    the encoding was changed), ``data`` is ``None`` and ``raw_base64`` preserves
+    the original bytes losslessly.
+    """
+
+    decode_error: str
+    data: dict | None = None
+    raw_base64: str | None = None
 
 
 class Binary(Struct):
@@ -1322,11 +1382,13 @@ class IResourceManager(ABC, Generic[T]):
         pass
 
     @abstractmethod
-    def count_resources(self, query: ResourceMetaSearchQuery) -> int:
-        """"""
+    def count_resources(self, query: ResourceMetaSearchQuery | None = None) -> int:
+        """Count resources matching ``query``; ``None`` counts all."""
 
     @abstractmethod
-    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+    def search_resources(
+        self, query: ResourceMetaSearchQuery | None = None
+    ) -> list[ResourceMeta]:
         """Search for resources based on a query.
 
         Args:
@@ -1353,7 +1415,7 @@ class IResourceManager(ABC, Generic[T]):
     @abstractmethod
     def list_resources(
         self,
-        query: ResourceMetaSearchQuery,
+        query: ResourceMetaSearchQuery | None = None,
         *,
         returns: list[str] | None = None,
         partial: list[str] | None = None,
@@ -1830,6 +1892,39 @@ class IResourceManager(ABC, Generic[T]):
 
 class PermissionDeniedError(Exception):
     pass
+
+
+class ResourceDecodeError(Exception):
+    """A stored row could not be decoded into the current model type.
+
+    Raised by read paths when ``on_decode_error=OnDecodeError.error``. Usually
+    means an incompatible schema change without a version bump (the persisted
+    bytes no longer fit the Struct). Maps to HTTP 422.
+    """
+
+    def __init__(self, resource_id: str, reason: str = ""):
+        self.resource_id = resource_id
+        self.reason = reason
+        super().__init__(f"Cannot decode resource {resource_id!r}: {reason}")
+
+
+class UnindexedQueryError(Exception):
+    """A search filtered on a field that is neither indexed nor a
+    ``ResourceMeta`` attribute, so the condition can never match.
+
+    Raised by search paths when ``on_unindexed_query=OnUnindexedQuery.error``.
+    Maps to HTTP 400 (the query references a field that cannot be filtered).
+    """
+
+    def __init__(self, fields: list[str], indexed: list[str]):
+        self.fields = list(fields)
+        self.indexed = list(indexed)
+        super().__init__(
+            f"Query filters on non-indexed field(s) {self.fields!r}; such "
+            f"conditions match nothing. Indexed fields: {self.indexed!r}. Add "
+            f"them via indexed_fields=/add_indexed_field(), or filter on a "
+            f"ResourceMeta attribute."
+        )
 
 
 class SpecStarWarning(UserWarning):
