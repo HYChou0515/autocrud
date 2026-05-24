@@ -40,7 +40,8 @@ Resource-level metadata (`ResourceMeta`) is accessed via dedicated endpoints (or
 
 ### `resource_id`
 
-* A UUID string
+* Format: `"{model_name}:{uuid}"` — the model name, a colon, then a UUID
+  (e.g. `material:2c08f3a1-...`). It is **not** a bare UUID string.
 * Created at `create()` time
 
 ### `revision_id`
@@ -51,8 +52,8 @@ SpecStar uses a human-readable revision identifier:
 
 Example:
 
-* `f1b2...:1`
-* `f1b2...:2`
+* `material:f1b2...:1`
+* `material:f1b2...:2`
 
 ## Revision graph and branching
 
