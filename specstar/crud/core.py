@@ -715,7 +715,16 @@ class SpecStar:
             ```
         """
         if isinstance(model, str):
-            return self.resource_managers[model]
+            try:
+                return self.resource_managers[model]
+            except KeyError:
+                raise KeyError(
+                    f"No resource registered under name {model!r}. Registered "
+                    f"names: {sorted(self.resource_managers)}. Auto-generated "
+                    f"Job models use an action-derived name (e.g. "
+                    f"'<action>-job'), not the Job class name — or pass the "
+                    f"model class directly."
+                ) from None
         model_name = self.model_names[model]
         if model_name is None:
             raise ValueError(

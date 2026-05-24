@@ -57,3 +57,9 @@ def test_iter_all_yields_everything_without_truncation():
     mgr = sp.get_resource_manager(Item)
     metas = list(mgr.iter_all(batch_size=2))
     assert len(metas) == 5
+
+
+def test_list_resources_no_arg_lists_all():
+    sp, _ = _client_with(3)
+    mgr = sp.get_resource_manager(Item)
+    assert len(mgr.list_resources()) == 3  # no query == list all

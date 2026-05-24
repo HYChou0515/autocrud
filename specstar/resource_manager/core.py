@@ -2008,7 +2008,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def list_resources(
         self,
-        query: ResourceMetaSearchQuery | Query,
+        query: "ResourceMetaSearchQuery | Query | None" = None,
         *,
         returns: list[str] | None = None,
         partial: list[str] | None = None,
@@ -2031,7 +2031,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Returns:
             resources (list[SearchedResource[T]]): one item per matched resource.
         """
-        # 1. Search — triggers SearchResources events
+        # 1. Search — triggers SearchResources events. ``None`` lists all.
+        if query is None:
+            query = ResourceMetaSearchQuery()
         metas = self.search_resources(query)
         if not metas:
             return []
