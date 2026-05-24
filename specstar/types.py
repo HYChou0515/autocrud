@@ -1382,11 +1382,13 @@ class IResourceManager(ABC, Generic[T]):
         pass
 
     @abstractmethod
-    def count_resources(self, query: ResourceMetaSearchQuery) -> int:
-        """"""
+    def count_resources(self, query: ResourceMetaSearchQuery | None = None) -> int:
+        """Count resources matching ``query``; ``None`` counts all."""
 
     @abstractmethod
-    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+    def search_resources(
+        self, query: ResourceMetaSearchQuery | None = None
+    ) -> list[ResourceMeta]:
         """Search for resources based on a query.
 
         Args:
@@ -1413,7 +1415,7 @@ class IResourceManager(ABC, Generic[T]):
     @abstractmethod
     def list_resources(
         self,
-        query: ResourceMetaSearchQuery,
+        query: ResourceMetaSearchQuery | None = None,
         *,
         returns: list[str] | None = None,
         partial: list[str] | None = None,

@@ -155,7 +155,9 @@ QB.all(
 )
 ```
 
-`QB.all()` with no arguments matches all resources.
+`QB.all()` with no arguments matches all resources. The same "match all" is what
+you get by calling `search_resources()`, `count_resources()`, `list_resources()`,
+or `iter_all()` with **no argument** at all.
 
 ### OR group
 

@@ -63,3 +63,24 @@ def test_list_resources_no_arg_lists_all():
     sp, _ = _client_with(3)
     mgr = sp.get_resource_manager(Item)
     assert len(mgr.list_resources()) == 3  # no query == list all
+
+
+def test_search_resources_no_arg_returns_all():
+    sp, _ = _client_with(3)
+    mgr = sp.get_resource_manager(Item)
+    assert len(mgr.search_resources()) == 3  # no query == search all
+
+
+def test_count_resources_no_arg_counts_all():
+    sp, _ = _client_with(3)
+    mgr = sp.get_resource_manager(Item)
+    assert mgr.count_resources() == 3  # no query == count all
+
+
+def test_no_arg_is_equivalent_to_qb_all():
+    from specstar import QB
+
+    sp, _ = _client_with(3)
+    mgr = sp.get_resource_manager(Item)
+    assert len(mgr.search_resources()) == len(mgr.search_resources(QB.all()))
+    assert mgr.count_resources() == mgr.count_resources(QB.all())

@@ -757,13 +757,15 @@ class ResourceOps(Generic[T]):
         ) -> ResourceMeta: ...
         def exists(self, resource_id: str) -> bool: ...
         def revision_exists(self, resource_id: str, revision_id: str) -> bool: ...
-        def count_resources(self, query: ResourceMetaSearchQuery) -> int: ...
+        def count_resources(
+            self, query: ResourceMetaSearchQuery | None = ...
+        ) -> int: ...
         def search_resources(
-            self, query: ResourceMetaSearchQuery
+            self, query: ResourceMetaSearchQuery | None = ...
         ) -> list[ResourceMeta]: ...
         def list_resources(
             self,
-            query: ResourceMetaSearchQuery,
+            query: ResourceMetaSearchQuery | None = ...,
             *,
             returns: list[str] | None = ...,
             partial: list[str] | None = ...,
@@ -1866,17 +1868,23 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             stacklevel=3,
         )
 
-    def count_resources(self, query: ResourceMetaSearchQuery | Query) -> int:
+    def count_resources(
+        self, query: "ResourceMetaSearchQuery | Query | None" = None
+    ) -> int:
         """
         Count the number of resources matching the query.
 
         Arguments:
-            query (ResourceMetaSearchQuery | Query): The search query object or Query builder.
+            query (ResourceMetaSearchQuery | Query | None): The search query
+                object or Query builder. ``None`` (the default) counts all
+                resources — equivalent to passing ``QB.all()``.
 
         Returns:
             count (int): The number of matching resources.
         """
-        if isinstance(query, Query):
+        if query is None:
+            query = ResourceMetaSearchQuery()
+        elif isinstance(query, Query):
             query = query.build()
         self._validate_query_fields(query)
         query = self._resolve_str_query_vectors(query)
@@ -1975,6 +1983,27 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return query
         return msgspec.structs.replace(query, **changes)
 
+    def search_resources(
+        self, query: "ResourceMetaSearchQuery | Query | None" = None
+    ) -> list[ResourceMeta]:
+        """
+        Search resources based on the provided query.
+
+        Arguments:
+            query (ResourceMetaSearchQuery | Query | None): The search query
+                object or Query builder. ``None`` (the default) lists all
+                resources — equivalent to passing ``QB.all()``.
+
+        Returns:
+            results (list[ResourceMeta]): A list of ResourceMeta objects matching the query.
+        """
+        # Normalise "no query" → match-all *before* the event-emitting method,
+        # so the SearchResources event contexts always carry a real query
+        # (matching how list_resources / iter_all already work).
+        if query is None:
+            query = ResourceMetaSearchQuery()
+        return self._search_resources(query)
+
     @execute_with_events(
         (
             BeforeSearchResources,
@@ -1984,18 +2013,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         ),
         "results",
     )
-    def search_resources(
+    def _search_resources(
         self, query: ResourceMetaSearchQuery | Query
     ) -> list[ResourceMeta]:
-        """
-        Search resources based on the provided query.
-
-        Arguments:
-            query (ResourceMetaSearchQuery | Query): The search query object or Query builder.
-
-        Returns:
-            results (list[ResourceMeta]): A list of ResourceMeta objects matching the query.
-        """
         if isinstance(query, Query):
             query = query.build()
         self._validate_query_fields(query)
