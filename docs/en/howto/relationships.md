@@ -32,6 +32,19 @@ class Monster(Struct):
 
 ## Important constraints (common pitfalls)
 
+### `on_delete` defaults to `dangling` — i.e. **no** referential protection
+
+If you omit `on_delete`, a `Ref` uses `OnDelete.dangling`: deleting a referenced
+resource **succeeds** and leaves the referencing field pointing at a now-missing
+resource. Choose explicitly when you need integrity:
+
+- `OnDelete.restrict` — refuse to delete while referenced (raises, HTTP 409)
+- `OnDelete.cascade` — delete the referencing resource too
+- `OnDelete.set_null` — null the referencing field (Optional only)
+
+Also note references are **not** validated on write by default — see
+`validate_refs` if you want write-time existence checks.
+
 ### `OnDelete.set_null` requires Optional
 
 If you use `on_delete=OnDelete.set_null`, the field must be nullable:
