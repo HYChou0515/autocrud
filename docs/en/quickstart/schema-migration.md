@@ -186,6 +186,28 @@ After migration:
 
 ---
 
+## Reads apply migrations lazily (you don't have to migrate first)
+
+You don't *need* to run the explicit migration above just to read old data:
+when a row is stored at an older version, reads (`GET`, list, `get()` /
+`list_resources()`) **apply the registered `step(...)` migrations on the fly**
+and return the current-version object. So `count` and the list agree, and a
+correctly-registered migration never surfaces as a `422`.
+
+Lazy migration is **read-only** — it does **not** rewrite storage:
+
+- `revision_info.schema_version` keeps the **stored** version (honest about what
+  is persisted), even though `data` is returned in the current shape.
+- SpecStar logs a one-time warning the first time it migrates on read.
+- Run the explicit `migrate()` (section 6) to **persist** the upgrade and bump
+  the stored `schema_version`.
+
+(If a stored version has no registered migration path to the current schema,
+the read falls back to the [`on_decode_error`](../howto/api-conventions.md#undecodable-stored-data-on_decode_error)
+policy.)
+
+---
+
 ## Why this matters
 
 Schema changes are one of the hardest parts of maintaining a system.

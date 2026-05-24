@@ -870,6 +870,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._strict_operation_context = strict_operation_context
         self._forbid_unknown_fields = forbid_unknown_fields
         self._on_decode_error = OnDecodeError(on_decode_error)
+        self._warned_lazy_migration = False
 
         # ── Resolve Schema vs legacy migration/validator ──────────────
         from specstar.schema import Schema as _Schema
@@ -2347,7 +2348,30 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         with self.storage.get_data_bytes(
             resource_id, revision_id, schema_version
         ) as data_io:
-            data = self.decode(data_io.read())
+            raw = data_io.read()
+        if (
+            self._migration is not None
+            and info.schema_version != self._schema_version
+        ):
+            # Lazy read-time migration: the row is stored at an older version,
+            # so apply the registered migration to present it as the current
+            # model. Storage is NOT rewritten — ``info.schema_version`` keeps
+            # the stored version (honest about what's persisted); run an
+            # explicit migrate() to persist the upgrade. Warn once so the
+            # "looks migrated but isn't persisted" gap is visible.
+            data = self._migration.migrate(io.BytesIO(raw), info.schema_version)
+            if not self._warned_lazy_migration:
+                self._warned_lazy_migration = True
+                logger.warning(
+                    "%s: applying registered migration on read (%s -> %s) — "
+                    "storage is NOT rewritten and schema_version stays at the "
+                    "stored value; run migrate() to persist the upgrade.",
+                    self.resource_name,
+                    info.schema_version,
+                    self._schema_version,
+                )
+        else:
+            data = self.decode(raw)
         return Resource(info=info, data=data)
 
     @execute_with_events(
