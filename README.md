@@ -11,6 +11,7 @@
   <a href="https://pypi.org/project/specstar/"><img alt="PyPI" src="https://img.shields.io/pypi/v/specstar"></a>
   <a href="https://github.com/HYChou0515/specstar/blob/master/LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/specstar"></a>
   <a href="https://hychou0515.github.io/specstar/"><img alt="Docs" src="https://img.shields.io/badge/docs-mkdocs-blue"></a>
+  <a href="https://codecov.io/gh/HYChou0515/specstar"><img alt="Coverage" src="https://codecov.io/gh/HYChou0515/specstar/branch/master/graph/badge.svg"></a>
 </p>
 
 > **Renamed from `autocrud` to `specstar` (v0.10.0).** The old name still installs as a deprecation shim that redirects every `autocrud[.X]` import to `specstar[.X]`. New projects should `pip install specstar`. See the [migration guide](MIGRATION.md).
