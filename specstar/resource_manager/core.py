@@ -174,6 +174,27 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
+def _validate_resource_id(resource_id: str) -> None:
+    """Reject a caller-supplied ``resource_id`` that isn't safe in file paths
+    and URLs.
+
+    Path separators break disk storage (the id is used as a filename), and any
+    ``/`` makes the resource unaddressable over HTTP (``/{model}/{resource_id}``
+    is a single path segment — even ``%2F`` 404s). We fail fast and
+    backend-agnostically rather than crash later or create a REST-invisible row.
+    Auto-generated ids (``model:uuid``) are unaffected.
+    """
+    if not isinstance(resource_id, str) or not resource_id.strip():
+        raise ValidationError("resource_id must be a non-empty string.")
+    if "/" in resource_id or "\\" in resource_id or any(ord(c) < 32 for c in resource_id):
+        raise ValidationError(
+            f"resource_id {resource_id!r} contains characters that are not "
+            "allowed: path separators ('/', '\\') or control characters. A "
+            "resource_id must be safe in both file paths and URLs — use a flat "
+            "id of letters, digits, ':', '-', or '_'."
+        )
+
+
 class IndexedValueExtractor:
     """從資源資料中提取需要索引的欄位值（Enum 會自動轉換為 value）"""
 
@@ -1561,6 +1582,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             if _id is UNSET:
                 resource_id = self.id_generator()
             else:
+                _validate_resource_id(_id)  # caller-supplied id must be path/URL-safe
                 resource_id = _id
             revision_id = f"{resource_id}:1"
             last_revision_id = None

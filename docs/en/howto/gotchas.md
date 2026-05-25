@@ -115,6 +115,14 @@ To customise how ids are generated, pass `id_generator=` to
 The one exception: if your Struct *legitimately* declares a field named
 `resource_id`, the guard steps aside and treats it as ordinary data.
 
+A **custom** id supplied programmatically (`rm.create(data, resource_id=...)`
+or a custom `id_generator`) must be safe in file paths **and** URLs: ids with
+`/`, `\`, or control characters are rejected with a `ValidationError`. A `/`
+would otherwise break disk storage (the id is used as a filename) and make the
+resource unreachable over HTTP — `/{model}/{resource_id}` is a single path
+segment, so `GET /model/a/b` (and even `a%2Fb`) returns 404. Stick to letters,
+digits, `:`, `-`, `_`.
+
 ### `PUT` is full-replace, not upsert
 
 | Intuitive guess | Actual behavior |
