@@ -161,6 +161,31 @@ delete, capture timestamps). If you only care about success, just check
 Distinct from "never existed" `404`. Pass `?include_deleted=true` to
 read them through the same endpoints.
 
+### Programmatic `list_resources()` includes soft-deleted rows (HTTP excludes them)
+
+The two layers disagree on the default:
+
+| Call | Soft-deleted included? |
+|------|------------------------|
+| `rm.list_resources()` / `count_resources()` / `iter_all()` (bare) | **Yes** — the query's `is_deleted` is `UNSET`, i.e. no filter |
+| `GET /{model}` (no `is_deleted` param) | **No** — the route param defaults to `False` |
+
+To exclude them in a single programmatic call, pass it explicitly:
+
+```python
+from specstar.query_types import ResourceMetaSearchQuery
+rm.list_resources(ResourceMetaSearchQuery(is_deleted=False))   # live only
+```
+
+Or set a default for *all* programmatic list/count/iter calls (non-breaking —
+defaults to `None` = include both):
+
+```python
+spec.configure(default_is_deleted=False)   # exclude soft-deleted by default
+# None = include both (default) · False = exclude · True = only deleted
+# An explicit is_deleted in the query always wins.
+```
+
 ### `Unique()` ignores soft-deleted rows
 
 A `Unique()` constraint only considers **live** resources. After you soft-delete

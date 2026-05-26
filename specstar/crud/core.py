@@ -290,6 +290,7 @@ class SpecStar:
         on_decode_error: OnDecodeError = OnDecodeError.skip,
         on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn,
         default_get_returns: "str | list[str] | UnsetType" = UNSET,
+        default_is_deleted: "bool | None | UnsetType" = UNSET,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -323,6 +324,7 @@ class SpecStar:
         # UNSET = caller never chose a GET shape → the envelope is used and the
         # startup advisory fires. Setting it (even to the envelope) silences it.
         self.default_get_returns: "str | list[str] | UnsetType" = UNSET
+        self.default_is_deleted: "bool | None | UnsetType" = UNSET
         self.structured_errors = False
         self.validate_refs = False
         self._pending_create_actions: list[_PendingCreateAction] = []
@@ -356,6 +358,7 @@ class SpecStar:
             on_decode_error=on_decode_error,
             on_unindexed_query=on_unindexed_query,
             default_get_returns=default_get_returns,
+            default_is_deleted=default_is_deleted,
         )
 
     def _apply_configuration(
@@ -386,6 +389,7 @@ class SpecStar:
         on_decode_error: OnDecodeError | UnsetType = UNSET,
         on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
         default_get_returns: "str | list[str] | UnsetType" = UNSET,
+        default_is_deleted: "bool | None | UnsetType" = UNSET,
     ) -> None:
         """Apply configuration settings to the SpecStar instance.
 
@@ -557,6 +561,10 @@ class SpecStar:
         if default_get_returns is not UNSET:
             self.default_get_returns = default_get_returns
 
+        # Update default_is_deleted
+        if default_is_deleted is not UNSET:
+            self.default_is_deleted = default_is_deleted
+
         # Update structured_errors
         if structured_errors is not UNSET:
             self.structured_errors = structured_errors
@@ -592,6 +600,7 @@ class SpecStar:
         on_decode_error: OnDecodeError | UnsetType = UNSET,
         on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
         default_get_returns: "str | list[str] | UnsetType" = UNSET,
+        default_is_deleted: "bool | None | UnsetType" = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
@@ -701,6 +710,7 @@ class SpecStar:
             on_decode_error=on_decode_error,
             on_unindexed_query=on_unindexed_query,
             default_get_returns=default_get_returns,
+            default_is_deleted=default_is_deleted,
         )
 
         # Register vector encoders into the registry
@@ -1137,6 +1147,7 @@ class SpecStar:
         on_decode_error: OnDecodeError | UnsetType = UNSET,
         on_unindexed_query: OnUnindexedQuery | UnsetType = UNSET,
         default_get_returns: "str | list[str] | UnsetType" = UNSET,
+        default_is_deleted: "bool | None | UnsetType" = UNSET,
     ) -> None:
         """Register a resource model (or `Schema`) and create its `ResourceManager`.
 
@@ -1468,6 +1479,15 @@ class SpecStar:
                     self.default_get_returns
                     if self.default_get_returns is not UNSET
                     else "data,revision_info,meta"
+                )
+            ),
+            default_is_deleted=(
+                default_is_deleted
+                if default_is_deleted is not UNSET
+                else (
+                    self.default_is_deleted
+                    if self.default_is_deleted is not UNSET
+                    else None
                 )
             ),
             encoder_registry=self.encoder_registry,
