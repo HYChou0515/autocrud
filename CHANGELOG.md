@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.5] — 2026-05-26
+
+
+### Added
+
+- Default_is_deleted option for programmatic list/count/iter
+
+
+### Fixed
+
+- Reject path/URL-unsafe custom resource_id
+
 ## [0.11.4] — 2026-05-24
 
 
