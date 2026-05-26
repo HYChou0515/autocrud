@@ -852,6 +852,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         on_decode_error: OnDecodeError = OnDecodeError.skip,
         on_unindexed_query: OnUnindexedQuery = OnUnindexedQuery.warn,
         default_get_returns: "str | list[str]" = "data,revision_info,meta",
+        default_is_deleted: bool | None = None,
         encoder_registry: "Any | None" = None,
         vector_encoders: "dict[str, str | Callable] | None" = None,
     ):
@@ -883,6 +884,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             if isinstance(default_get_returns, (list, tuple))
             else default_get_returns
         )
+        self._default_is_deleted = default_is_deleted
         self._warned_lazy_migration = False
 
         # ── Resolve Schema vs legacy migration/validator ──────────────
@@ -1880,6 +1882,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             stacklevel=3,
         )
 
+    def _apply_default_is_deleted(
+        self, query: ResourceMetaSearchQuery
+    ) -> ResourceMetaSearchQuery:
+        """Inject the configured ``default_is_deleted`` when the query didn't
+        specify one. ``None`` leaves it UNSET (include both live and
+        soft-deleted — the default); an explicit ``is_deleted`` always wins."""
+        if self._default_is_deleted is not None and query.is_deleted is UNSET:
+            return msgspec.structs.replace(query, is_deleted=self._default_is_deleted)
+        return query
+
     def count_resources(
         self, query: "ResourceMetaSearchQuery | Query | None" = None
     ) -> int:
@@ -1898,6 +1910,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             query = ResourceMetaSearchQuery()
         elif isinstance(query, Query):
             query = query.build()
+        query = self._apply_default_is_deleted(query)
         self._validate_query_fields(query)
         query = self._resolve_str_query_vectors(query)
         return self.storage.count(query)
@@ -2030,6 +2043,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     ) -> list[ResourceMeta]:
         if isinstance(query, Query):
             query = query.build()
+        query = self._apply_default_is_deleted(query)
         self._validate_query_fields(query)
         query = self._resolve_str_query_vectors(query)
         return self.storage.search(query)
