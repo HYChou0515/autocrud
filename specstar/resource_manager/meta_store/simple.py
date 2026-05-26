@@ -36,14 +36,18 @@ class MemoryMetaStore(IFastMetaStore):
         del self._store[pk]
 
     def __iter__(self) -> Generator[str]:
-        yield from self._store.keys()
+        # Snapshot: a concurrent create/delete must not raise
+        # "dictionary changed size during iteration".
+        yield from list(self._store.keys())
 
     def __len__(self) -> int:
         return len(self._store)
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         results: list[ResourceMeta] = []
-        for meta_b in self._store.values():
+        # Snapshot the values: a concurrent write mid-search must not raise
+        # "dictionary changed size during iteration".
+        for meta_b in list(self._store.values()):
             meta = self._serializer.decode(meta_b)
             if is_match_query(meta, query):
                 results.append(meta)
@@ -53,7 +57,10 @@ class MemoryMetaStore(IFastMetaStore):
     @contextmanager
     def get_then_delete(self) -> Generator[Iterable[ResourceMeta]]:
         """获取所有元数据然后删除，用于快速存储的批量同步"""
-        yield (self._serializer.decode(v) for v in self._store.values())
+        # Materialise a snapshot before yielding so consumption can't race a
+        # concurrent write ("dictionary changed size during iteration").
+        decoded = [self._serializer.decode(v) for v in list(self._store.values())]
+        yield decoded
         self._store.clear()
 
 
