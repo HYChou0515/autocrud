@@ -1,7 +1,7 @@
 import io
 import os
 from collections.abc import Generator, Iterable
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import IO
 from uuid import UUID
@@ -253,6 +253,51 @@ class DiskResourceStore(IResourceStore):
             f.write(data.read())
         with self._get_raw_info_path(str(info.uid)).open("wb") as f:
             f.write(self._info_serializer.encode(info))
+
+    def collect_orphans(self, live_resource_ids: "set[str]") -> int:
+        """Remove resource/store dirs not referenced by a finalised meta.
+
+        An interrupted ``create()`` writes ``resource/<id>/`` and
+        ``store/<uid>/`` before the meta commit marker lands, leaving durable
+        garbage on disk. Given the set of resource ids that *do* have a
+        finalised meta (the source of truth), this reclaims:
+
+        * ``resource/<id>/`` trees whose id is not in *live_resource_ids*, and
+        * ``store/<uid>/`` blobs no longer referenced by any live resource.
+
+        Returns the number of directories removed (resource trees + blobs).
+        """
+        import shutil
+
+        removed = 0
+        resource_root = self._rootdir / "resource"
+        store_root = self._rootdir / "store"
+
+        live_uids: set[str] = set()
+        if resource_root.exists():
+            for rid_dir in resource_root.iterdir():
+                if not rid_dir.is_dir():
+                    continue
+                if rid_dir.name in live_resource_ids:
+                    # Record the store blobs this live resource points at so we
+                    # don't reclaim them in the store sweep below.
+                    for rev_dir in rid_dir.iterdir():
+                        if not rev_dir.is_dir():
+                            continue
+                        for ver_link in rev_dir.iterdir():
+                            with suppress(OSError):
+                                live_uids.add(ver_link.resolve().name)
+                else:
+                    shutil.rmtree(rid_dir)
+                    removed += 1
+
+        if store_root.exists():
+            for uid_dir in store_root.iterdir():
+                if uid_dir.is_dir() and uid_dir.name not in live_uids:
+                    shutil.rmtree(uid_dir)
+                    removed += 1
+
+        return removed
 
     def purge_resource(self, resource_id: str) -> None:
         """Hard-delete all revision data for a resource from disk."""

@@ -1,3 +1,5 @@
+import os
+import tempfile
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -65,7 +67,13 @@ class MemoryMetaStore(IFastMetaStore):
 
 
 class DiskMetaStore(IFastMetaStore):
-    def __init__(self, *, encoding: Encoding = Encoding.json, rootdir: Path | str):
+    def __init__(
+        self,
+        *,
+        encoding: Encoding = Encoding.json,
+        rootdir: Path | str,
+        fsync: bool = False,
+    ):
         self._serializer = MsgspecSerializer(
             encoding=encoding,
             resource_type=ResourceMeta,
@@ -73,6 +81,11 @@ class DiskMetaStore(IFastMetaStore):
         self._rootdir = Path(rootdir)
         self._rootdir.mkdir(parents=True, exist_ok=True)
         self._suffix = ".data"
+        # When True, fsync the meta file before the atomic rename so a finalised
+        # commit marker survives an OS crash / power loss, not just a process
+        # kill. Off by default: it adds a sync per write, which would throttle
+        # high-volume batch ingest (the workload most likely to be interrupted).
+        self._fsync = fsync
 
     def _get_path(self, pk: str) -> Path:
         return self._rootdir / f"{pk}{self._suffix}"
@@ -83,17 +96,45 @@ class DiskMetaStore(IFastMetaStore):
 
     def __getitem__(self, pk: str) -> ResourceMeta:
         path = self._get_path(pk)
-        with path.open("rb") as f:
-            return self._serializer.decode(f.read())
+        try:
+            with path.open("rb") as f:
+                return self._serializer.decode(f.read())
+        except FileNotFoundError:
+            # No finalised meta on disk → "resource does not exist", matching
+            # the dict-based stores' KeyError contract. An interrupted create()
+            # (resource dir written before meta) must look like a missing key,
+            # not crash with a raw OSError.
+            raise KeyError(pk) from None
 
     def __setitem__(self, pk: str, b: ResourceMeta) -> None:
         path = self._get_path(pk)
-        with path.open("wb") as f:
-            f.write(self._serializer.encode(b))
+        data = self._serializer.encode(b)
+        # Write to a temp file in the same directory, then atomically rename it
+        # into place. A finalised ``<pk>.data`` therefore always holds a
+        # complete record and acts as the "commit marker": an interrupted write
+        # leaves only the temp file (excluded by the ``*.data`` glob and never
+        # decoded), so it is invisible to the loader instead of crashing boot.
+        fd, tmp = tempfile.mkstemp(
+            dir=self._rootdir, prefix=f"{pk}.", suffix=".data.tmp"
+        )
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+                if self._fsync:
+                    f.flush()
+                    os.fsync(f.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            with suppress(FileNotFoundError):
+                os.unlink(tmp)
+            raise
 
     def __delitem__(self, pk: str) -> None:
         path = self._get_path(pk)
-        path.unlink()
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            raise KeyError(pk) from None
 
     def __iter__(self) -> Generator[str]:
         for file in self._rootdir.glob(f"*{self._suffix}"):
@@ -105,10 +146,16 @@ class DiskMetaStore(IFastMetaStore):
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         results: list[ResourceMeta] = []
         for file in self._rootdir.glob(f"*{self._suffix}"):
-            with file.open("rb") as f:
-                meta = self._serializer.decode(f.read())
-                if is_match_query(meta, query):
-                    results.append(meta)
+            try:
+                with file.open("rb") as f:
+                    raw = f.read()
+            except FileNotFoundError:
+                # File removed (concurrent purge / aborted write) between the
+                # directory listing and the read — skip it, don't crash.
+                continue
+            meta = self._serializer.decode(raw)
+            if is_match_query(meta, query):
+                results.append(meta)
         results.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))
         yield from results[query.offset : query.offset + query.limit]
 

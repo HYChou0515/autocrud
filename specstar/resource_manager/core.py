@@ -421,6 +421,22 @@ class SimpleStorage(IStorage):
             return
         self._resource_store.save_many(items)
 
+    def collect_orphans(self) -> int:
+        """Reclaim resource/blob data left by interrupted ``create()`` calls.
+
+        The meta store is the source of truth for "what resources exist"; its
+        keys are the finalised commit markers. Any resource/blob data the
+        resource store holds that no finalised meta points at is garbage from
+        an aborted multi-file write and is removed.
+
+        Returns the number of orphaned directories removed (``0`` when the
+        resource store does not support reclamation, e.g. in-memory).
+        """
+        collect = getattr(self._resource_store, "collect_orphans", None)
+        if collect is None:
+            return 0
+        return collect(set(self._meta_store))
+
 
 class _BlobEntry(Struct, kw_only=True):
     """Internal struct for serialising blob data in dump streams."""
@@ -1642,10 +1658,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 eh.handle_event(context)
 
     def _get_meta_no_check_is_deleted(self, resource_id: str) -> ResourceMeta:
-        if not self.storage.exists(resource_id):
-            raise ResourceIDNotFoundError(resource_id)
-        meta = self.storage.get_meta(resource_id)
-        return meta
+        # Read straight from the store and treat a missing key as not-found.
+        # Going through get_meta (rather than an exists()-then-read pair) closes
+        # the TOCTOU window where a concurrent purge / interrupted create can
+        # delete the meta between the check and the read — that must surface as
+        # the typed ResourceIDNotFoundError, never a raw OSError/KeyError.
+        try:
+            return self.storage.get_meta(resource_id)
+        except KeyError:
+            raise ResourceIDNotFoundError(resource_id) from None
 
     def exists(self, resource_id: str) -> bool:
         """
@@ -1671,6 +1692,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             bool: True if the revision exists, False otherwise.
         """
         return self.storage.revision_exists(resource_id, revision_id)
+
+    def collect_orphans(self) -> int:
+        """Reclaim storage left behind by interrupted ``create()`` calls.
+
+        A ``create()`` writes revision data before the meta commit marker, so a
+        process killed mid-write leaves durable resource/blob data with no
+        finalised meta. Such data is already invisible to reads and listings
+        (the meta store is the source of truth); this call physically removes
+        it to reclaim disk space.
+
+        Safe to run at boot. Returns the number of orphaned directories
+        removed (``0`` for backends without reclaimable on-disk garbage).
+        """
+        collect = getattr(self.storage, "collect_orphans", None)
+        removed = collect() if collect is not None else 0
+        if removed:
+            logger.info("collect_orphans: reclaimed %d orphaned director(ies)", removed)
+        return removed
 
     @execute_with_events(
         (
