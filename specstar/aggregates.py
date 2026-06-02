@@ -57,19 +57,50 @@ class Avg(Aggregate, frozen=True):
     field: str
 
 
+class ForeignAggregate:
+    """Aggregate over another resource's rows, linked back to this resource.
+
+    Use inside :meth:`ResourceManager.exp_list_with_aggregates` to annotate each
+    parent row with a reduction over its children — e.g. *"this doc's chunk
+    count"* or *"this customer's order total"*. ``rm`` is the **child** manager,
+    ``link`` is the child field that holds the parent ``resource_id``, and
+    ``aggregate`` is what to compute over the children of each parent.
+    """
+
+    __slots__ = ("rm", "link", "aggregate")
+
+    def __init__(self, rm: object, link: str, aggregate: Aggregate) -> None:
+        if not isinstance(aggregate, Aggregate):
+            raise TypeError(
+                f"aggregate must be an Aggregate; got {type(aggregate).__name__}."
+            )
+        self.rm = rm
+        self.link = link
+        self.aggregate = aggregate
+
+
 class GroupRow:
     """One row of an :meth:`exp_aggregate_by` result.
 
-    ``.key`` is the group-by value (or ``None`` when missing); each aggregate
-    you named is exposed both as an attribute (``row.count``) and as an item
-    (``row["count"]``), so a dict comp like ``{r.key: r.count for r in rows}``
-    matches how callers typically reduce single-aggregate results.
+    ``.key`` is the group-by value (or ``None`` when missing). When the call
+    grouped by ``"resource_id"`` (each group is exactly one row of *this* RM),
+    ``.resource`` carries that row's :class:`~specstar.types.SearchedResource`
+    — that's the cross-RM case (e.g. *"list each doc and its chunk count"*).
+    For any other ``by``, ``.resource`` is ``None`` because a group could span
+    many rows.
+
+    Each named aggregate is exposed both as an attribute (``row.count``) and
+    as an item (``row["count"]``), so a dict comp like
+    ``{r.key: r.count for r in rows}`` works for single-aggregate results.
     """
 
-    __slots__ = ("key", "_aggregates")
+    __slots__ = ("key", "resource", "_aggregates")
 
-    def __init__(self, key: Any, **aggregates: Any) -> None:
+    def __init__(
+        self, key: Any, *, resource: Any = None, **aggregates: Any
+    ) -> None:
         self.key = key
+        self.resource = resource
         self._aggregates = aggregates
 
     def __getattr__(self, name: str) -> Any:
@@ -83,7 +114,17 @@ class GroupRow:
 
     def __repr__(self) -> str:
         body = ", ".join(f"{k}={v!r}" for k, v in self._aggregates.items())
-        return f"GroupRow(key={self.key!r}, {body})"
+        extras = f", resource={self.resource!r}" if self.resource is not None else ""
+        return f"GroupRow(key={self.key!r}{extras}, {body})"
 
 
-__all__ = ["Aggregate", "Avg", "Count", "GroupRow", "Max", "Min", "Sum"]
+__all__ = [
+    "Aggregate",
+    "Avg",
+    "Count",
+    "ForeignAggregate",
+    "GroupRow",
+    "Max",
+    "Min",
+    "Sum",
+]

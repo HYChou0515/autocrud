@@ -10,7 +10,7 @@ import msgspec
 import pytest
 
 from specstar import OnUnindexedQuery, SpecStar
-from specstar.aggregates import Avg, Count, Max, Min, Sum
+from specstar.aggregates import Avg, Count, ForeignAggregate, Max, Min, Sum
 from specstar.errors import SpecStarWarning, UnindexedQueryError
 from specstar.query import QB
 
@@ -194,5 +194,113 @@ def test_avg_returns_none_when_no_numeric_values_for_group():
         "bucket",
         {"m": Avg("score")},
         query=(QB["bucket"] == "nope").build(),
+    )
+    assert rows == []
+
+
+# --- cross-RM via by="resource_id" -------------------------------------------
+
+
+class ChunkSized(msgspec.Struct):
+    text: str
+    source_doc_id: str
+    size: int = 0
+
+
+def _docs_with_chunks(*plan: "tuple[str, list[int]]"):
+    """plan = [(doc_name, [chunk_sizes, ...]), ...] -> (rm_doc, rm_chunk)."""
+    sp = SpecStar()
+    sp.configure(default_user="t")
+    sp.add_model(Doc, name="doc")
+    sp.add_model(
+        ChunkSized,
+        name="chunk",
+        indexed_fields=[("source_doc_id", str), ("size", int)],
+    )
+    rm_doc = sp.get_resource_manager(Doc)
+    rm_chunk = sp.get_resource_manager(ChunkSized)
+    for name, sizes in plan:
+        d = rm_doc.create(Doc(name=name)).resource_id
+        for s in sizes:
+            rm_chunk.create(ChunkSized(text="x", source_doc_id=d, size=s))
+    return rm_doc, rm_chunk
+
+
+def test_by_resource_id_attaches_each_parent_resource():
+    # The cross-RM ergonomic: group by resource_id -> GroupRow.resource is the
+    # parent's SearchedResource, so r.resource.data.name reads naturally.
+    rm_doc, rm_chunk = _docs_with_chunks(("d1", [10, 20, 30]), ("d2", [5, 5]))
+    rows = rm_doc.exp_aggregate_by(
+        "resource_id",
+        {"chunk_count": ForeignAggregate(rm_chunk, "source_doc_id", Count())},
+    )
+    by_name = {r.resource.data.name: r.chunk_count for r in rows}
+    assert by_name == {"d1": 3, "d2": 2}
+
+
+def test_parent_with_no_children_gets_zero_for_count():
+    rm_doc, rm_chunk = _docs_with_chunks(("d1", [1]), ("orphan", []))
+    rows = rm_doc.exp_aggregate_by(
+        "resource_id",
+        {"n": ForeignAggregate(rm_chunk, "source_doc_id", Count())},
+    )
+    by_name = {r.resource.data.name: r.n for r in rows}
+    assert by_name == {"d1": 1, "orphan": 0}
+
+
+def test_parent_with_no_children_gets_none_for_sum():
+    rm_doc, rm_chunk = _docs_with_chunks(("d1", [10, 20]), ("orphan", []))
+    rows = rm_doc.exp_aggregate_by(
+        "resource_id",
+        {"total": ForeignAggregate(rm_chunk, "source_doc_id", Sum("size"))},
+    )
+    by_name = {r.resource.data.name: r.total for r in rows}
+    assert by_name == {"d1": 30, "orphan": None}
+
+
+def test_mixed_self_and_foreign_aggregates_in_one_call():
+    # On the parent rm: Count() counts THIS row (always 1 when grouped by
+    # resource_id), ForeignAggregate counts the children, all in one method.
+    rm_doc, rm_chunk = _docs_with_chunks(("d1", [10, 20, 30]), ("d2", [5, 5]))
+    rows = rm_doc.exp_aggregate_by(
+        "resource_id",
+        {
+            "self_n": Count(),
+            "chunk_n": ForeignAggregate(rm_chunk, "source_doc_id", Count()),
+            "chunk_total": ForeignAggregate(rm_chunk, "source_doc_id", Sum("size")),
+            "chunk_biggest": ForeignAggregate(rm_chunk, "source_doc_id", Max("size")),
+        },
+    )
+    by_name = {
+        r.resource.data.name: (r.self_n, r.chunk_n, r.chunk_total, r.chunk_biggest)
+        for r in rows
+    }
+    assert by_name == {"d1": (1, 3, 60, 30), "d2": (1, 2, 10, 5)}
+
+
+def test_resource_is_none_when_grouping_by_non_resource_id_field():
+    # Group chunks by source_doc_id -> a group can have many rows, so attaching
+    # a single .resource would be ambiguous; it stays None.
+    _, rm_chunk = _docs_with_chunks(("d1", [10, 20]))
+    rows = rm_chunk.exp_aggregate_by("source_doc_id", {"n": Count()})
+    assert all(r.resource is None for r in rows)
+
+
+def test_rejects_value_that_is_neither_aggregate_nor_foreign():
+    rm_doc, _ = _docs_with_chunks(("d1", [1]))
+    with pytest.raises(TypeError, match="Aggregate or ForeignAggregate"):
+        rm_doc.exp_aggregate_by("resource_id", {"oops": "not_a_spec"})
+
+
+def test_no_parents_returns_empty_list_even_with_foreigns():
+    sp = SpecStar()
+    sp.configure(default_user="t")
+    sp.add_model(Doc, name="doc")
+    sp.add_model(ChunkSized, name="chunk", indexed_fields=[("source_doc_id", str)])
+    rm_doc = sp.get_resource_manager(Doc)
+    rm_chunk = sp.get_resource_manager(ChunkSized)
+    rows = rm_doc.exp_aggregate_by(
+        "resource_id",
+        {"n": ForeignAggregate(rm_chunk, "source_doc_id", Count())},
     )
     assert rows == []

@@ -2305,44 +2305,76 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """Group rows by ``by`` and reduce with the named ``aggregates``.
 
         **Experimental** (``exp_`` prefix) — the API may still adjust before
-        stabilising as ``aggregate_by``. Supported aggregates:
-        :class:`~specstar.aggregates.Count`,
+        stabilising as ``aggregate_by``. Handles both single-RM group-by and
+        cross-RM annotation in one method.
+
+        Self aggregates (over this RM's rows in each group):
+        :class:`~specstar.aggregates.Count` and
         :class:`~specstar.aggregates.Sum` / :class:`~specstar.aggregates.Min`
         / :class:`~specstar.aggregates.Max` / :class:`~specstar.aggregates.Avg`
-        (each takes the field to reduce). ``None`` values are skipped
-        (SQL semantics); a group whose values are all ``None`` reduces to
-        ``None`` for Sum/Min/Max/Avg.
+        (each takes the field to reduce). SQL ``None`` semantics: ``None`` /
+        UNSET values are skipped, and a group whose values are all ``None``
+        reduces to ``None`` for Sum / Min / Max / Avg.
+
+        Foreign aggregates (over *another* RM's rows linked to each group's
+        key value): :class:`~specstar.aggregates.ForeignAggregate` ``(rm,
+        link, aggregate)`` — internally one extra aggregate query per foreign,
+        scoped to just the keys this call actually surfaces.
+
+        Cross-RM "list parents with children stats": pass ``by="resource_id"``
+        — each group is then exactly one row of *this* RM, and the returned
+        ``GroupRow.resource`` carries that row's :class:`SearchedResource` so
+        you can read ``r.resource.data.name`` alongside ``r.chunk_count``.
+        For any other ``by``, ``.resource`` is ``None``.
 
         Args:
-            by: field path to group on. Must be a ``ResourceMeta`` attribute or
-                a configured indexed key — same rule as filter conditions, so
+            by: field path to group on. ``"resource_id"`` for per-parent
+                annotation; otherwise a ``ResourceMeta`` attribute or a
+                configured indexed key — same rule as filter conditions, so
                 ``on_unindexed_query`` applies (default ``warn``).
-            aggregates: ``{result_name: Aggregate}``, e.g.
-                ``{"count": Count(), "total": Sum("size")}``. Each
-                ``result_name`` becomes an attribute on the returned rows.
-                Aggregated fields must also be queryable.
+            aggregates: ``{result_name: Aggregate | ForeignAggregate}``, e.g.
+                ``{"count": Count(), "total": Sum("size"),
+                "chunks": ForeignAggregate(chrm, "source_doc_id", Count())}``.
+                Each ``result_name`` becomes an attribute on the returned rows.
             query: optional filter (same shape as ``search_resources``); rows
                 matching the query are what we group over. ``None`` = all.
 
         Returns:
             ``list[GroupRow]`` — one row per distinct ``by`` value (missing /
-            UNSET values group under ``key=None``); each row has ``.key`` plus
-            the named aggregates exposed as both attributes and items.
+            UNSET values group under ``key=None``). Each row has ``.key``, the
+            named aggregates as both attributes and items, and ``.resource``
+            (only populated when ``by == "resource_id"``).
         """
-        from specstar.aggregates import Aggregate, Avg, Count, GroupRow, Max, Min, Sum
+        from specstar.aggregates import (
+            Aggregate,
+            Avg,
+            Count,
+            ForeignAggregate,
+            GroupRow,
+            Max,
+            Min,
+            Sum,
+        )
 
-        # 1) Validate every aggregate spec.
+        # 1) Split self-aggregates from foreign-aggregates; validate.
+        self_aggs: dict[str, Aggregate] = {}
+        foreign_aggs: dict[str, ForeignAggregate] = {}
         for name, agg in aggregates.items():
-            if not isinstance(agg, Aggregate):
+            if isinstance(agg, Aggregate):
+                self_aggs[name] = agg
+            elif isinstance(agg, ForeignAggregate):
+                foreign_aggs[name] = agg
+            else:
                 raise TypeError(
-                    f"aggregates[{name!r}] must be an Aggregate; got "
-                    f"{type(agg).__name__}."
+                    f"aggregates[{name!r}] must be an Aggregate or "
+                    f"ForeignAggregate; got {type(agg).__name__}."
                 )
 
-        # 2) Validate group-by + every aggregated field is queryable. Reuse the
-        #    same on_unindexed_query policy as filter conditions.
+        # 2) Validate group-by + every self-aggregated field is queryable
+        #    (foreign fields are checked by the foreign rm). Reuse the same
+        #    on_unindexed_query policy as filter conditions.
         agg_fields = {
-            agg.field for agg in aggregates.values() if isinstance(agg, (Sum, Min, Max, Avg))
+            a.field for a in self_aggs.values() if isinstance(a, (Sum, Min, Max, Avg))
         }
         valid = self._queryable_field_names()
         bad = [f for f in {by, *agg_fields} if f not in valid]
@@ -2363,8 +2395,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 stacklevel=2,
             )
 
-        # 3) Walk every matching meta and aggregate in-process. iter_all pages
-        #    internally so a forgotten limit can't drop data.
+        # Per-aggregate state machines.
         def _init(agg: Aggregate):
             if isinstance(agg, Count):
                 return 0
@@ -2398,27 +2429,60 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 return state[0] / state[1] if state[1] > 0 else None
             return state
 
+        # 3) Reduce self-aggregates.
+        #    When grouping by ``resource_id``, each group is exactly one row of
+        #    *this* rm — fetch via list_resources so we can attach .resource
+        #    to the result (the cross-RM "list parents with children stats"
+        #    case). For any other ``by``, walk iter_all and bucket per key.
         groups: dict[object, dict[str, object]] = {}
-        for meta in self.iter_all(query):
-            key = self._group_key(meta, by)
-            row = groups.get(key)
-            if row is None:
-                row = groups[key] = {name: _init(agg) for name, agg in aggregates.items()}
-            for name, agg in aggregates.items():
-                val = (
-                    None
-                    if isinstance(agg, Count)
-                    else self._group_key(meta, agg.field)
-                )
-                row[name] = _update(agg, row[name], val)
+        resource_by_key: dict[object, object] = {}
 
-        return [
-            GroupRow(
-                key=k,
-                **{name: _finalize(aggregates[name], v) for name, v in vals.items()},
-            )
-            for k, vals in groups.items()
-        ]
+        if by == "resource_id":
+            parents = self.list_resources(query)
+            for p in parents:
+                key = p.meta.resource_id
+                resource_by_key[key] = p
+                state = groups[key] = {n: _init(a) for n, a in self_aggs.items()}
+                for n, a in self_aggs.items():
+                    val = None if isinstance(a, Count) else self._group_key(p.meta, a.field)
+                    state[n] = _update(a, state[n], val)
+        else:
+            for meta in self.iter_all(query):
+                key = self._group_key(meta, by)
+                state = groups.get(key)
+                if state is None:
+                    state = groups[key] = {n: _init(a) for n, a in self_aggs.items()}
+                for n, a in self_aggs.items():
+                    val = None if isinstance(a, Count) else self._group_key(meta, a.field)
+                    state[n] = _update(a, state[n], val)
+
+        # 4) Foreign aggregates: one query per foreign, scoped to the keys we
+        #    actually have, then zip onto each group.
+        foreign_results: dict[str, dict[object, object]] = {n: {} for n in foreign_aggs}
+        if groups and foreign_aggs:
+            from specstar.query import QB as _QB
+
+            keys = list(groups.keys())
+            for name, fa in foreign_aggs.items():
+                rows = fa.rm.exp_aggregate_by(
+                    fa.link,
+                    {name: fa.aggregate},
+                    query=(_QB[fa.link] << keys).build(),
+                )
+                foreign_results[name] = {r.key: r[name] for r in rows}
+
+        def _foreign_zero(fa: ForeignAggregate):
+            return 0 if isinstance(fa.aggregate, Count) else None
+
+        # 5) Build GroupRow per group, with finalised self-aggregates + foreign
+        #    lookups + optional .resource (when by == "resource_id").
+        out: list[GroupRow] = []
+        for key, state in groups.items():
+            row_kwargs = {n: _finalize(self_aggs[n], state[n]) for n in self_aggs}
+            for n, fa in foreign_aggs.items():
+                row_kwargs[n] = foreign_results[n].get(key, _foreign_zero(fa))
+            out.append(GroupRow(key=key, resource=resource_by_key.get(key), **row_kwargs))
+        return out
 
     def _group_key(self, meta: ResourceMeta, field: str) -> object:
         """Extract the value of ``field`` from a meta for grouping.
