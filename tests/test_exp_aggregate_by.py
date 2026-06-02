@@ -42,7 +42,7 @@ def _setup(d1_chunks: int, d2_chunks: int):
 
 def test_aggregate_by_counts_grouped_by_indexed_field():
     _, rm_chunk, d1, d2 = _setup(d1_chunks=3, d2_chunks=5)
-    rows = rm_chunk.exp_aggregate_by("source_doc_id", {"count": Count()})
+    rows = rm_chunk.exp_aggregate_by(QB["source_doc_id"], {"count": Count()})
     by_key = {r.key: r.count for r in rows}
     assert by_key == {d1: 3, d2: 5}
 
@@ -51,7 +51,7 @@ def test_aggregate_by_honours_filter_query():
     # Narrow the aggregation with a filter (matches the issue's batched-page pattern).
     _, rm_chunk, d1, d2 = _setup(d1_chunks=3, d2_chunks=5)
     rows = rm_chunk.exp_aggregate_by(
-        "source_doc_id",
+        QB["source_doc_id"],
         {"count": Count()},
         query=(QB["source_doc_id"] == d1).build(),
     )
@@ -60,14 +60,14 @@ def test_aggregate_by_honours_filter_query():
 
 def test_aggregate_by_empty_input_returns_empty_list():
     _, rm_chunk, _, _ = _setup(d1_chunks=0, d2_chunks=0)
-    rows = rm_chunk.exp_aggregate_by("source_doc_id", {"count": Count()})
+    rows = rm_chunk.exp_aggregate_by(QB["source_doc_id"], {"count": Count()})
     assert rows == []
 
 
 def test_group_row_exposes_caller_named_aggregate_via_attr_and_item():
     # The result-field name comes from the dict key — caller controls it.
     _, rm_chunk, d1, d2 = _setup(d1_chunks=2, d2_chunks=4)
-    rows = rm_chunk.exp_aggregate_by("source_doc_id", {"chunk_total": Count()})
+    rows = rm_chunk.exp_aggregate_by(QB["source_doc_id"], {"chunk_total": Count()})
     assert {r.key: r.chunk_total for r in rows} == {d1: 2, d2: 4}  # attr access
     assert {r.key: r["chunk_total"] for r in rows} == {d1: 2, d2: 4}  # item access
 
@@ -75,7 +75,7 @@ def test_group_row_exposes_caller_named_aggregate_via_attr_and_item():
 def test_rejects_value_that_is_not_an_aggregate():
     _, rm_chunk, _, _ = _setup(d1_chunks=1, d2_chunks=0)
     with pytest.raises(TypeError, match="Aggregate"):
-        rm_chunk.exp_aggregate_by("source_doc_id", {"oops": "not_an_aggregate"})
+        rm_chunk.exp_aggregate_by(QB["source_doc_id"], {"oops": "not_an_aggregate"})
 
 
 def test_non_indexed_group_by_warns_under_default_policy():
@@ -87,7 +87,7 @@ def test_non_indexed_group_by_warns_under_default_policy():
     rm = sp.get_resource_manager(Chunk)
     rm.create(Chunk(text="x", source_doc_id="d1"))
     with pytest.warns(SpecStarWarning, match="source_doc_id"):
-        rows = rm.exp_aggregate_by("source_doc_id", {"count": Count()})
+        rows = rm.exp_aggregate_by(QB["source_doc_id"], {"count": Count()})
     assert [(r.key, r.count) for r in rows] == [(None, 1)]
 
 
@@ -98,7 +98,7 @@ def test_non_indexed_group_by_raises_under_error_policy():
     rm = sp.get_resource_manager(Chunk)
     rm.create(Chunk(text="x", source_doc_id="d1"))
     with pytest.raises(UnindexedQueryError):
-        rm.exp_aggregate_by("source_doc_id", {"count": Count()})
+        rm.exp_aggregate_by(QB["source_doc_id"], {"count": Count()})
 
 
 def test_group_by_a_resource_meta_attribute_works_without_indexed_fields():
@@ -112,7 +112,7 @@ def test_group_by_a_resource_meta_attribute_works_without_indexed_fields():
         rm.create(Chunk(text="b", source_doc_id="d1"))
     with rm.using("bob"):
         rm.create(Chunk(text="c", source_doc_id="d2"))
-    rows = rm.exp_aggregate_by("created_by", {"count": Count()})
+    rows = rm.exp_aggregate_by(QB.created_by(), {"count": Count()})
     assert {r.key: r.count for r in rows} == {"alice": 2, "bob": 1}
 
 
@@ -142,14 +142,14 @@ def _items(*items: "tuple[str, int, float] | tuple[str, int, float | None]"):
 
 def test_sum_aggregates_numeric_field_per_group():
     rm = _items(("a", 10, 1.0), ("a", 20, 2.0), ("b", 5, 1.5))
-    rows = rm.exp_aggregate_by("bucket", {"total": Sum("size")})
+    rows = rm.exp_aggregate_by(QB["bucket"], {"total": Sum(QB["size"])})
     assert {r.key: r.total for r in rows} == {"a": 30, "b": 5}
 
 
 def test_min_and_max_aggregate_per_group():
     rm = _items(("a", 10, 0.5), ("a", 20, 4.0), ("b", 5, 1.5))
     rows = rm.exp_aggregate_by(
-        "bucket", {"smallest": Min("size"), "largest": Max("size")}
+        QB["bucket"], {"smallest": Min(QB["size"]), "largest": Max(QB["size"])}
     )
     by_key = {r.key: (r.smallest, r.largest) for r in rows}
     assert by_key == {"a": (10, 20), "b": (5, 5)}
@@ -157,7 +157,7 @@ def test_min_and_max_aggregate_per_group():
 
 def test_avg_returns_float():
     rm = _items(("a", 10, 1.0), ("a", 20, 3.0), ("b", 5, 2.0))
-    rows = rm.exp_aggregate_by("bucket", {"mean": Avg("size")})
+    rows = rm.exp_aggregate_by(QB["bucket"], {"mean": Avg(QB["size"])})
     by_key = {r.key: r.mean for r in rows}
     assert by_key == {"a": 15.0, "b": 5.0}
     assert all(isinstance(v, float) for v in by_key.values())
@@ -166,8 +166,8 @@ def test_avg_returns_float():
 def test_multiple_aggregates_in_one_call():
     rm = _items(("a", 10, 0.5), ("a", 20, 4.0), ("b", 5, 1.5))
     rows = rm.exp_aggregate_by(
-        "bucket",
-        {"n": Count(), "total": Sum("size"), "top_score": Max("score")},
+        QB["bucket"],
+        {"n": Count(), "total": Sum(QB["size"]), "top_score": Max(QB["score"])},
     )
     by_key = {r.key: (r.n, r.total, r.top_score) for r in rows}
     assert by_key == {"a": (2, 30, 4.0), "b": (1, 5, 1.5)}
@@ -177,7 +177,7 @@ def test_sum_raises_typeerror_on_non_numeric_value():
     rm = _items(("a", 10, 1.0))
     # Sum on a string-typed indexed field (bucket) → first non-None hit raises.
     with pytest.raises(TypeError, match="Sum"):
-        rm.exp_aggregate_by("bucket", {"oops": Sum("bucket")})
+        rm.exp_aggregate_by(QB["bucket"], {"oops": Sum(QB["bucket"])})
 
 
 def test_avg_returns_none_when_no_numeric_values_for_group():
@@ -191,8 +191,8 @@ def test_avg_returns_none_when_no_numeric_values_for_group():
     # Here instead exercise Min/Max with no rows -> empty list (no group, no
     # state to finalise).
     rows = rm.exp_aggregate_by(
-        "bucket",
-        {"m": Avg("score")},
+        QB["bucket"],
+        {"m": Avg(QB["score"])},
         query=(QB["bucket"] == "nope").build(),
     )
     assert rows == []
@@ -231,8 +231,8 @@ def test_by_resource_id_attaches_each_parent_resource():
     # parent's SearchedResource, so r.resource.data.name reads naturally.
     rm_doc, rm_chunk = _docs_with_chunks(("d1", [10, 20, 30]), ("d2", [5, 5]))
     rows = rm_doc.exp_aggregate_by(
-        "resource_id",
-        {"chunk_count": ForeignAggregate(rm_chunk, "source_doc_id", Count())},
+        QB.resource_id(),
+        {"chunk_count": ForeignAggregate(rm_chunk, QB["source_doc_id"], Count())},
     )
     by_name = {r.resource.data.name: r.chunk_count for r in rows}
     assert by_name == {"d1": 3, "d2": 2}
@@ -241,8 +241,8 @@ def test_by_resource_id_attaches_each_parent_resource():
 def test_parent_with_no_children_gets_zero_for_count():
     rm_doc, rm_chunk = _docs_with_chunks(("d1", [1]), ("orphan", []))
     rows = rm_doc.exp_aggregate_by(
-        "resource_id",
-        {"n": ForeignAggregate(rm_chunk, "source_doc_id", Count())},
+        QB.resource_id(),
+        {"n": ForeignAggregate(rm_chunk, QB["source_doc_id"], Count())},
     )
     by_name = {r.resource.data.name: r.n for r in rows}
     assert by_name == {"d1": 1, "orphan": 0}
@@ -251,8 +251,8 @@ def test_parent_with_no_children_gets_zero_for_count():
 def test_parent_with_no_children_gets_none_for_sum():
     rm_doc, rm_chunk = _docs_with_chunks(("d1", [10, 20]), ("orphan", []))
     rows = rm_doc.exp_aggregate_by(
-        "resource_id",
-        {"total": ForeignAggregate(rm_chunk, "source_doc_id", Sum("size"))},
+        QB.resource_id(),
+        {"total": ForeignAggregate(rm_chunk, QB["source_doc_id"], Sum(QB["size"]))},
     )
     by_name = {r.resource.data.name: r.total for r in rows}
     assert by_name == {"d1": 30, "orphan": None}
@@ -263,12 +263,12 @@ def test_mixed_self_and_foreign_aggregates_in_one_call():
     # resource_id), ForeignAggregate counts the children, all in one method.
     rm_doc, rm_chunk = _docs_with_chunks(("d1", [10, 20, 30]), ("d2", [5, 5]))
     rows = rm_doc.exp_aggregate_by(
-        "resource_id",
+        QB.resource_id(),
         {
             "self_n": Count(),
-            "chunk_n": ForeignAggregate(rm_chunk, "source_doc_id", Count()),
-            "chunk_total": ForeignAggregate(rm_chunk, "source_doc_id", Sum("size")),
-            "chunk_biggest": ForeignAggregate(rm_chunk, "source_doc_id", Max("size")),
+            "chunk_n": ForeignAggregate(rm_chunk, QB["source_doc_id"], Count()),
+            "chunk_total": ForeignAggregate(rm_chunk, QB["source_doc_id"], Sum(QB["size"])),
+            "chunk_biggest": ForeignAggregate(rm_chunk, QB["source_doc_id"], Max(QB["size"])),
         },
     )
     by_name = {
@@ -282,14 +282,14 @@ def test_resource_is_none_when_grouping_by_non_resource_id_field():
     # Group chunks by source_doc_id -> a group can have many rows, so attaching
     # a single .resource would be ambiguous; it stays None.
     _, rm_chunk = _docs_with_chunks(("d1", [10, 20]))
-    rows = rm_chunk.exp_aggregate_by("source_doc_id", {"n": Count()})
+    rows = rm_chunk.exp_aggregate_by(QB["source_doc_id"], {"n": Count()})
     assert all(r.resource is None for r in rows)
 
 
 def test_rejects_value_that_is_neither_aggregate_nor_foreign():
     rm_doc, _ = _docs_with_chunks(("d1", [1]))
     with pytest.raises(TypeError, match="Aggregate or ForeignAggregate"):
-        rm_doc.exp_aggregate_by("resource_id", {"oops": "not_a_spec"})
+        rm_doc.exp_aggregate_by(QB.resource_id(), {"oops": "not_a_spec"})
 
 
 def test_no_parents_returns_empty_list_even_with_foreigns():
@@ -300,7 +300,7 @@ def test_no_parents_returns_empty_list_even_with_foreigns():
     rm_doc = sp.get_resource_manager(Doc)
     rm_chunk = sp.get_resource_manager(ChunkSized)
     rows = rm_doc.exp_aggregate_by(
-        "resource_id",
-        {"n": ForeignAggregate(rm_chunk, "source_doc_id", Count())},
+        QB.resource_id(),
+        {"n": ForeignAggregate(rm_chunk, QB["source_doc_id"], Count())},
     )
     assert rows == []

@@ -2298,7 +2298,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def exp_aggregate_by(
         self,
-        by: str,
+        by: "object",
         aggregates: "dict[str, object]",
         query: "ResourceMetaSearchQuery | Query | None" = None,
     ) -> "list[object]":
@@ -2321,20 +2321,23 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         link, aggregate)`` — internally one extra aggregate query per foreign,
         scoped to just the keys this call actually surfaces.
 
-        Cross-RM "list parents with children stats": pass ``by="resource_id"``
-        — each group is then exactly one row of *this* RM, and the returned
-        ``GroupRow.resource`` carries that row's :class:`SearchedResource` so
-        you can read ``r.resource.data.name`` alongside ``r.chunk_count``.
-        For any other ``by``, ``.resource`` is ``None``.
+        Cross-RM "list parents with children stats": pass
+        ``by=QB.resource_id()`` — each group is then exactly one row of *this*
+        RM, and the returned ``GroupRow.resource`` carries that row's
+        :class:`SearchedResource` so you can read ``r.resource.data.name``
+        alongside ``r.chunk_count``. For any other ``by``, ``.resource`` is
+        ``None``.
 
         Args:
-            by: field path to group on. ``"resource_id"`` for per-parent
-                annotation; otherwise a ``ResourceMeta`` attribute or a
-                configured indexed key — same rule as filter conditions, so
-                ``on_unindexed_query`` applies (default ``warn``).
+            by: a QB :class:`~specstar.query.Field` — ``QB["foo"]`` for an
+                indexed data field, ``QB.created_by()`` (and friends) for a
+                ``ResourceMeta`` attribute. The Field's ``source`` is honoured
+                exactly (no meta-vs-data guessing), and the same
+                ``on_unindexed_query`` policy as filter conditions applies
+                (default ``warn``). Passing a plain string raises ``TypeError``.
             aggregates: ``{result_name: Aggregate | ForeignAggregate}``, e.g.
-                ``{"count": Count(), "total": Sum("size"),
-                "chunks": ForeignAggregate(chrm, "source_doc_id", Count())}``.
+                ``{"count": Count(), "total": Sum(QB["size"]),
+                "chunks": ForeignAggregate(chrm, QB["source_doc_id"], Count())}``.
                 Each ``result_name`` becomes an attribute on the returned rows.
             query: optional filter (same shape as ``search_resources``); rows
                 matching the query are what we group over. ``None`` = all.
@@ -2343,7 +2346,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             ``list[GroupRow]`` — one row per distinct ``by`` value (missing /
             UNSET values group under ``key=None``). Each row has ``.key``, the
             named aggregates as both attributes and items, and ``.resource``
-            (only populated when ``by == "resource_id"``).
+            (only populated when ``by`` is ``QB.resource_id()``).
         """
         from specstar.aggregates import (
             Aggregate,
@@ -2355,6 +2358,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             Min,
             Sum,
         )
+        from specstar.query import Field as _Field
+
+        # 0) ``by`` must be a QB Field — no string-by-convention guessing.
+        if not isinstance(by, _Field):
+            raise TypeError(
+                "exp_aggregate_by: ``by`` must be a QB Field "
+                "(e.g. QB[\"source_doc_id\"] for indexed data or "
+                "QB.resource_id() / QB.created_by() for ResourceMeta); "
+                f"got {type(by).__name__}."
+            )
 
         # 1) Split self-aggregates from foreign-aggregates; validate.
         self_aggs: dict[str, Aggregate] = {}
@@ -2370,14 +2383,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     f"ForeignAggregate; got {type(agg).__name__}."
                 )
 
-        # 2) Validate group-by + every self-aggregated field is queryable
-        #    (foreign fields are checked by the foreign rm). Reuse the same
-        #    on_unindexed_query policy as filter conditions.
-        agg_fields = {
+        # 2) Validate group-by + every self-aggregated Field is queryable for
+        #    its declared source (foreign fields are checked by the foreign rm).
+        #    Reuse the same on_unindexed_query policy as filter conditions.
+        agg_field_specs: list[_Field] = [
             a.field for a in self_aggs.values() if isinstance(a, (Sum, Min, Max, Avg))
-        }
-        valid = self._queryable_field_names()
-        bad = [f for f in {by, *agg_fields} if f not in valid]
+        ]
+        bad = [
+            f.name
+            for f in (by, *agg_field_specs)
+            if not self._is_field_queryable(f)
+        ]
         if bad:
             from specstar.types import OnUnindexedQuery, UnindexedQueryError
 
@@ -2430,30 +2446,40 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return state
 
         # 3) Reduce self-aggregates.
-        #    When grouping by ``resource_id``, each group is exactly one row of
-        #    *this* rm — fetch via list_resources so we can attach .resource
-        #    to the result (the cross-RM "list parents with children stats"
-        #    case). For any other ``by``, walk iter_all and bucket per key.
+        #    When grouping by ``QB.resource_id()``, each group is exactly one
+        #    row of *this* rm — fetch via list_resources so we can attach
+        #    ``.resource`` to the result (the cross-RM "list parents with
+        #    children stats" case). For any other ``by``, walk iter_all and
+        #    bucket per key.
         groups: dict[object, dict[str, object]] = {}
         resource_by_key: dict[object, object] = {}
+        per_row_mode = by.name == "resource_id" and by.source == "meta"
 
-        if by == "resource_id":
+        if per_row_mode:
             parents = self.list_resources(query)
             for p in parents:
                 key = p.meta.resource_id
                 resource_by_key[key] = p
                 state = groups[key] = {n: _init(a) for n, a in self_aggs.items()}
                 for n, a in self_aggs.items():
-                    val = None if isinstance(a, Count) else self._group_key(p.meta, a.field)
+                    val = (
+                        None
+                        if isinstance(a, Count)
+                        else self._read_field(p.meta, a.field)
+                    )
                     state[n] = _update(a, state[n], val)
         else:
             for meta in self.iter_all(query):
-                key = self._group_key(meta, by)
+                key = self._read_field(meta, by)
                 state = groups.get(key)
                 if state is None:
                     state = groups[key] = {n: _init(a) for n, a in self_aggs.items()}
                 for n, a in self_aggs.items():
-                    val = None if isinstance(a, Count) else self._group_key(meta, a.field)
+                    val = (
+                        None
+                        if isinstance(a, Count)
+                        else self._read_field(meta, a.field)
+                    )
                     state[n] = _update(a, state[n], val)
 
         # 4) Foreign aggregates: one query per foreign, scoped to the keys we
@@ -2467,7 +2493,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 rows = fa.rm.exp_aggregate_by(
                     fa.link,
                     {name: fa.aggregate},
-                    query=(_QB[fa.link] << keys).build(),
+                    query=(_QB[fa.link.name] << keys).build(),
                 )
                 foreign_results[name] = {r.key: r[name] for r in rows}
 
@@ -2475,7 +2501,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return 0 if isinstance(fa.aggregate, Count) else None
 
         # 5) Build GroupRow per group, with finalised self-aggregates + foreign
-        #    lookups + optional .resource (when by == "resource_id").
+        #    lookups + optional .resource (per-row mode only).
         out: list[GroupRow] = []
         for key, state in groups.items():
             row_kwargs = {n: _finalize(self_aggs[n], state[n]) for n in self_aggs}
@@ -2484,17 +2510,41 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             out.append(GroupRow(key=key, resource=resource_by_key.get(key), **row_kwargs))
         return out
 
-    def _group_key(self, meta: ResourceMeta, field: str) -> object:
-        """Extract the value of ``field`` from a meta for grouping.
+    def _read_field(self, meta: ResourceMeta, field: "object") -> object:
+        """Read a ``Field``'s value from a meta, honouring ``Field.source``.
 
-        ResourceMeta attribute first, then ``indexed_data`` lookup; missing /
-        UNSET → ``None``.
+        - ``meta``: look up the ``ResourceMeta`` struct attribute.
+        - ``data``: look up ``ResourceMeta.indexed_data[name]``.
+        - ``auto`` (legacy): try meta first, then ``indexed_data``.
+
+        Missing / UNSET → ``None``.
         """
-        if hasattr(meta, field) and field != "indexed_data":
-            return getattr(meta, field)
-        if meta.indexed_data is not UNSET and field in meta.indexed_data:
-            return meta.indexed_data[field]
+        name = field.name
+        source = field.source
+        if source == "meta":
+            if hasattr(meta, name) and name != "indexed_data":
+                return getattr(meta, name)
+            return None
+        if source == "data":
+            if meta.indexed_data is not UNSET and name in meta.indexed_data:
+                return meta.indexed_data[name]
+            return None
+        # auto
+        if hasattr(meta, name) and name != "indexed_data":
+            return getattr(meta, name)
+        if meta.indexed_data is not UNSET and name in meta.indexed_data:
+            return meta.indexed_data[name]
         return None
+
+    def _is_field_queryable(self, field: "object") -> bool:
+        """Whether ``field.name`` is reachable for ``field.source``."""
+        meta_names = set(ResourceMeta.__struct_fields__) - {"indexed_data"}
+        data_names = {f.index_key or f.field_path for f in self._indexed_fields}
+        if field.source == "meta":
+            return field.name in meta_names
+        if field.source == "data":
+            return field.name in data_names
+        return field.name in (meta_names | data_names)
 
     @coerce_data_to_resource_type
     @execute_with_events(

@@ -406,9 +406,27 @@ class ConditionBuilder(Query):
 
 
 class Field(ConditionBuilder):
-    def __init__(self, name: str, transform: FieldTransform | None = None):
+    def __init__(
+        self,
+        name: str,
+        transform: FieldTransform | None = None,
+        *,
+        source: str = "auto",
+    ):
+        """A QB field reference.
+
+        ``source`` says where this field lives at runtime:
+
+        - ``"data"`` — ``ResourceMeta.indexed_data[name]`` only (``QB["foo"]``).
+        - ``"meta"`` — ``ResourceMeta`` struct attribute only
+          (``QB.created_by()`` and friends).
+        - ``"auto"`` — legacy: meta attribute first, fall back to
+          ``indexed_data``. Default for direct ``Field(name)`` construction so
+          existing filter code keeps working unchanged.
+        """
         self.name = name
         self.transform = transform
+        self.source = source
         # Default behavior: Field acts as is_truthy() condition
         # This allows QB["foo"] to be used directly in logical operations
         super().__init__(self._create_truthy_condition())
@@ -1255,7 +1273,7 @@ class QueryBuilderMeta(type):
             QB["class"]  # Field name with reserved keyword
             QB["field-name"]  # Field name with special characters
         """
-        return Field(name)
+        return Field(name, source="data")
 
 
 class QB(metaclass=QueryBuilderMeta):
@@ -1271,7 +1289,7 @@ class QB(metaclass=QueryBuilderMeta):
             QB.resource_id().eq("abc-123")
             QB.resource_id() << ["id1", "id2", "id3"]
         """
-        return Field("resource_id")
+        return Field("resource_id", source="meta")
 
     @staticmethod
     def current_revision_id() -> Field:
@@ -1283,7 +1301,7 @@ class QB(metaclass=QueryBuilderMeta):
         Example:
             QB.current_revision_id().eq("rev-456")
         """
-        return Field("current_revision_id")
+        return Field("current_revision_id", source="meta")
 
     @staticmethod
     def created_time() -> Field:
@@ -1297,7 +1315,7 @@ class QB(metaclass=QueryBuilderMeta):
             QB.created_time().today()
             QB.created_time().last_n_days(7)
         """
-        return Field("created_time")
+        return Field("created_time", source="meta")
 
     @staticmethod
     def updated_time() -> Field:
@@ -1310,7 +1328,7 @@ class QB(metaclass=QueryBuilderMeta):
             QB.updated_time().this_week()
             QB.updated_time() >= datetime(2024, 1, 1)
         """
-        return Field("updated_time")
+        return Field("updated_time", source="meta")
 
     @staticmethod
     def created_by() -> Field:
@@ -1323,7 +1341,7 @@ class QB(metaclass=QueryBuilderMeta):
             QB.created_by().eq("admin")
             QB.created_by() << ["user1", "user2"]
         """
-        return Field("created_by")
+        return Field("created_by", source="meta")
 
     @staticmethod
     def updated_by() -> Field:
@@ -1336,7 +1354,7 @@ class QB(metaclass=QueryBuilderMeta):
             QB.updated_by().eq("system")
             QB.updated_by().ne("guest")
         """
-        return Field("updated_by")
+        return Field("updated_by", source="meta")
 
     @staticmethod
     def is_deleted() -> Field:
@@ -1349,7 +1367,7 @@ class QB(metaclass=QueryBuilderMeta):
             QB.is_deleted().eq(False)
             QB.is_deleted() == False
         """
-        return Field("is_deleted")
+        return Field("is_deleted", source="meta")
 
     @staticmethod
     def schema_version() -> Field:
@@ -1361,7 +1379,7 @@ class QB(metaclass=QueryBuilderMeta):
         Example:
             QB.schema_version().eq("v2")
         """
-        return Field("schema_version")
+        return Field("schema_version", source="meta")
 
     @staticmethod
     def total_revision_count() -> Field:
@@ -1373,7 +1391,7 @@ class QB(metaclass=QueryBuilderMeta):
         Example:
             QB.total_revision_count() > 5
         """
-        return Field("total_revision_count")
+        return Field("total_revision_count", source="meta")
 
     @staticmethod
     def rev_status() -> Field:
@@ -1382,7 +1400,7 @@ class QB(metaclass=QueryBuilderMeta):
         Example:
             QB.rev_status().eq("draft")
         """
-        return Field("rev_status")
+        return Field("rev_status", source="meta")
 
     @staticmethod
     def rev_created_by() -> Field:
@@ -1392,7 +1410,7 @@ class QB(metaclass=QueryBuilderMeta):
             QB.rev_created_by().eq("alice")
             QB.rev_created_by() << ["alice", "bob"]
         """
-        return Field("rev_created_by")
+        return Field("rev_created_by", source="meta")
 
     @staticmethod
     def rev_updated_by() -> Field:
@@ -1401,7 +1419,7 @@ class QB(metaclass=QueryBuilderMeta):
         Example:
             QB.rev_updated_by().eq("alice")
         """
-        return Field("rev_updated_by")
+        return Field("rev_updated_by", source="meta")
 
     @staticmethod
     def rev_created_time() -> Field:
@@ -1410,7 +1428,7 @@ class QB(metaclass=QueryBuilderMeta):
         Example:
             QB.rev_created_time() >= datetime(2024, 1, 1)
         """
-        return Field("rev_created_time")
+        return Field("rev_created_time", source="meta")
 
     @staticmethod
     def rev_updated_time() -> Field:
@@ -1419,7 +1437,7 @@ class QB(metaclass=QueryBuilderMeta):
         Example:
             QB.rev_updated_time().this_week()
         """
-        return Field("rev_updated_time")
+        return Field("rev_updated_time", source="meta")
 
     # Combinators
     @staticmethod
