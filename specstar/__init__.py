@@ -1,4 +1,5 @@
 from specstar import defaults, id_generators
+from specstar.aggregates import Aggregate, Count, GroupRow
 from specstar.backend import (
     BackendBinding,
     BackendConfig,
@@ -65,6 +66,9 @@ __all__ = [
     "OnDelete",
     "OnDuplicate",
     "OnUnindexedQuery",
+    "Aggregate",
+    "Count",
+    "GroupRow",
     "QB",
     "Ref",
     "RefRevision",

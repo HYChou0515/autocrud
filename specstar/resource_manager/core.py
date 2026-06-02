@@ -2296,6 +2296,92 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         return results
 
+    def exp_aggregate_by(
+        self,
+        by: str,
+        aggregates: "dict[str, object]",
+        query: "ResourceMetaSearchQuery | Query | None" = None,
+    ) -> "list[object]":
+        """Group rows by ``by`` and reduce with the named ``aggregates``.
+
+        **Experimental** (``exp_`` prefix) — v1 ships :class:`~specstar.aggregates.Count`
+        only; v2 will add ``Sum(field)`` / ``Min(field)`` / ``Max(field)`` /
+        ``Avg(field)`` on the same signature. The return type
+        (``list[GroupRow]``) stays put as more aggregates are added.
+
+        Args:
+            by: field path to group on. Must be a ``ResourceMeta`` attribute or
+                a configured indexed key — same rule as filter conditions, so
+                ``on_unindexed_query`` applies (default ``warn``).
+            aggregates: ``{result_name: Aggregate}``, e.g. ``{"count": Count()}``.
+                Each ``result_name`` becomes an attribute on the returned rows.
+            query: optional filter (same shape as ``search_resources``); rows
+                matching the query are what we group over. ``None`` = all.
+
+        Returns:
+            ``list[GroupRow]`` — one row per distinct ``by`` value (missing /
+            UNSET values group under ``key=None``); each row has ``.key`` plus
+            the named aggregates exposed as both attributes and items.
+        """
+        from specstar.aggregates import Aggregate, Count, GroupRow
+
+        # 1) Validate that every aggregate is a known Aggregate spec (v1: Count).
+        for name, agg in aggregates.items():
+            if not isinstance(agg, Aggregate):
+                raise TypeError(
+                    f"aggregates[{name!r}] must be an Aggregate; got "
+                    f"{type(agg).__name__}."
+                )
+            if not isinstance(agg, Count):
+                raise NotImplementedError(
+                    f"aggregate {type(agg).__name__} is not supported in v1 "
+                    "(only Count). Sum/Min/Max/Avg are planned for v2."
+                )
+
+        # 2) Validate the group-by field is queryable. Reuse the same
+        #    on_unindexed_query policy as filter conditions.
+        valid = self._queryable_field_names()
+        if by not in valid:
+            from specstar.types import OnUnindexedQuery, UnindexedQueryError
+
+            if self._on_unindexed_query == OnUnindexedQuery.error:
+                raise UnindexedQueryError(
+                    [by], sorted(f.index_key or f.field_path for f in self._indexed_fields)
+                )
+            warnings.warn(
+                f"exp_aggregate_by on {self._resource_name!r} grouping by "
+                f"non-indexed field {by!r}: it isn't in indexed_data so every "
+                "row will group under key=None. Index the field, or group by "
+                "a ResourceMeta attribute.",
+                SpecStarWarning,
+                stacklevel=2,
+            )
+
+        # 3) Walk every matching meta (iter_all pages internally so a forgotten
+        #    limit can't drop data). Aggregate in-process.
+        groups: dict[object, dict[str, int]] = {}
+        for meta in self.iter_all(query):
+            key = self._group_key(meta, by)
+            row = groups.get(key)
+            if row is None:
+                row = groups[key] = {name: 0 for name in aggregates}
+            for name in aggregates:
+                row[name] += 1  # v1: only Count
+
+        return [GroupRow(key=k, **vals) for k, vals in groups.items()]
+
+    def _group_key(self, meta: ResourceMeta, field: str) -> object:
+        """Extract the value of ``field`` from a meta for grouping.
+
+        ResourceMeta attribute first, then ``indexed_data`` lookup; missing /
+        UNSET → ``None``.
+        """
+        if hasattr(meta, field) and field != "indexed_data":
+            return getattr(meta, field)
+        if meta.indexed_data is not UNSET and field in meta.indexed_data:
+            return meta.indexed_data[field]
+        return None
+
     @coerce_data_to_resource_type
     @execute_with_events(
         (BeforeCreate, AfterCreate, OnSuccessCreate, OnFailureCreate),
