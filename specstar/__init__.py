@@ -1,5 +1,5 @@
 from specstar import defaults, id_generators
-from specstar.aggregates import Aggregate, Count, GroupRow
+from specstar.aggregates import Aggregate, Avg, Count, GroupRow, Max, Min, Sum
 from specstar.backend import (
     BackendBinding,
     BackendConfig,
@@ -67,9 +67,13 @@ __all__ = [
     "OnDuplicate",
     "OnUnindexedQuery",
     "Aggregate",
+    "Avg",
     "Count",
     "GroupRow",
+    "Max",
+    "Min",
     "QB",
+    "Sum",
     "Ref",
     "RefRevision",
     "RefType",

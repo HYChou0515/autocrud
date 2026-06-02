@@ -1,8 +1,9 @@
 """Aggregate specs for :meth:`ResourceManager.exp_aggregate_by`.
 
-v1 ships :class:`Count` only. v2 will add ``Sum(field)`` / ``Min(field)`` /
-``Max(field)`` / ``Avg(field)`` — same call site, just more keys in the
-``aggregates=`` dict; the return shape (``list[GroupRow]``) stays put.
+Shipped: :class:`Count`, :class:`Sum`, :class:`Min`, :class:`Max`, :class:`Avg`.
+Pass several at once in the ``aggregates=`` dict — each becomes a named field
+on the returned :class:`GroupRow`. The ``exp_`` prefix on the method advertises
+that the API may still adjust before stabilising as ``aggregate_by``.
 """
 
 from __future__ import annotations
@@ -13,11 +14,47 @@ import msgspec
 
 
 class Aggregate(msgspec.Struct, frozen=True):
-    """Marker base for aggregate specs (extend in v2: Sum, Min, Max, Avg)."""
+    """Marker base for aggregate specs."""
 
 
 class Count(Aggregate, frozen=True):
     """Count rows in the group."""
+
+
+class Sum(Aggregate, frozen=True):
+    """Sum a numeric field across the group; ``None`` values are skipped.
+
+    Returns ``None`` if the group has no non-``None`` value (SQL semantics).
+    Raises ``TypeError`` if a non-numeric value is encountered.
+    """
+
+    field: str
+
+
+class Min(Aggregate, frozen=True):
+    """Min of a field across the group (``None``-skipping). Returns ``None``
+    if the group has no non-``None`` value. Uses Python ``<`` ordering, so the
+    field's values must be mutually comparable (numbers, datetimes, strings).
+    """
+
+    field: str
+
+
+class Max(Aggregate, frozen=True):
+    """Max of a field across the group (``None``-skipping). Returns ``None``
+    if the group has no non-``None`` value."""
+
+    field: str
+
+
+class Avg(Aggregate, frozen=True):
+    """Average a numeric field across the group (``None``-skipping).
+
+    Returns a ``float``, or ``None`` if the group has no non-``None`` value.
+    Raises ``TypeError`` if a non-numeric value is encountered.
+    """
+
+    field: str
 
 
 class GroupRow:
@@ -49,4 +86,4 @@ class GroupRow:
         return f"GroupRow(key={self.key!r}, {body})"
 
 
-__all__ = ["Aggregate", "Count", "GroupRow"]
+__all__ = ["Aggregate", "Avg", "Count", "GroupRow", "Max", "Min", "Sum"]

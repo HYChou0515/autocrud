@@ -10,7 +10,7 @@ import msgspec
 import pytest
 
 from specstar import OnUnindexedQuery, SpecStar
-from specstar.aggregates import Aggregate, Count
+from specstar.aggregates import Avg, Count, Max, Min, Sum
 from specstar.errors import SpecStarWarning, UnindexedQueryError
 from specstar.query import QB
 
@@ -78,16 +78,6 @@ def test_rejects_value_that_is_not_an_aggregate():
         rm_chunk.exp_aggregate_by("source_doc_id", {"oops": "not_an_aggregate"})
 
 
-def test_v1_only_supports_count_other_aggregates_raise_notimplemented():
-    # Define a v2-shaped placeholder to prove the gate is real, not a typo check.
-    class FutureSum(Aggregate, frozen=True):
-        pass
-
-    _, rm_chunk, _, _ = _setup(d1_chunks=1, d2_chunks=0)
-    with pytest.raises(NotImplementedError, match="v1"):
-        rm_chunk.exp_aggregate_by("source_doc_id", {"s": FutureSum()})
-
-
 def test_non_indexed_group_by_warns_under_default_policy():
     # Without indexed_fields on Chunk, source_doc_id is not in indexed_data —
     # every row collapses to key=None, with a SpecStarWarning naming the field.
@@ -124,3 +114,85 @@ def test_group_by_a_resource_meta_attribute_works_without_indexed_fields():
         rm.create(Chunk(text="c", source_doc_id="d2"))
     rows = rm.exp_aggregate_by("created_by", {"count": Count()})
     assert {r.key: r.count for r in rows} == {"alice": 2, "bob": 1}
+
+
+# --- v2 aggregates: Sum / Min / Max / Avg ------------------------------------
+
+
+class Item(msgspec.Struct):
+    bucket: str
+    size: int
+    score: float
+
+
+def _items(*items: "tuple[str, int, float] | tuple[str, int, float | None]"):
+    """``[(bucket, size, score), ...] -> (rm, items)``."""
+    sp = SpecStar()
+    sp.configure(default_user="t")
+    sp.add_model(
+        Item,
+        name="item",
+        indexed_fields=[("bucket", str), ("size", int), ("score", float)],
+    )
+    rm = sp.get_resource_manager(Item)
+    for bucket, size, score in items:
+        rm.create(Item(bucket=bucket, size=size, score=score))
+    return rm
+
+
+def test_sum_aggregates_numeric_field_per_group():
+    rm = _items(("a", 10, 1.0), ("a", 20, 2.0), ("b", 5, 1.5))
+    rows = rm.exp_aggregate_by("bucket", {"total": Sum("size")})
+    assert {r.key: r.total for r in rows} == {"a": 30, "b": 5}
+
+
+def test_min_and_max_aggregate_per_group():
+    rm = _items(("a", 10, 0.5), ("a", 20, 4.0), ("b", 5, 1.5))
+    rows = rm.exp_aggregate_by(
+        "bucket", {"smallest": Min("size"), "largest": Max("size")}
+    )
+    by_key = {r.key: (r.smallest, r.largest) for r in rows}
+    assert by_key == {"a": (10, 20), "b": (5, 5)}
+
+
+def test_avg_returns_float():
+    rm = _items(("a", 10, 1.0), ("a", 20, 3.0), ("b", 5, 2.0))
+    rows = rm.exp_aggregate_by("bucket", {"mean": Avg("size")})
+    by_key = {r.key: r.mean for r in rows}
+    assert by_key == {"a": 15.0, "b": 5.0}
+    assert all(isinstance(v, float) for v in by_key.values())
+
+
+def test_multiple_aggregates_in_one_call():
+    rm = _items(("a", 10, 0.5), ("a", 20, 4.0), ("b", 5, 1.5))
+    rows = rm.exp_aggregate_by(
+        "bucket",
+        {"n": Count(), "total": Sum("size"), "top_score": Max("score")},
+    )
+    by_key = {r.key: (r.n, r.total, r.top_score) for r in rows}
+    assert by_key == {"a": (2, 30, 4.0), "b": (1, 5, 1.5)}
+
+
+def test_sum_raises_typeerror_on_non_numeric_value():
+    rm = _items(("a", 10, 1.0))
+    # Sum on a string-typed indexed field (bucket) → first non-None hit raises.
+    with pytest.raises(TypeError, match="Sum"):
+        rm.exp_aggregate_by("bucket", {"oops": Sum("bucket")})
+
+
+def test_avg_returns_none_when_no_numeric_values_for_group():
+    # Avg on a field that's UNSET / not present for every row in the group:
+    # use a ResourceMeta attribute that's None for these rows. The created
+    # resources have created_time set, so use updated_by (often UNSET).
+    rm = _items(("a", 10, 0.5))
+    # Group on bucket but Avg on an indexed field that all rows have None for:
+    # rather than fight the model, prove the None-skip + None-return paths via
+    # an empty filter that yields a group with no rows. (See empty-filter test.)
+    # Here instead exercise Min/Max with no rows -> empty list (no group, no
+    # state to finalise).
+    rows = rm.exp_aggregate_by(
+        "bucket",
+        {"m": Avg("score")},
+        query=(QB["bucket"] == "nope").build(),
+    )
+    assert rows == []

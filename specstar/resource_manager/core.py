@@ -2304,17 +2304,23 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     ) -> "list[object]":
         """Group rows by ``by`` and reduce with the named ``aggregates``.
 
-        **Experimental** (``exp_`` prefix) — v1 ships :class:`~specstar.aggregates.Count`
-        only; v2 will add ``Sum(field)`` / ``Min(field)`` / ``Max(field)`` /
-        ``Avg(field)`` on the same signature. The return type
-        (``list[GroupRow]``) stays put as more aggregates are added.
+        **Experimental** (``exp_`` prefix) — the API may still adjust before
+        stabilising as ``aggregate_by``. Supported aggregates:
+        :class:`~specstar.aggregates.Count`,
+        :class:`~specstar.aggregates.Sum` / :class:`~specstar.aggregates.Min`
+        / :class:`~specstar.aggregates.Max` / :class:`~specstar.aggregates.Avg`
+        (each takes the field to reduce). ``None`` values are skipped
+        (SQL semantics); a group whose values are all ``None`` reduces to
+        ``None`` for Sum/Min/Max/Avg.
 
         Args:
             by: field path to group on. Must be a ``ResourceMeta`` attribute or
                 a configured indexed key — same rule as filter conditions, so
                 ``on_unindexed_query`` applies (default ``warn``).
-            aggregates: ``{result_name: Aggregate}``, e.g. ``{"count": Count()}``.
-                Each ``result_name`` becomes an attribute on the returned rows.
+            aggregates: ``{result_name: Aggregate}``, e.g.
+                ``{"count": Count(), "total": Sum("size")}``. Each
+                ``result_name`` becomes an attribute on the returned rows.
+                Aggregated fields must also be queryable.
             query: optional filter (same shape as ``search_resources``); rows
                 matching the query are what we group over. ``None`` = all.
 
@@ -2323,52 +2329,96 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             UNSET values group under ``key=None``); each row has ``.key`` plus
             the named aggregates exposed as both attributes and items.
         """
-        from specstar.aggregates import Aggregate, Count, GroupRow
+        from specstar.aggregates import Aggregate, Avg, Count, GroupRow, Max, Min, Sum
 
-        # 1) Validate that every aggregate is a known Aggregate spec (v1: Count).
+        # 1) Validate every aggregate spec.
         for name, agg in aggregates.items():
             if not isinstance(agg, Aggregate):
                 raise TypeError(
                     f"aggregates[{name!r}] must be an Aggregate; got "
                     f"{type(agg).__name__}."
                 )
-            if not isinstance(agg, Count):
-                raise NotImplementedError(
-                    f"aggregate {type(agg).__name__} is not supported in v1 "
-                    "(only Count). Sum/Min/Max/Avg are planned for v2."
-                )
 
-        # 2) Validate the group-by field is queryable. Reuse the same
-        #    on_unindexed_query policy as filter conditions.
+        # 2) Validate group-by + every aggregated field is queryable. Reuse the
+        #    same on_unindexed_query policy as filter conditions.
+        agg_fields = {
+            agg.field for agg in aggregates.values() if isinstance(agg, (Sum, Min, Max, Avg))
+        }
         valid = self._queryable_field_names()
-        if by not in valid:
+        bad = [f for f in {by, *agg_fields} if f not in valid]
+        if bad:
             from specstar.types import OnUnindexedQuery, UnindexedQueryError
 
             if self._on_unindexed_query == OnUnindexedQuery.error:
                 raise UnindexedQueryError(
-                    [by], sorted(f.index_key or f.field_path for f in self._indexed_fields)
+                    bad,
+                    sorted(f.index_key or f.field_path for f in self._indexed_fields),
                 )
             warnings.warn(
-                f"exp_aggregate_by on {self._resource_name!r} grouping by "
-                f"non-indexed field {by!r}: it isn't in indexed_data so every "
-                "row will group under key=None. Index the field, or group by "
+                f"exp_aggregate_by on {self._resource_name!r}: field(s) {bad!r} "
+                "aren't in indexed_data and aren't ResourceMeta attributes — "
+                "they'll be treated as None. Index them, or group / aggregate on "
                 "a ResourceMeta attribute.",
                 SpecStarWarning,
                 stacklevel=2,
             )
 
-        # 3) Walk every matching meta (iter_all pages internally so a forgotten
-        #    limit can't drop data). Aggregate in-process.
-        groups: dict[object, dict[str, int]] = {}
+        # 3) Walk every matching meta and aggregate in-process. iter_all pages
+        #    internally so a forgotten limit can't drop data.
+        def _init(agg: Aggregate):
+            if isinstance(agg, Count):
+                return 0
+            if isinstance(agg, Avg):
+                return [0.0, 0]  # [running_sum, n]
+            return None  # Sum / Min / Max
+
+        def _update(agg: Aggregate, state, val):
+            if isinstance(agg, Count):
+                return state + 1
+            if val is None:
+                return state
+            if isinstance(agg, (Sum, Avg)) and not isinstance(val, (int, float)):
+                raise TypeError(
+                    f"{type(agg).__name__}({agg.field!r}) requires a numeric "
+                    f"value; got {type(val).__name__} ({val!r})."
+                )
+            if isinstance(agg, Sum):
+                return val if state is None else state + val
+            if isinstance(agg, Min):
+                return val if state is None else min(state, val)
+            if isinstance(agg, Max):
+                return val if state is None else max(state, val)
+            # Avg
+            state[0] += val
+            state[1] += 1
+            return state
+
+        def _finalize(agg: Aggregate, state):
+            if isinstance(agg, Avg):
+                return state[0] / state[1] if state[1] > 0 else None
+            return state
+
+        groups: dict[object, dict[str, object]] = {}
         for meta in self.iter_all(query):
             key = self._group_key(meta, by)
             row = groups.get(key)
             if row is None:
-                row = groups[key] = {name: 0 for name in aggregates}
-            for name in aggregates:
-                row[name] += 1  # v1: only Count
+                row = groups[key] = {name: _init(agg) for name, agg in aggregates.items()}
+            for name, agg in aggregates.items():
+                val = (
+                    None
+                    if isinstance(agg, Count)
+                    else self._group_key(meta, agg.field)
+                )
+                row[name] = _update(agg, row[name], val)
 
-        return [GroupRow(key=k, **vals) for k, vals in groups.items()]
+        return [
+            GroupRow(
+                key=k,
+                **{name: _finalize(aggregates[name], v) for name, v in vals.items()},
+            )
+            for k, vals in groups.items()
+        ]
 
     def _group_key(self, meta: ResourceMeta, field: str) -> object:
         """Extract the value of ``field`` from a meta for grouping.
