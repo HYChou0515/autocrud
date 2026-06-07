@@ -2327,6 +2327,29 @@ class Job(Struct, Generic[T, D]):
     last_heartbeat_at: dt.datetime | None = None
     """Timestamp of the last heartbeat. Used to detect dead workers."""
 
+    partition_key: str | None = None
+    """Per-key serialization tag (``#342 #3``).
+
+    Two jobs sharing the same ``partition_key`` never run concurrently —
+    the consumer holds back a pending job whose partition already has a
+    PROCESSING peer. ``None`` (default) means no serialization (every
+    pending job is independently eligible, matching legacy behavior).
+    Typical use: a per-tenant or per-aggregate write workflow where
+    inflight reruns would trample each other.
+    """
+
+    idempotency_key: str | None = None
+    """Exactly-once enqueue tag (``#342 #4``).
+
+    When supplied to ``enqueue()``, a second call with the same
+    ``idempotency_key`` returns the *original* job instead of creating
+    a new one — including after the original ran to completion. This is
+    the standard contract for retry-prone client paths (mobile, webhook
+    receivers, public APIs). Re-using a key with a *different* payload
+    is rejected as a programming error. ``None`` (default) disables
+    dedup.
+    """
+
 
 class IMessageQueue(ABC, Generic[T]):
     """Interface for a message queue that manages jobs as resources."""
