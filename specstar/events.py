@@ -139,6 +139,9 @@ _create_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.create], ResourceAction.create),
     ("data", T),
     ("status", RevisionStatus | UnsetType, UNSET),
+    # Atomic create-only guard (raises DuplicateResourceError if the explicit
+    # resource_id already exists). UNSET when the caller didn't opt in.
+    ("if_not_exists", bool | UnsetType, UNSET),
 ]
 
 BeforeCreate = defstruct(
@@ -484,6 +487,8 @@ _update_context: list[_DefstructField] = [
     ("resource_id", str),
     ("data", T),
     ("status", RevisionStatus | UnsetType, UNSET),
+    # Optimistic-concurrency guard (None when the caller didn't assert one).
+    ("expected_revision_id", str | UnsetType, UNSET),
 ]
 
 BeforeUpdate = defstruct(
@@ -541,6 +546,8 @@ _modify_context: list[_DefstructField] = [
     ("resource_id", str),
     ("data", T | UnsetType, UNSET),
     ("status", RevisionStatus | UnsetType, UNSET),
+    # Optimistic-concurrency guard (None when the caller didn't assert one).
+    ("expected_revision_id", str | UnsetType, UNSET),
 ]
 
 BeforeModify = defstruct(

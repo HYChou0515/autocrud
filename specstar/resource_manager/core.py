@@ -2310,6 +2310,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         user: str | UnsetType = UNSET,
         now: dt.datetime | UnsetType = UNSET,
         resource_id: str | UnsetType = UNSET,
+        if_not_exists: bool | UnsetType = UNSET,
     ) -> RevisionInfo:
         """
         Create a new resource.
@@ -2323,6 +2324,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 Overrides any active ``using()`` scope or manager default.
             resource_id (str | UnsetType): Specific resource ID to use
                 instead of auto-generating one.
+            if_not_exists (bool | UnsetType): When ``True`` and ``resource_id``
+                is supplied, the call only proceeds if no resource with that id
+                exists; otherwise :class:`DuplicateResourceError` is raised.
+                This turns ``create`` into an atomic create-only that can be
+                used as a cross-worker first-wins mutex / lock primitive.
 
         Returns:
             info (RevisionInfo): The revision info of the created resource.
@@ -2330,8 +2336,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Raises:
             UniqueConstraintError: If a field annotated with :class:`Unique` already
                 has the same value on another non-deleted resource.
+            DuplicateResourceError: If ``if_not_exists=True`` and the supplied
+                ``resource_id`` already exists.
         """
         status = self.default_status if status is UNSET else status
+        if if_not_exists is True and resource_id is not UNSET:
+            if self.storage.exists(resource_id):
+                from specstar.types import DuplicateResourceError as _DRE
+
+                raise _DRE(resource_id=resource_id)
         data = self._process_binary_fields(data)
         data = self._embedding_processor.process_sync(data)
         info = self._rev_info(_BuildRevInfoCreate(data, status))
@@ -2544,6 +2557,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         resource_id: str,
         data: T,
         *,
+        expected_revision_id: str | UnsetType = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
         user: str | UnsetType = UNSET,
         now: dt.datetime | UnsetType = UNSET,
@@ -2554,6 +2568,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Arguments:
             resource_id (str): The ID of the resource to update.
             data (T): The new resource data.
+            expected_revision_id (str | UnsetType): Optimistic concurrency
+                guard. When set, the call only proceeds if the resource's
+                current revision matches; otherwise it raises
+                :class:`PreconditionFailedError` without writing. Lets
+                edit-and-retry loops survive concurrent writers safely.
             status (RevisionStatus | UnsetType): The status of the new revision (default: stable).
             user (str | UnsetType): The user performing the action.
             now (datetime | UnsetType): The current timestamp.
@@ -2563,10 +2582,23 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         Raises:
             ResourceIDNotFoundError: If the resource ID does not exist.
+            PreconditionFailedError: If ``expected_revision_id`` is set and
+                the resource's current revision has moved on.
         """
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
         prev_res_meta = self.get_meta(resource_id)
+        if (
+            expected_revision_id is not UNSET
+            and prev_res_meta.current_revision_id != expected_revision_id
+        ):
+            from specstar.types import PreconditionFailedError as _PFE
+
+            raise _PFE(
+                resource_id=resource_id,
+                expected_revision_id=expected_revision_id,
+                actual_revision_id=prev_res_meta.current_revision_id,
+            )
         prev_info = self.storage.get_resource_revision_info(
             resource_id,
             prev_res_meta.current_revision_id,
@@ -2629,6 +2661,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         data: "T | JsonPatch | MergePatch | UnsetType" = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
         *,
+        expected_revision_id: str | UnsetType = UNSET,
         user: str | UnsetType = UNSET,
         now: dt.datetime | UnsetType = UNSET,
     ) -> RevisionInfo:
@@ -2639,6 +2672,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id (str): The ID of the resource.
             data (T | JsonPatch | UnsetType): The new data or JSON patch to apply.
             status (RevisionStatus | UnsetType): The new status.
+            expected_revision_id (str | UnsetType): Optimistic concurrency
+                guard — see :meth:`update`.
             user (str | UnsetType): The user performing the action.
             now (datetime | UnsetType): The current timestamp.
 
@@ -2647,11 +2682,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         Raises:
             CannotModifyResourceError: If the resource is not in DRAFT status.
+            PreconditionFailedError: If ``expected_revision_id`` is set and
+                the resource's current revision has moved on.
         """
         if data is UNSET and status is not UNSET:
             return self._modify_status(resource_id, status)
 
         prev_res_meta = self.get_meta(resource_id)
+        if (
+            expected_revision_id is not UNSET
+            and prev_res_meta.current_revision_id != expected_revision_id
+        ):
+            from specstar.types import PreconditionFailedError as _PFE
+
+            raise _PFE(
+                resource_id=resource_id,
+                expected_revision_id=expected_revision_id,
+                actual_revision_id=prev_res_meta.current_revision_id,
+            )
         prev_info = self.storage.get_resource_revision_info(
             resource_id,
             prev_res_meta.current_revision_id,
