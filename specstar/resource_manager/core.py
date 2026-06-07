@@ -2786,6 +2786,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         resource_id: str,
         patch_data: "JsonPatch | MergePatch",
         *,
+        expected_revision_id: str | UnsetType = UNSET,
+        expected_etag: str | UnsetType = UNSET,
         user: str | UnsetType = UNSET,
         now: dt.datetime | UnsetType = UNSET,
     ) -> RevisionInfo:
@@ -2810,7 +2812,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             data = self._apply_merge_patch(resource_id, patch_data)
         else:
             data = self._apply_patch(resource_id, patch_data)
-        return self.update(resource_id, data)
+        return self.update(
+            resource_id,
+            data,
+            expected_revision_id=expected_revision_id,
+            expected_etag=expected_etag,
+        )
 
     def _apply_patch(self, resource_id: str, patch_data: JsonPatch) -> T:
         data = self.get(resource_id).data

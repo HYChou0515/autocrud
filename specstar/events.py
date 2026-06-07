@@ -607,6 +607,9 @@ _patch_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.patch], ResourceAction.patch),
     ("resource_id", str),
     ("patch_data", JsonPatch),
+    # Optimistic-concurrency guards (UNSET when not asserted).
+    ("expected_revision_id", str | UnsetType, UNSET),
+    ("expected_etag", str | UnsetType, UNSET),
 ]
 
 BeforePatch = defstruct(
