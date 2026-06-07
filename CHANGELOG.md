@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.6] — 2026-06-07
+
+
+### Added
+
+- Lease-based distributed lock (#342 #2)
+- Partition_key serialization + idempotent enqueue (#342 #3/#4)
+- Optimistic concurrency (#342 part 1) — expected_revision_id, if_not_exists
+- Expected_etag CAS — detect concurrent in-place modify()
+- Wire CAS through If-Match / If-None-Match + ETag (#342 part 2)
+
 ## [0.11.5] — 2026-05-26
 
 
