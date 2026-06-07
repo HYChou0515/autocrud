@@ -487,8 +487,10 @@ _update_context: list[_DefstructField] = [
     ("resource_id", str),
     ("data", T),
     ("status", RevisionStatus | UnsetType, UNSET),
-    # Optimistic-concurrency guard (None when the caller didn't assert one).
+    # Optimistic-concurrency guards (UNSET when not asserted). expected_etag
+    # also catches in-place edits; expected_revision_id catches cross-revision.
     ("expected_revision_id", str | UnsetType, UNSET),
+    ("expected_etag", str | UnsetType, UNSET),
 ]
 
 BeforeUpdate = defstruct(
@@ -546,8 +548,9 @@ _modify_context: list[_DefstructField] = [
     ("resource_id", str),
     ("data", T | UnsetType, UNSET),
     ("status", RevisionStatus | UnsetType, UNSET),
-    # Optimistic-concurrency guard (None when the caller didn't assert one).
+    # Optimistic-concurrency guards (UNSET when not asserted).
     ("expected_revision_id", str | UnsetType, UNSET),
+    ("expected_etag", str | UnsetType, UNSET),
 ]
 
 BeforeModify = defstruct(

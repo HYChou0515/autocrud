@@ -2558,6 +2558,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         data: T,
         *,
         expected_revision_id: str | UnsetType = UNSET,
+        expected_etag: str | UnsetType = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
         user: str | UnsetType = UNSET,
         now: dt.datetime | UnsetType = UNSET,
@@ -2603,6 +2604,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id,
             prev_res_meta.current_revision_id,
         )
+        if expected_etag is not UNSET and prev_info.etag != expected_etag:
+            from specstar.types import PreconditionFailedError as _PFE
+
+            raise _PFE(
+                resource_id=resource_id,
+                expected_revision_id=expected_etag,
+                actual_revision_id=prev_info.etag,
+            )
         # Pass previous data for Embedding cache reuse (bypass events: raw decode)
         prev_data = None
         try:
@@ -2662,6 +2671,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         status: RevisionStatus | UnsetType = UNSET,
         *,
         expected_revision_id: str | UnsetType = UNSET,
+        expected_etag: str | UnsetType = UNSET,
         user: str | UnsetType = UNSET,
         now: dt.datetime | UnsetType = UNSET,
     ) -> RevisionInfo:
@@ -2704,6 +2714,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id,
             prev_res_meta.current_revision_id,
         )
+        if expected_etag is not UNSET and prev_info.etag != expected_etag:
+            from specstar.types import PreconditionFailedError as _PFE
+
+            raise _PFE(
+                resource_id=resource_id,
+                expected_revision_id=expected_etag,
+                actual_revision_id=prev_info.etag,
+            )
         if data is UNSET and status is UNSET:
             return prev_info
         if (

@@ -88,3 +88,43 @@ def test_create_if_not_exists_succeeds_when_resource_id_is_new():
     rm = _rm()
     info = rm.create(Doc(name="v1"), resource_id="doc:fresh-1", if_not_exists=True)
     assert info.resource_id == "doc:fresh-1"
+
+
+# --- in-place etag: detect concurrent modify() on the same revision_id ------
+
+
+def test_revision_info_exposes_etag():
+    rm = _rm()
+    info = rm.create(Doc(name="x"))
+    assert isinstance(info.etag, str)
+    assert info.etag != info.revision_id  # includes the data hash too
+
+
+def test_modify_with_stale_expected_etag_detects_concurrent_in_place_edit():
+    # Two workers see the same draft revision; both want to modify in place.
+    # expected_revision_id won't catch this (revision_id doesn't change on
+    # modify). expected_etag does — it includes the data hash.
+    rm = _rm()
+    info = rm.create(Doc(name="v1"), status=RevisionStatus.draft)
+    etag_at_read = info.etag
+
+    # Worker B modifies first.
+    rm.modify(info.resource_id, Doc(name="v2"), expected_etag=etag_at_read)
+    # Worker A's etag is now stale even though revision_id hasn't moved.
+    with pytest.raises(PreconditionFailedError):
+        rm.modify(info.resource_id, Doc(name="v3"), expected_etag=etag_at_read)
+
+
+def test_update_with_matching_expected_etag_succeeds():
+    rm = _rm()
+    info = rm.create(Doc(name="v1"))
+    out = rm.update(info.resource_id, Doc(name="v2"), expected_etag=info.etag)
+    assert out.resource_id == info.resource_id
+
+
+def test_update_with_stale_expected_etag_raises():
+    rm = _rm()
+    info = rm.create(Doc(name="v1"))
+    rm.update(info.resource_id, Doc(name="v2"))  # someone else moved forward
+    with pytest.raises(PreconditionFailedError):
+        rm.update(info.resource_id, Doc(name="v3"), expected_etag=info.etag)
