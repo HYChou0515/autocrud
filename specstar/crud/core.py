@@ -8,14 +8,19 @@ import os
 import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import (
     IO,
+    TYPE_CHECKING,
     Any,
     Literal,
     TypeVar,
     cast,
 )
+
+if TYPE_CHECKING:
+    from specstar.locks import ILockBackend, LockHandle
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.params import Body
@@ -336,6 +341,13 @@ class SpecStar:
 
         self.encoder_registry = EncoderRegistry()
 
+        # Lease-based distributed lock backend (default: in-memory, single
+        # process). Swap via ``configure(lock_backend=...)`` for multi-worker
+        # deployments (Redis / Postgres / etcd).
+        from specstar.locks import InMemoryLockBackend as _InMemoryLockBackend
+
+        self._lock_backend: "ILockBackend" = _InMemoryLockBackend()
+
         # Apply configuration using shared logic
         self._apply_configuration(
             model_naming=model_naming,
@@ -360,6 +372,58 @@ class SpecStar:
             default_get_returns=default_get_returns,
             default_is_deleted=default_is_deleted,
         )
+
+    # ------------------------------------------------------------------
+    # Lease-based distributed lock primitives (#342 #2).
+    #
+    # These complement CAS: CAS detects a stale write *after* the fact, a
+    # lock prevents the race window in the first place. Use them for
+    # multi-step write workflows that need to serialize per-key across
+    # workers (e.g. "rebuild this aggregate") without holding a DB
+    # transaction the whole way through. The TTL is the anti-deadlock
+    # guarantee — a crashed holder cannot block the key past its lease.
+    # ------------------------------------------------------------------
+    def try_lock(self, key: str, ttl: float) -> "LockHandle | None":
+        """Non-blocking acquire. Returns a handle, or ``None`` if held.
+
+        ``ttl`` is the lease length in seconds; after it elapses any caller
+        may re-acquire. Renew with :meth:`renew_lock` if your work outruns
+        the original lease.
+        """
+        return self._lock_backend.try_acquire(key, ttl)
+
+    def release_lock(self, handle: "LockHandle") -> None:
+        """Release a held lock. Raises :class:`LockNotOwnedError` if the
+        handle's token does not match the current owner (stale handle, or
+        the lease expired and someone else took over).
+        """
+        self._lock_backend.release(handle)
+
+    def renew_lock(self, handle: "LockHandle", ttl: float) -> "LockHandle":
+        """Extend the lease. Returns a new handle with an updated
+        ``expires_at``. Raises :class:`LockNotOwnedError` if a different
+        owner has taken over.
+        """
+        return self._lock_backend.renew(handle, ttl)
+
+    @contextmanager
+    def lock(self, key: str, ttl: float):
+        """Acquire ``key`` for the duration of a ``with`` block.
+
+        Raises :class:`LockHeldError` immediately if the key is held — the
+        context manager refuses to silently fall through when the lock
+        wasn't acquired. Use :meth:`try_lock` if you want to handle that
+        case without an exception.
+        """
+        from specstar.locks import LockHeldError as _LockHeldError
+
+        handle = self._lock_backend.try_acquire(key, ttl)
+        if handle is None:
+            raise _LockHeldError(key)
+        try:
+            yield handle
+        finally:
+            self._lock_backend.release(handle)
 
     def _apply_configuration(
         self,
@@ -602,6 +666,7 @@ class SpecStar:
         default_get_returns: "str | list[str] | UnsetType" = UNSET,
         default_is_deleted: "bool | None | UnsetType" = UNSET,
         vector_encoders: dict[str, Callable] | UnsetType = UNSET,
+        lock_backend: "ILockBackend | UnsetType" = UNSET,
     ) -> None:
         """Configure the SpecStar instance dynamically.
 
@@ -717,6 +782,11 @@ class SpecStar:
         if vector_encoders is not UNSET:
             for name, fn in vector_encoders.items():
                 self.encoder_registry.register(name, fn)
+
+        # Swap the lease-lock backend (default: in-memory; swap for Redis /
+        # Postgres / etcd in multi-worker deployments).
+        if lock_backend is not UNSET:
+            self._lock_backend = lock_backend
 
     def get_resource_manager(self, model: type[T] | str) -> IResourceManager[T]:
         """Get the resource manager for a registered model.
