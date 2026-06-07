@@ -628,10 +628,25 @@ class RevisionInfo(Struct, kw_only=True):
     """The user who created this revision."""
     updated_by: str
     """The user who last updated this revision.
-    
-    Note that this may only be different from created_by if the revision was 
+
+    Note that this may only be different from created_by if the revision was
     modified without creating a new revision (e.g., patching a draft).
     """
+
+    @property
+    def etag(self) -> str:
+        """Concurrency token: ``<revision_id>@<data_hash>``.
+
+        Bumps on every write — including in-place ``modify()`` that keeps the
+        same ``revision_id`` but recomputes ``data_hash``. Pass back via
+        ``expected_etag=`` on ``update`` / ``modify`` for compare-and-swap that
+        catches concurrent in-place edits too, not just cross-revision moves.
+
+        Falls back to ``revision_id`` when ``data_hash`` is UNSET (legacy rows).
+        """
+        if self.data_hash is UNSET:
+            return self.revision_id
+        return f"{self.revision_id}@{self.data_hash}"
 
 
 class Resource(Struct, Generic[T]):

@@ -84,6 +84,6 @@ class CreateRouteTemplate(BaseRouteTemplate):
                 # ``msgspec.convert`` drops unknown keys.
                 with resource_manager.using(current_user, current_time):
                     info = resource_manager.create(body)
-                return MsgspecResponse(info)
+                return MsgspecResponse(info, headers={"ETag": f'"{info.etag}"'})
             except Exception as e:
                 raise to_http_exception(e)

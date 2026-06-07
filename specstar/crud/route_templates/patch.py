@@ -16,7 +16,7 @@ from specstar.crud.route_templates.basic import (
     struct_to_responses_type,
 )
 from specstar.crud.route_templates.exception_handlers import to_http_exception
-from specstar.crud.route_templates.update import _check_precondition
+from specstar.crud.route_templates.update import _resolve_precondition
 from specstar.types import (
     IResourceManager,
     MergePatch,
@@ -209,9 +209,13 @@ class PatchRouteTemplate(BaseRouteTemplate):
 
             flavor = _patch_flavor(content_type, body)
             try:
-                _check_precondition(
-                    resource_manager, resource_id, expected_revision_id, if_match
+                expected_etag, expected_rev_id = _resolve_precondition(
+                    expected_revision_id, if_match
                 )
+                cas_kw = {
+                    "expected_revision_id": expected_rev_id,
+                    "expected_etag": expected_etag,
+                }
                 with resource_manager.using(current_user, current_time):
                     if flavor == "merge":
                         _guard_merge_patch_body(
@@ -219,7 +223,9 @@ class PatchRouteTemplate(BaseRouteTemplate):
                         )
                         merge = MergePatch(body)
                         if mode == "update":
-                            info = resource_manager.patch(resource_id, merge)
+                            info = resource_manager.patch(
+                                resource_id, merge, **cas_kw
+                            )
                         else:  # mode == "modify"
                             info = resource_manager.modify(
                                 resource_id,
@@ -227,6 +233,7 @@ class PatchRouteTemplate(BaseRouteTemplate):
                                 status=msgspec.UNSET
                                 if change_status is None
                                 else change_status,
+                                **cas_kw,
                             )
                     else:  # RFC 6902 JSON Patch
                         from jsonpatch import JsonPatch
@@ -235,7 +242,9 @@ class PatchRouteTemplate(BaseRouteTemplate):
                             reject_resource_id_in_patch(body)
                         patch = JsonPatch(body)
                         if mode == "update":
-                            info = resource_manager.patch(resource_id, patch)
+                            info = resource_manager.patch(
+                                resource_id, patch, **cas_kw
+                            )
                         else:  # mode == "modify"
                             info = resource_manager.modify(
                                 resource_id,
@@ -243,7 +252,8 @@ class PatchRouteTemplate(BaseRouteTemplate):
                                 status=msgspec.UNSET
                                 if change_status is None
                                 else change_status,
+                                **cas_kw,
                             )
-                return MsgspecResponse(info)
+                return MsgspecResponse(info, headers={"ETag": f'"{info.etag}"'})
             except Exception as e:
                 raise to_http_exception(e)

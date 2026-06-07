@@ -139,6 +139,9 @@ _create_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.create], ResourceAction.create),
     ("data", T),
     ("status", RevisionStatus | UnsetType, UNSET),
+    # Atomic create-only guard (raises DuplicateResourceError if the explicit
+    # resource_id already exists). UNSET when the caller didn't opt in.
+    ("if_not_exists", bool | UnsetType, UNSET),
 ]
 
 BeforeCreate = defstruct(
@@ -484,6 +487,10 @@ _update_context: list[_DefstructField] = [
     ("resource_id", str),
     ("data", T),
     ("status", RevisionStatus | UnsetType, UNSET),
+    # Optimistic-concurrency guards (UNSET when not asserted). expected_etag
+    # also catches in-place edits; expected_revision_id catches cross-revision.
+    ("expected_revision_id", str | UnsetType, UNSET),
+    ("expected_etag", str | UnsetType, UNSET),
 ]
 
 BeforeUpdate = defstruct(
@@ -541,6 +548,9 @@ _modify_context: list[_DefstructField] = [
     ("resource_id", str),
     ("data", T | UnsetType, UNSET),
     ("status", RevisionStatus | UnsetType, UNSET),
+    # Optimistic-concurrency guards (UNSET when not asserted).
+    ("expected_revision_id", str | UnsetType, UNSET),
+    ("expected_etag", str | UnsetType, UNSET),
 ]
 
 BeforeModify = defstruct(
@@ -597,6 +607,9 @@ _patch_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.patch], ResourceAction.patch),
     ("resource_id", str),
     ("patch_data", JsonPatch),
+    # Optimistic-concurrency guards (UNSET when not asserted).
+    ("expected_revision_id", str | UnsetType, UNSET),
+    ("expected_etag", str | UnsetType, UNSET),
 ]
 
 BeforePatch = defstruct(
