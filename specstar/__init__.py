@@ -104,4 +104,4 @@ __all__ = [
     "pydantic_to_struct",
     "struct_to_pydantic",
 ]
-__version__ = "0.11.6"
+__version__ = "0.11.7"

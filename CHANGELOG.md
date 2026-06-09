@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.7] — 2026-06-09
+
+
+### Added
+
+- Exp_aggregate_by — group-by + Count aggregate (v1, experimental)
+- Exp_aggregate_by — add Sum / Min / Max / Avg
+- Exp_aggregate_by handles cross-RM (one method, ForeignAggregate)
+- Field.source — make QB[] vs QB.foo() a real dispatch (aggregate API breaks str)
+
+
+### Fixed
+
+- Snapshot before iterating to survive concurrent writes
+- Make create() crash-safe — atomic meta commit + typed not-found (#340)
+
 ## [0.11.6] — 2026-06-07
 
 
