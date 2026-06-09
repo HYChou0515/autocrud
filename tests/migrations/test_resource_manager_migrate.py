@@ -118,7 +118,8 @@ class TestResourceManagerMigrate:
         assert result == mock_meta
 
         # 驗證調用 - migrate 方法內部調用 get_meta 和 get 方法
-        mock_storage.exists.assert_called_with("test:123")
+        # exists() is no longer called: _get_meta_no_check_is_deleted now reads
+        # through get_meta and catches KeyError, closing the TOCTOU window.
         mock_storage.get_meta.assert_called_with("test:123")
         mock_storage.get_resource_revision_info.assert_called_with(
             "test:123",
@@ -181,7 +182,8 @@ class TestResourceManagerMigrate:
             result = resource_manager.migrate("test:123")
 
         # 驗證調用
-        mock_storage.exists.assert_called_once_with("test:123")
+        # exists() is no longer called: _get_meta_no_check_is_deleted reads
+        # through get_meta and catches KeyError, closing the TOCTOU window.
         mock_storage.get_meta.assert_called_once_with("test:123")
         mock_storage.get_resource_revision_info.assert_called_once_with(
             "test:123",
