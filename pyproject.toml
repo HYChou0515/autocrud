@@ -181,6 +181,7 @@ exclude_also = [
     "warnings.warn.*SpecStarWarning",
 ]
 [tool.coverage.run]
+branch = true
 omit = [
     "tests/*",
     "benchmark/*",

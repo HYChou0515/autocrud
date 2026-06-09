@@ -53,7 +53,10 @@ jobs:
       # also excluded. ``coverage run`` uses [tool.coverage.run] from pyproject
       # (measures the ``specstar`` package); ``-x`` still fails fast.
       - name: Unit + route tests (no external services)
-        run: uv run coverage run -m pytest -m "not integration and not benchmark and not slow" -q -x
+        # TEMP: trimmed to tests/test_specstar.py for fast iteration on the
+        # Codecov upload config — revert to the full `-m "not integration..."`
+        # marker selection before merging.
+        run: uv run coverage run -m pytest tests/test_specstar.py -q -x
 
       # Print a summary in the log and emit coverage.xml for Codecov. These run
       # only when the test step above succeeded (no ``if: always()``), so a
