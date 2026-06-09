@@ -1,4 +1,14 @@
 from specstar import defaults, id_generators
+from specstar.aggregates import (
+    Aggregate,
+    Avg,
+    Count,
+    ForeignAggregate,
+    GroupRow,
+    Max,
+    Min,
+    Sum,
+)
 from specstar.backend import (
     BackendBinding,
     BackendConfig,
@@ -65,7 +75,15 @@ __all__ = [
     "OnDelete",
     "OnDuplicate",
     "OnUnindexedQuery",
+    "Aggregate",
+    "Avg",
+    "Count",
+    "ForeignAggregate",
+    "GroupRow",
+    "Max",
+    "Min",
     "QB",
+    "Sum",
     "Ref",
     "RefRevision",
     "RefType",
