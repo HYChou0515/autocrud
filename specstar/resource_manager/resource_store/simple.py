@@ -1,5 +1,6 @@
 import io
 import os
+import uuid as uuid_module
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -247,17 +248,24 @@ class DiskResourceStore(IResourceStore):
         )
         reald = self._get_uid_store_realdir(str(info.uid))
 
-        # Create real directory if it doesn't exist
-        if not reald.exists():
-            reald.mkdir(parents=True, exist_ok=True)
-
-        # Create symlink directory structure
+        # mkdir(exist_ok=True) is already race-tolerant.
+        reald.mkdir(parents=True, exist_ok=True)
         symd.parent.mkdir(parents=True, exist_ok=True)
 
-        # Remove existing symlink if it exists and create new one
-        if symd.exists():
-            symd.unlink()
-        symd.symlink_to(relative_walk_up(reald, symd.parent), target_is_directory=True)
+        # Atomic symlink swap: the previous code did exists()→unlink()→symlink_to(),
+        # which TOCTOU-races concurrent writers and crashes with either
+        # FileExistsError or FileNotFoundError on local FS (see #352). Create a
+        # uniquely-named tmp symlink, then ``os.replace`` it onto ``symd`` —
+        # POSIX guarantees rename of a symlink onto an existing symlink is atomic.
+        target = relative_walk_up(reald, symd.parent)
+        tmp_link = symd.with_name(f"{symd.name}.tmp.{uuid_module.uuid4().hex}")
+        try:
+            tmp_link.symlink_to(target, target_is_directory=True)
+            os.replace(tmp_link, symd)
+        except BaseException:
+            with suppress(FileNotFoundError):
+                tmp_link.unlink()
+            raise
 
         # Write data and info
         with self._get_raw_data_path(str(info.uid)).open("wb") as f:

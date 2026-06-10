@@ -1,7 +1,8 @@
 import fcntl
+import os
 import threading
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +18,22 @@ from specstar.types import (
     BlobUploadSession,
 )
 from specstar.util.fs_retry import retry_on_estale
+
+
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Write *data* to *path* atomically (tmp file in same dir + ``os.replace``).
+
+    Concurrent readers either see the previous complete file or the new
+    complete file — never a half-written prefix. See #352.
+    """
+    tmp = path.with_name(f"{path.name}.tmp.{uuid.uuid4().hex}")
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    except BaseException:
+        with suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
 
 
 def _fallback_content_type_guesser(data: bytes) -> UnsetType:
@@ -430,10 +447,15 @@ class DiskBlobStore(BasicBlobStore):
     def _load_session_meta(self, upload_id: str) -> _DiskSessionMeta:
         """Load session metadata from disk, raising ``FileNotFoundError``."""
         path = self._session_meta_path(upload_id)
-        if not path.exists():
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
-        # ESTALE-tolerant read for NFS-shared session dirs. See #352.
-        return self._session_meta_decoder.decode(retry_on_estale(path.read_bytes))
+        # No exists() guard — it would TOCTOU against a concurrent abort and
+        # leak a raw "[Errno 2] No such file or directory: '/abs/path'"
+        # message. Read straight and translate ENOENT to the controlled
+        # "Upload session {upload_id} not found" surface. See #352.
+        try:
+            raw = retry_on_estale(path.read_bytes)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Upload session {upload_id} not found") from None
+        return self._session_meta_decoder.decode(raw)
 
     # -- Blob put / get / exists ------------------------------------------
 
@@ -456,15 +478,19 @@ class DiskBlobStore(BasicBlobStore):
         final_content_type = self.guess_content_type(data, content_type)
         # When key is caller-specified, always overwrite; for hash keys skip if exists
         if key is not None or not file_path.exists():
-            # Store raw bytes — no msgpack encoding, no 4 GB size limit
-            file_path.write_bytes(data)
-            # Write metadata sidecar (tiny msgpack — metadata only, not data)
+            # Atomic write: dump bytes into a uniquely-named tmp file in the
+            # same directory, then ``os.replace`` it onto the final path. A
+            # concurrent reader either sees the previous complete file or the
+            # new complete file — never a truncated mid-write prefix.
+            # See #352 (local-FS half).
             blob_meta = _DiskBlobMeta(
                 file_id=file_id,
                 size=len(data),
                 content_type=final_content_type,
             )
-            self._blob_meta_path(safe_name).write_bytes(self.encoder.encode(blob_meta))
+            meta_path = self._blob_meta_path(safe_name)
+            _atomic_write_bytes(file_path, data)
+            _atomic_write_bytes(meta_path, self.encoder.encode(blob_meta))
         return Binary(
             file_id=file_id,
             size=len(data),
@@ -475,25 +501,28 @@ class DiskBlobStore(BasicBlobStore):
     def get(self, file_id: str) -> Binary:
         safe_name = file_id.replace("/", "_").replace("..", "_")
         file_path = self.root_path / safe_name
-        if not file_path.exists():
-            raise FileNotFoundError(f"Blob {file_id} not found")
-        # ESTALE-tolerant read — see #352. A concurrent rename of the blob
-        # on another NFS client must not crash an in-flight get().
-        data = retry_on_estale(file_path.read_bytes)
+        # Skip the exists() guard: it would race against a concurrent purge
+        # and leak the raw "[Errno 2] No such file or directory: '/abs/path'"
+        # message to the caller. Read straight and translate ENOENT into the
+        # same controlled "Blob {file_id} not found" surface. See #352.
+        try:
+            data = retry_on_estale(file_path.read_bytes)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Blob {file_id} not found") from None
         meta_path = self._blob_meta_path(safe_name)
-        if meta_path.exists():
-            # New format: raw bytes + sidecar metadata
-            blob_meta = self._blob_meta_decoder.decode(
-                retry_on_estale(meta_path.read_bytes)
-            )
-            return Binary(
-                file_id=blob_meta.file_id,
-                size=blob_meta.size,
-                data=data,
-                content_type=blob_meta.content_type,
-            )
-        # Legacy fallback: msgpack-encoded Binary
-        return self.decoder.decode(data)
+        try:
+            meta_bytes = retry_on_estale(meta_path.read_bytes)
+        except FileNotFoundError:
+            # Legacy fallback: pre-sidecar format had the Binary msgpack-encoded
+            # inside the data file itself.
+            return self.decoder.decode(data)
+        blob_meta = self._blob_meta_decoder.decode(meta_bytes)
+        return Binary(
+            file_id=blob_meta.file_id,
+            size=blob_meta.size,
+            data=data,
+            content_type=blob_meta.content_type,
+        )
 
     def exists(self, file_id: str) -> bool:
         safe_name = file_id.replace("/", "_").replace("..", "_")
@@ -505,16 +534,22 @@ class DiskBlobStore(BasicBlobStore):
 
         safe_name = file_id.replace("/", "_").replace("..", "_")
         file_path = self.root_path / safe_name
-        if not file_path.exists():
-            raise FileNotFoundError(f"Blob {file_id} not found")
-
-        size = retry_on_estale(file_path.stat).st_size
+        # Race-tolerant stat: an ``exists()`` guard here would TOCTOU against
+        # a concurrent purge and leak a raw "[Errno 2] ..." path to the
+        # caller. Catch ENOENT from stat() and translate to the controlled
+        # surface. See #352.
+        try:
+            size = retry_on_estale(file_path.stat).st_size
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Blob {file_id} not found") from None
         content_type = UNSET
         meta_path = self._blob_meta_path(safe_name)
-        if meta_path.exists():
-            blob_meta = self._blob_meta_decoder.decode(
-                retry_on_estale(meta_path.read_bytes)
-            )
+        try:
+            meta_bytes = retry_on_estale(meta_path.read_bytes)
+        except FileNotFoundError:
+            meta_bytes = None
+        if meta_bytes is not None:
+            blob_meta = self._blob_meta_decoder.decode(meta_bytes)
             content_type = blob_meta.content_type
 
         def _iterate():

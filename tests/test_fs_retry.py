@@ -1,21 +1,26 @@
-"""ESTALE / transient FS-error tolerance for the disk-backed stores.
+"""ESTALE / FS-race tolerance for the disk-backed stores (issue #352).
 
-Issue #352: on NFS, a concurrent rename/unlink on another client invalidates
-the inode the kernel handed us, and the next syscall raises
-``OSError(errno=116, "Stale file handle")``. The same race on a local
-filesystem normally surfaces as ``FileNotFoundError`` (already handled), but
-on NFS-mounted root dirs the same code path crashes with a raw ESTALE.
+Two classes of race are covered:
 
-These tests prove the three disk stores treat ESTALE as transient: retry
-with bounded backoff, succeed on next attempt, never bubble the raw OSError
-out of the public API.
+* **NFS ESTALE** — a concurrent rename/unlink on another client invalidates
+  the inode the kernel handed us, and the next syscall raises
+  ``OSError(errno=116, "Stale file handle")``. Bounded retry resolves it.
+* **Local-FS TOCTOU** — even on a single-host POSIX filesystem, the
+  ``exists() → unlink()/open()`` patterns inside ``DiskResourceStore.save``
+  and ``DiskBlobStore`` race against concurrent writers/deleters and can
+  raise ``FileExistsError`` or ``FileNotFoundError``. The fix uses atomic
+  ``os.replace`` (tmp + rename) so concurrent operations never observe a
+  half-written file or fail to swap a symlink.
 """
 
 from __future__ import annotations
 
 import errno
+import io
 import pathlib
+import sys
 import tempfile
+import threading
 from collections.abc import Generator
 from pathlib import Path
 
@@ -224,3 +229,261 @@ def test_blob_store_get_retries_estale(tmpdir_path: Path, monkeypatch):
     result = store.get(stored.file_id)
     assert result.data == b"payload"
     assert state["calls"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Local-FS race: DiskResourceStore.save() symlink swap
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_save_does_not_crash(tmpdir_path: Path):
+    """Two threads racing save() on the same logical key must not crash.
+
+    Regression for #352 (local-FS half). The original symlink swap was
+    ``exists() → unlink() → symlink_to()`` — a classic TOCTOU. Concurrent
+    saves of the same ``(resource_id, revision_id, schema_version)`` raced
+    on the symlink and surfaced as either:
+
+    * ``FileExistsError`` — both threads passed ``exists()=False`` and one
+      symlinked first;
+    * ``FileNotFoundError`` — both passed ``exists()=True`` and one
+      unlinked first.
+
+    The atomic-replace fix swaps via a tmp symlink + ``os.replace``, so a
+    racing save always sees a complete symlink atomically.
+    """
+    store = DiskResourceStore(encoding="msgpack", rootdir=tmpdir_path)  # ty:ignore[invalid-argument-type]
+    errors: list[BaseException] = []
+    iterations = 200
+
+    def saver(thread_idx: int) -> None:
+        try:
+            for i in range(iterations):
+                info = RevisionInfo(
+                    uid=f"uid-{thread_idx}-{i}",  # ty:ignore[invalid-argument-type]
+                    resource_id="shared:1",
+                    revision_id="shared:1:1",
+                    schema_version=None,
+                    data_hash="h",
+                    status=RevisionStatus.stable,
+                    created_time=faker.date_time(),
+                    updated_time=faker.date_time(),
+                    created_by="u",
+                    updated_by="u",
+                )
+                store.save(info, io.BytesIO(f"data-{thread_idx}-{i}".encode()))
+        except BaseException as exc:
+            errors.append(exc)
+
+    old_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        threads = [threading.Thread(target=saver, args=(i,)) for i in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        sys.setswitchinterval(old_interval)
+
+    assert not errors, f"concurrent save() crashed: {errors[0]!r}"
+
+
+def test_concurrent_save_leaves_consistent_winner(tmpdir_path: Path):
+    """After racing saves, the symlink resolves to exactly one valid uid.
+
+    Reader-side consistency: under the atomic-replace fix the symlink is
+    always either the old target or the new one — never a dangling link, a
+    half-written link, or absent. A subsequent ``get_data_bytes`` must
+    return one of the writers' payloads intact, byte-for-byte.
+    """
+    store = DiskResourceStore(encoding="msgpack", rootdir=tmpdir_path)  # ty:ignore[invalid-argument-type]
+    saves_per_thread = 200
+    payloads_written: set[bytes] = set()
+    lock = threading.Lock()
+
+    def saver(thread_idx: int) -> None:
+        for i in range(saves_per_thread):
+            payload = f"data-{thread_idx}-{i}".encode()
+            with lock:
+                payloads_written.add(payload)
+            info = RevisionInfo(
+                uid=f"uid-{thread_idx}-{i}",  # ty:ignore[invalid-argument-type]
+                resource_id="shared:2",
+                revision_id="shared:2:1",
+                schema_version=None,
+                data_hash="h",
+                status=RevisionStatus.stable,
+                created_time=faker.date_time(),
+                updated_time=faker.date_time(),
+                created_by="u",
+                updated_by="u",
+            )
+            store.save(info, io.BytesIO(payload))
+
+    old_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        threads = [threading.Thread(target=saver, args=(i,)) for i in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        sys.setswitchinterval(old_interval)
+
+    # The final symlink must resolve to a complete payload that one of the
+    # writers actually wrote — never garbage, never an empty file.
+    with store.get_data_bytes("shared:2", "shared:2:1", None) as f:
+        observed = f.read()
+    assert observed in payloads_written, (
+        f"reader observed payload not written by any thread: {observed!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Local-FS race: DiskBlobStore.put() must be atomic w.r.t. readers
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_blob_put_readers_never_see_partial_bytes(tmpdir_path: Path):
+    """A reader's get() must see the full payload or nothing — never a prefix.
+
+    Two writers ``put`` the same content-addressed blob (key=None, same
+    payload → same hash). The original code did ``file_path.write_bytes``
+    directly, so a reader hitting the file mid-write would see a truncated
+    payload. The atomic fix writes to a tmp file and ``os.replace``-s it
+    into place, so readers always see the complete prior bytes or the
+    complete new bytes.
+    """
+    store = DiskBlobStore(tmpdir_path)
+    # Use a large-enough payload that a mid-write read would catch a prefix.
+    payload = b"x" * (256 * 1024)  # 256 KB
+    file_id = "shared-hash"
+
+    # Pre-seed so reader's get() always finds *something*.
+    store.put(payload, key=file_id)
+
+    errors: list[BaseException] = []
+    stop = threading.Event()
+    iterations = 100
+
+    def writer() -> None:
+        for _ in range(iterations):
+            if stop.is_set():
+                return
+            try:
+                store.put(payload, key=file_id)
+            except BaseException as exc:
+                errors.append(exc)
+                return
+
+    def reader() -> None:
+        for _ in range(iterations):
+            try:
+                got = store.get(file_id)
+                if got.data != payload:
+                    errors.append(
+                        AssertionError(
+                            f"reader saw partial bytes: len={len(got.data)} "
+                            f"expected={len(payload)}"
+                        )
+                    )
+                    return
+            except BaseException as exc:
+                errors.append(exc)
+                return
+
+    old_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        threads = [
+            threading.Thread(target=writer),
+            threading.Thread(target=writer),
+            threading.Thread(target=reader),
+            threading.Thread(target=reader),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        stop.set()
+        sys.setswitchinterval(old_interval)
+
+    assert not errors, f"concurrent put/get failed: {errors[0]!r}"
+
+
+# ---------------------------------------------------------------------------
+# Local-FS race: DiskBlobStore.get() TOCTOU translation
+# ---------------------------------------------------------------------------
+
+
+def test_blob_get_translates_toctou_race_to_controlled_error(
+    tmpdir_path: Path, monkeypatch
+):
+    """A blob unlinked between exists() and read() raises the typed message.
+
+    Race: ``DiskBlobStore.get`` calls ``file_path.exists()`` then
+    ``file_path.read_bytes()``. A concurrent purge in the window leaves
+    ``read_bytes`` to raise a raw ``FileNotFoundError`` with the kernel's
+    "[Errno 2] No such file or directory: '/abs/path'" message — leaking
+    a filesystem path to the API caller. The fix removes the TOCTOU guard
+    and translates ENOENT from the read into the same controlled
+    "Blob {file_id} not found" surface as the non-race path.
+    """
+    store = DiskBlobStore(tmpdir_path)
+    stored = store.put(b"payload", key="race-key")
+
+    # Force the exists() check to lie, then make the file truly absent.
+    monkeypatch.setattr(pathlib.Path, "exists", lambda self: True)
+    (tmpdir_path / "race-key").unlink()
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        store.get(stored.file_id)
+    assert "Blob race-key not found" in str(exc_info.value)
+
+
+def test_blob_get_stream_translates_toctou_race_to_controlled_error(
+    tmpdir_path: Path, monkeypatch
+):
+    """``get_stream`` matches ``get`` — controlled "Blob not found" on race.
+
+    Same window: ``exists()`` says yes, the file is purged before ``stat``
+    or ``open``. Without the fix the caller gets a raw pathlib ENOENT with
+    an absolute path; with the fix it gets the same controlled message as
+    the missing-file path.
+    """
+    store = DiskBlobStore(tmpdir_path)
+    stored = store.put(b"payload", key="race-stream-key")
+
+    monkeypatch.setattr(pathlib.Path, "exists", lambda self: True)
+    (tmpdir_path / "race-stream-key").unlink()
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        store.get_stream(stored.file_id)
+    assert "Blob race-stream-key not found" in str(exc_info.value)
+
+
+def test_load_session_meta_translates_toctou_race_to_controlled_error(
+    tmpdir_path: Path, monkeypatch
+):
+    """Session metadata read raises the typed "Upload session not found" surface.
+
+    Race: ``_load_session_meta`` does ``path.exists()`` then
+    ``path.read_bytes()``. A concurrent ``abort_upload_session`` or cleanup
+    in the window leaves the read to surface a raw ``FileNotFoundError``
+    with an absolute filesystem path. The fix translates ENOENT from the
+    read into the same controlled "Upload session {upload_id} not found"
+    surface as the missing-session path.
+    """
+    store = DiskBlobStore(tmpdir_path)
+    session = store.create_upload_session(key="any")
+    upload_id = session.upload_id
+
+    monkeypatch.setattr(pathlib.Path, "exists", lambda self: True)
+    (tmpdir_path / "_sessions" / f"{upload_id}.meta").unlink()
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        store._load_session_meta(upload_id)
+    assert f"Upload session {upload_id} not found" in str(exc_info.value)
