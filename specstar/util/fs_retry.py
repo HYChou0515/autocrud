@@ -22,7 +22,6 @@ import errno
 import random
 import time
 from collections.abc import Callable
-from contextlib import contextmanager
 from typing import TypeVar
 
 T = TypeVar("T")
@@ -78,20 +77,3 @@ def retry_on_estale(
             time.sleep(delay * (0.5 + random.random()))
     assert last is not None
     raise last
-
-
-@contextmanager
-def estale_retry_context(
-    *,
-    attempts: int = DEFAULT_ATTEMPTS,
-    base_delay: float = DEFAULT_BASE_DELAY,
-    max_delay: float = DEFAULT_MAX_DELAY,
-):
-    """Context-manager flavour for ``with`` blocks that wrap a single read.
-
-    Note: a ``with`` block can't restart the body, so this only catches an
-    ESTALE *raised by the setup* of an inner context-manager — i.e. the
-    file-open call — and re-raises it. Callers that need true retry must
-    use :func:`retry_on_estale` around the open itself.
-    """
-    yield

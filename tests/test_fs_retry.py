@@ -487,3 +487,59 @@ def test_load_session_meta_translates_toctou_race_to_controlled_error(
     with pytest.raises(FileNotFoundError) as exc_info:
         store._load_session_meta(upload_id)
     assert f"Upload session {upload_id} not found" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Atomic-write helpers: tmp file is cleaned up when the rename step fails
+# ---------------------------------------------------------------------------
+
+
+def test_atomic_write_bytes_cleans_up_tmp_on_replace_failure(
+    tmpdir_path: Path, monkeypatch
+):
+    """``_atomic_write_bytes`` removes the tmp file when ``os.replace`` fails.
+
+    A failed atomic rename must not leave a half-written ``*.tmp.<uuid>``
+    sidecar on disk — otherwise concurrent ``glob`` patterns and orphan
+    sweeps see leftover garbage. Patches ``os.replace`` to raise and
+    asserts the directory has no tmp files afterwards.
+    """
+    from specstar.resource_manager.blob_store import simple as blob_mod
+
+    store = DiskBlobStore(tmpdir_path)
+
+    def boom(src, dst):
+        raise RuntimeError("simulated rename failure")
+
+    monkeypatch.setattr(blob_mod.os, "replace", boom)
+    with pytest.raises(RuntimeError):
+        store.put(b"payload", key="will-fail")
+
+    leftover = list(tmpdir_path.glob("will-fail.tmp.*"))
+    assert leftover == [], f"tmp file leaked: {leftover!r}"
+
+
+def test_resource_store_save_cleans_up_tmp_symlink_on_replace_failure(
+    tmpdir_path: Path, monkeypatch
+):
+    """``save()`` removes the tmp symlink when ``os.replace`` fails.
+
+    Same invariant as ``_atomic_write_bytes``, but for the symlink-swap
+    path in ``DiskResourceStore.save``: a failed rename must not leak a
+    dangling ``*.tmp.<uuid>`` symlink in the parent directory.
+    """
+    from specstar.resource_manager.resource_store import simple as res_mod
+
+    store = DiskResourceStore(encoding="msgpack", rootdir=tmpdir_path)  # ty:ignore[invalid-argument-type]
+    info = _make_info("res:tmp")
+
+    def boom(src, dst):
+        raise RuntimeError("simulated rename failure")
+
+    monkeypatch.setattr(res_mod.os, "replace", boom)
+    with pytest.raises(RuntimeError):
+        store.save(info, io.BytesIO(b"x"))
+
+    sym_parent = tmpdir_path / "resource" / info.resource_id / info.revision_id
+    leftover = list(sym_parent.glob("*.tmp.*")) if sym_parent.exists() else []
+    assert leftover == [], f"tmp symlink leaked: {leftover!r}"
