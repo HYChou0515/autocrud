@@ -16,6 +16,7 @@ from specstar.types import (
     BlobStreamInfo,
     BlobUploadSession,
 )
+from specstar.util.fs_retry import retry_on_estale
 
 
 def _fallback_content_type_guesser(data: bytes) -> UnsetType:
@@ -431,7 +432,8 @@ class DiskBlobStore(BasicBlobStore):
         path = self._session_meta_path(upload_id)
         if not path.exists():
             raise FileNotFoundError(f"Upload session {upload_id} not found")
-        return self._session_meta_decoder.decode(path.read_bytes())
+        # ESTALE-tolerant read for NFS-shared session dirs. See #352.
+        return self._session_meta_decoder.decode(retry_on_estale(path.read_bytes))
 
     # -- Blob put / get / exists ------------------------------------------
 
@@ -475,11 +477,15 @@ class DiskBlobStore(BasicBlobStore):
         file_path = self.root_path / safe_name
         if not file_path.exists():
             raise FileNotFoundError(f"Blob {file_id} not found")
-        data = file_path.read_bytes()
+        # ESTALE-tolerant read — see #352. A concurrent rename of the blob
+        # on another NFS client must not crash an in-flight get().
+        data = retry_on_estale(file_path.read_bytes)
         meta_path = self._blob_meta_path(safe_name)
         if meta_path.exists():
             # New format: raw bytes + sidecar metadata
-            blob_meta = self._blob_meta_decoder.decode(meta_path.read_bytes())
+            blob_meta = self._blob_meta_decoder.decode(
+                retry_on_estale(meta_path.read_bytes)
+            )
             return Binary(
                 file_id=blob_meta.file_id,
                 size=blob_meta.size,
@@ -502,20 +508,27 @@ class DiskBlobStore(BasicBlobStore):
         if not file_path.exists():
             raise FileNotFoundError(f"Blob {file_id} not found")
 
-        size = file_path.stat().st_size
+        size = retry_on_estale(file_path.stat).st_size
         content_type = UNSET
         meta_path = self._blob_meta_path(safe_name)
         if meta_path.exists():
-            blob_meta = self._blob_meta_decoder.decode(meta_path.read_bytes())
+            blob_meta = self._blob_meta_decoder.decode(
+                retry_on_estale(meta_path.read_bytes)
+            )
             content_type = blob_meta.content_type
 
         def _iterate():
-            with open(file_path, "rb") as f:
+            # The open itself can ESTALE on NFS even when the parent dir
+            # listing said the file is present. See #352.
+            f = retry_on_estale(open, file_path, "rb")
+            try:
                 while True:
                     chunk = f.read(8 * 1024 * 1024)  # 8 MB
                     if not chunk:
                         break
                     yield chunk
+            finally:
+                f.close()
 
         return BlobStreamInfo(
             _iterate(), size=size, content_type=content_type, file_id=file_id

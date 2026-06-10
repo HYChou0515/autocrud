@@ -12,6 +12,7 @@ from specstar.resource_manager.basic import (
     MsgspecSerializer,
 )
 from specstar.types import RevisionInfo
+from specstar.util.fs_retry import retry_on_estale
 
 UID = UUID
 UIDStr = str
@@ -214,8 +215,14 @@ class DiskResourceStore(IResourceStore):
             self._get_uid_store_symdir(resource_id, revision_id, schema_version)
             / "data"
         )
-        with data_path.open("rb") as f:
+        # ESTALE on NFS — a concurrent rename invalidated our inode cache.
+        # Bounded retry resolves it without surfacing OSError to the caller.
+        # See #352.
+        f = retry_on_estale(data_path.open, "rb")
+        try:
             yield f
+        finally:
+            f.close()
 
     def get_revision_info(
         self,
@@ -227,8 +234,12 @@ class DiskResourceStore(IResourceStore):
             self._get_uid_store_symdir(resource_id, revision_id, schema_version)
             / "info"
         )
-        with info_path.open("rb") as f:
-            return self._info_serializer.decode(f.read())
+
+        def _read() -> bytes:
+            with info_path.open("rb") as f:
+                return f.read()
+
+        return self._info_serializer.decode(retry_on_estale(_read))
 
     def save(self, info: RevisionInfo, data: DataIO) -> None:
         symd = self._get_uid_store_symdir(
