@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.8] — 2026-06-10
+
+
+### Fixed
+
+- Bounded ESTALE retry on disk stores (#352)
+- Atomic writes + TOCTOU translation on disk stores (#352)
+
 ## [0.11.7] — 2026-06-09
 
 
