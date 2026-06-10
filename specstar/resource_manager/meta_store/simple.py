@@ -16,6 +16,7 @@ from specstar.resource_manager.basic import (
     is_match_query,
 )
 from specstar.types import ResourceMeta
+from specstar.util.fs_retry import is_transient_fs_error, retry_on_estale
 
 T = TypeVar("T")
 
@@ -96,15 +97,19 @@ class DiskMetaStore(IFastMetaStore):
 
     def __getitem__(self, pk: str) -> ResourceMeta:
         path = self._get_path(pk)
-        try:
+
+        def _read() -> bytes:
             with path.open("rb") as f:
-                return self._serializer.decode(f.read())
+                return f.read()
+
+        try:
+            # ESTALE retried inside; ENOENT still maps to KeyError so the
+            # "resource does not exist" contract matches every other meta
+            # store. See #352.
+            raw = retry_on_estale(_read)
         except FileNotFoundError:
-            # No finalised meta on disk → "resource does not exist", matching
-            # the dict-based stores' KeyError contract. An interrupted create()
-            # (resource dir written before meta) must look like a missing key,
-            # not crash with a raw OSError.
             raise KeyError(pk) from None
+        return self._serializer.decode(raw)
 
     def __setitem__(self, pk: str, b: ResourceMeta) -> None:
         path = self._get_path(pk)
@@ -123,7 +128,9 @@ class DiskMetaStore(IFastMetaStore):
                 if self._fsync:
                     f.flush()
                     os.fsync(f.fileno())
-            os.replace(tmp, path)
+            # ESTALE here means another NFS client invalidated our dirfd
+            # mid-replace; retry sees a fresh inode and the commit lands.
+            retry_on_estale(os.replace, tmp, path)
         except BaseException:
             with suppress(FileNotFoundError):
                 os.unlink(tmp)
@@ -146,13 +153,24 @@ class DiskMetaStore(IFastMetaStore):
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         results: list[ResourceMeta] = []
         for file in self._rootdir.glob(f"*{self._suffix}"):
+
+            def _read(p: Path = file) -> bytes:
+                with p.open("rb") as f:
+                    return f.read()
+
             try:
-                with file.open("rb") as f:
-                    raw = f.read()
+                raw = retry_on_estale(_read)
             except FileNotFoundError:
                 # File removed (concurrent purge / aborted write) between the
                 # directory listing and the read — skip it, don't crash.
                 continue
+            except OSError as exc:
+                # A persistently-stale handle (after retries) for a single
+                # file is treated like a missing file: skip rather than crash
+                # the entire search. See #352.
+                if is_transient_fs_error(exc):
+                    continue
+                raise
             meta = self._serializer.decode(raw)
             if is_match_query(meta, query):
                 results.append(meta)

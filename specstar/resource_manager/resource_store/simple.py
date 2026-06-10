@@ -1,5 +1,6 @@
 import io
 import os
+import uuid as uuid_module
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -12,6 +13,7 @@ from specstar.resource_manager.basic import (
     MsgspecSerializer,
 )
 from specstar.types import RevisionInfo
+from specstar.util.fs_retry import retry_on_estale
 
 UID = UUID
 UIDStr = str
@@ -214,8 +216,14 @@ class DiskResourceStore(IResourceStore):
             self._get_uid_store_symdir(resource_id, revision_id, schema_version)
             / "data"
         )
-        with data_path.open("rb") as f:
+        # ESTALE on NFS — a concurrent rename invalidated our inode cache.
+        # Bounded retry resolves it without surfacing OSError to the caller.
+        # See #352.
+        f = retry_on_estale(data_path.open, "rb")
+        try:
             yield f
+        finally:
+            f.close()
 
     def get_revision_info(
         self,
@@ -227,8 +235,12 @@ class DiskResourceStore(IResourceStore):
             self._get_uid_store_symdir(resource_id, revision_id, schema_version)
             / "info"
         )
-        with info_path.open("rb") as f:
-            return self._info_serializer.decode(f.read())
+
+        def _read() -> bytes:
+            with info_path.open("rb") as f:
+                return f.read()
+
+        return self._info_serializer.decode(retry_on_estale(_read))
 
     def save(self, info: RevisionInfo, data: DataIO) -> None:
         symd = self._get_uid_store_symdir(
@@ -236,17 +248,24 @@ class DiskResourceStore(IResourceStore):
         )
         reald = self._get_uid_store_realdir(str(info.uid))
 
-        # Create real directory if it doesn't exist
-        if not reald.exists():
-            reald.mkdir(parents=True, exist_ok=True)
-
-        # Create symlink directory structure
+        # mkdir(exist_ok=True) is already race-tolerant.
+        reald.mkdir(parents=True, exist_ok=True)
         symd.parent.mkdir(parents=True, exist_ok=True)
 
-        # Remove existing symlink if it exists and create new one
-        if symd.exists():
-            symd.unlink()
-        symd.symlink_to(relative_walk_up(reald, symd.parent), target_is_directory=True)
+        # Atomic symlink swap: the previous code did exists()→unlink()→symlink_to(),
+        # which TOCTOU-races concurrent writers and crashes with either
+        # FileExistsError or FileNotFoundError on local FS (see #352). Create a
+        # uniquely-named tmp symlink, then ``os.replace`` it onto ``symd`` —
+        # POSIX guarantees rename of a symlink onto an existing symlink is atomic.
+        target = relative_walk_up(reald, symd.parent)
+        tmp_link = symd.with_name(f"{symd.name}.tmp.{uuid_module.uuid4().hex}")
+        try:
+            tmp_link.symlink_to(target, target_is_directory=True)
+            os.replace(tmp_link, symd)
+        except BaseException:
+            with suppress(FileNotFoundError):
+                tmp_link.unlink()
+            raise
 
         # Write data and info
         with self._get_raw_data_path(str(info.uid)).open("wb") as f:
