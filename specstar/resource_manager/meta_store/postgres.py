@@ -59,6 +59,9 @@ class PostgresMetaStore(ISlowMetaStore):
         self.table_name = table_name
         # field_path → (indexed_dim, distance) for pgvector columns
         self._vec_columns: dict[str, tuple[int, str]] = {}
+        # Field paths registered as list-typed. ``contains`` on these uses
+        # JSONB ``@>`` instead of the substring-based ``LIKE``. See #362.
+        self._list_fields: set[str] = set()
 
         # 初始化 PostgreSQL 表
         self._init_postgres_table()
@@ -89,6 +92,18 @@ class PostgresMetaStore(ISlowMetaStore):
     @property
     def supports_native_vector_search(self) -> bool:
         return self._has_pgvector
+
+    def register_list_field(self, field_path: str) -> None:
+        """Declare *field_path* as a list-typed indexed field.
+
+        Routes ``DataSearchOperator.contains`` on this field through JSONB
+        ``@>`` (true element containment) instead of the default ``LIKE``
+        substring match. Idempotent — safe to call from ``add_model`` on
+        every registration.
+
+        See #362.
+        """
+        self._list_fields.add(field_path)
 
     # ------------------------------------------------------------------
     # Vector / pgvector DDL helpers
@@ -180,9 +195,7 @@ class PostgresMetaStore(ISlowMetaStore):
             [vec_literal, float(condition.threshold)],
         )
 
-    def _build_vector_order(
-        self, sort: "VectorDistanceSort"
-    ) -> tuple[str, list]:
+    def _build_vector_order(self, sort: "VectorDistanceSort") -> tuple[str, list]:
         if sort.field_path not in self._vec_columns:
             return "", []
         if not isinstance(sort.query_vector, list):
@@ -471,10 +484,20 @@ class PostgresMetaStore(ISlowMetaStore):
     def _upsert_sql(self) -> str:
         vec_cols = [self._vec_col_name(fp) for fp in self._vec_columns]
         base_cols = [
-            "resource_id", "data", "created_time", "updated_time",
-            "created_by", "updated_by", "is_deleted", "schema_version",
-            "indexed_data", "rev_status", "rev_created_by", "rev_updated_by",
-            "rev_created_time", "rev_updated_time",
+            "resource_id",
+            "data",
+            "created_time",
+            "updated_time",
+            "created_by",
+            "updated_by",
+            "is_deleted",
+            "schema_version",
+            "indexed_data",
+            "rev_status",
+            "rev_created_by",
+            "rev_updated_by",
+            "rev_created_time",
+            "rev_updated_time",
         ]
         all_cols = base_cols + vec_cols
         col_list = ", ".join(f'"{c}"' for c in all_cols)
@@ -487,8 +510,8 @@ class PostgresMetaStore(ISlowMetaStore):
         )
         return (
             f'INSERT INTO "{self.table_name}" ({col_list}) '
-            f'VALUES ({placeholders}) '
-            f'ON CONFLICT (resource_id) DO UPDATE SET {update_clause}'
+            f"VALUES ({placeholders}) "
+            f"ON CONFLICT (resource_id) DO UPDATE SET {update_clause}"
         )
 
     def save_many(self, metas: Iterable[ResourceMeta]) -> None:
@@ -859,6 +882,18 @@ class PostgresMetaStore(ISlowMetaStore):
         if operator == DataSearchOperator.less_than_or_equal:
             return f"{jsonb_numeric_extract} <= %s", [value]
         if operator == DataSearchOperator.contains:
+            # List-typed fields use JSONB ``@>`` so ``contains`` is true
+            # element containment, not a substring on the serialised JSON
+            # (which produced false-positives like ``"c1"`` matching
+            # ``["c10"]``). The default keeps ``LIKE`` for string fields.
+            # See #362.
+            if field_path in self._list_fields:
+                import json
+
+                return (
+                    f"indexed_data->'{field_path}' @> %s::jsonb",
+                    [json.dumps(value)],
+                )
             return f"{jsonb_text_extract} LIKE %s", [f"%{value}%"]
         if operator == DataSearchOperator.starts_with:
             return f"{jsonb_text_extract} LIKE %s", [f"{value}%"]

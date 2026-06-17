@@ -1588,6 +1588,21 @@ class SpecStar:
                     distance=vinfo.marker.distance or "cosine",
                 )
 
+        # Tell the meta store which indexed fields are list-typed so that
+        # ``contains`` can dispatch to JSONB ``@>`` instead of substring LIKE.
+        # See #362. Only PostgresMetaStore currently implements
+        # ``register_list_field``; the call is a no-op on other backends.
+        if meta_store is not None and hasattr(meta_store, "register_list_field"):
+            from typing import get_origin
+
+            for field in resource_manager.indexed_fields:
+                ft = field.field_type
+                if ft is UNSET:
+                    continue
+                origin = get_origin(ft) or ft
+                if origin is list or origin is tuple or origin is set:
+                    meta_store.register_list_field(field.index_key or field.field_path)
+
         # Scan Ref / RefRevision annotations and collect relationships
         refs = extract_refs(resolved_model, model_name)
         self.relationships.extend(refs)
@@ -1645,9 +1660,7 @@ class SpecStar:
     def _install_ref_integrity_handlers(self) -> None:
         install_ref_integrity_handlers(self.relationships, self.resource_managers)
         if self.validate_refs:
-            install_ref_existence_validators(
-                self.relationships, self.resource_managers
-            )
+            install_ref_existence_validators(self.relationships, self.resource_managers)
 
     @staticmethod
     def _inline_embedded_schema_ref(schema_extra: dict, source_type: Any) -> dict:
