@@ -1,22 +1,23 @@
-"""Postgres ``contains`` SQL pushdown must respect list-typed indexed fields.
+"""``contains`` on list-typed indexed fields must be element membership.
 
 Issue #362. The in-process backends already do the right thing
 (``basic.py:369-376`` — ``compare_value in field_value`` for list-typed
-``field_value``). The Postgres backend's ``_build_condition`` does not —
-it always emits ``LIKE '%v%'`` against the JSONB column's text
-serialisation, which admits substring false-positives whenever list
-elements share substrings (e.g. ``"c1"`` matches a row whose list is
-``["c10", "c20"]`` because the literal substring ``c1`` appears).
+``field_value``). The SQL backends did not — they emitted ``LIKE '%v%'``
+against the column's JSON text serialisation, which admits substring
+false-positives whenever list elements share substrings (e.g. ``"c1"``
+matches a row whose list is ``["c10", "c20"]`` because the literal substring
+``c1`` appears).
 
-The fix routes list-typed indexed fields through JSONB ``@>`` and leaves
-string / numeric fields on ``LIKE`` so that:
+The fix routes list-typed indexed fields through element containment
+(Postgres JSONB ``@>``; SQLite ``json_each`` membership) and leaves string /
+numeric fields on ``LIKE`` so that:
 
 * ``QB["str_field"].contains("substr")`` keeps its substring semantics;
 * ``QB["list_field"].contains(element)`` becomes a true element-of test.
 
-These tests pin the SQL emitted by ``_build_condition`` directly so they
-don't require a live Postgres — they run inside the fast (no-services)
-gate.
+The Postgres tests pin the emitted SQL via a ``__new__`` bypass (no live
+server needed); SQLite is in-process so its tests exercise real
+``iter_search``. Both run in the fast (no-services) gate.
 """
 
 from __future__ import annotations
@@ -153,6 +154,65 @@ def test_add_model_auto_registers_list_typed_indexed_fields(monkeypatch):
     assert "title" not in registered and "note" not in registered, (
         f"register_list_field called on a non-list field; got {registered!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# SQLite has the same bug as Postgres — and being in-process, we can pin it
+# end-to-end (real ``iter_search``) rather than just the emitted SQL.
+# ---------------------------------------------------------------------------
+
+
+def _sqlite_store_with_row(*, tags: list[str], desc: str = ""):
+    import uuid
+    from datetime import UTC, datetime
+
+    from specstar.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore
+    from specstar.types import ResourceMeta
+
+    store = MemorySqliteMetaStore()
+    base = datetime(2024, 1, 1, tzinfo=UTC)
+    meta = ResourceMeta(
+        current_revision_id="r1",
+        resource_id=str(uuid.uuid4()),
+        total_revision_count=1,
+        created_time=base,
+        updated_time=base,
+        created_by="t",
+        updated_by="t",
+        is_deleted=False,
+        indexed_data={"id": "1", "tags": tags, "desc": desc},
+    )
+    store[meta.resource_id] = meta
+    return store
+
+
+def _sqlite_contains_ids(store, field: str, value: str) -> list[str]:
+    from specstar.query_types import ResourceMetaSearchQuery
+
+    q = ResourceMetaSearchQuery(
+        conditions=[
+            DataSearchCondition(
+                field_path=field, operator=DataSearchOperator.contains, value=value
+            )
+        ],
+        limit=100,
+    )
+    return sorted(r.indexed_data["id"] for r in store.iter_search(q))
+
+
+def test_sqlite_contains_on_list_field_is_exact_membership_not_substring():
+    """SQLite mirror of the #362 fix: ``contains`` on a registered list field is
+    exact element membership, not a substring of the JSON serialisation."""
+    store = _sqlite_store_with_row(tags=["c10", "c20"])
+    store.register_list_field("tags")
+    assert _sqlite_contains_ids(store, "tags", "c1") == []  # not a member
+    assert _sqlite_contains_ids(store, "tags", "c10") == ["1"]  # real member
+
+
+def test_sqlite_contains_on_string_field_keeps_substring_semantics():
+    """A plain string field keeps ``LIKE`` substring behaviour (the legit use)."""
+    store = _sqlite_store_with_row(tags=["x"], desc="this is urgent")
+    assert _sqlite_contains_ids(store, "desc", "urgent") == ["1"]
 
 
 def test_add_model_is_a_noop_on_backends_without_register_list_field():
