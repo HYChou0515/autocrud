@@ -126,11 +126,12 @@ class TestAggregateByCountParity:
         assert [(r.key, r.count) for r in rows] == [(None, 3)]
 
 
-def test_sqlite_count_groupby_is_pushed_down_not_iterated():
-    """On SQLite the Count group-by must reach ``aggregate_by``, NOT walk
-    ``iter_all`` (that IS the push-down). Spying on ``iter_all`` proves the
-    fast path is taken rather than silently falling back to the row scan."""
-    meta_store = get_meta_store("sql3-mem")
+@pytest.mark.parametrize("meta_store_type", ["sql3-mem", "postgres"])
+def test_count_groupby_is_pushed_down_not_iterated(meta_store_type):
+    """On a push-down backend (``IMetaWithAgg``) the Count group-by must reach
+    ``aggregate_by``, NOT walk ``iter_all`` (that IS the push-down). Spying on
+    ``iter_all`` proves the fast path is taken, not a silent fallback."""
+    meta_store = get_meta_store(meta_store_type)
     storage = SimpleStorage(
         meta_store=meta_store,
         resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
@@ -159,7 +160,7 @@ def test_sqlite_count_groupby_is_pushed_down_not_iterated():
 
     assert {r.key: r.count for r in rows} == {"d1": 3, "d2": 2}
     assert called is False, (
-        "exp_aggregate_by walked iter_all on SQLite — push-down not taken"
+        f"exp_aggregate_by walked iter_all on {meta_store_type} — push-down not taken"
     )
 
 
