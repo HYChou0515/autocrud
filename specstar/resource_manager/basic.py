@@ -12,6 +12,8 @@ import msgspec
 from msgspec import UNSET, Struct, UnsetType
 
 from specstar.query_types import (
+    AggKeyRef,
+    AggSpec,
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
@@ -747,6 +749,41 @@ class ISlowMetaStore(IMetaStore):
         """
 
 
+class IMetaWithAgg(IMetaStore, ABC):
+    """Meta stores that can push a group-by aggregate down to their engine.
+
+    Mixed into a concrete store ALONGSIDE its base — e.g.
+    ``class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore)``. The abstract
+    ``aggregate_by`` forces an implementation, so ``isinstance(ms,
+    IMetaWithAgg)`` is a typed, typo-proof capability check (no ``hasattr``
+    sniffing): :meth:`ResourceManager.exp_aggregate_by` uses it to decide
+    whether to push the aggregation down or fall back to its in-process Python
+    reduction.
+
+    Contract: every implementation MUST return results identical to that
+    Python fallback — enforced cross-backend by
+    ``tests/meta_store/test_aggregate_by.py``.
+    """
+
+    @abstractmethod
+    def aggregate_by(
+        self,
+        query: ResourceMetaSearchQuery,
+        by: AggKeyRef,
+        aggregates: list[AggSpec],
+    ) -> list[tuple[object, dict[str, object]]]:
+        """Group rows matching ``query`` by ``by`` and reduce each aggregate
+        per group, pushed down to the store's engine.
+
+        Aggregates over the WHOLE filtered set — ``query``'s ``limit`` /
+        ``offset`` are ignored (paging an aggregate is meaningless), matching
+        the ResourceManager's ``iter_all`` semantics. Returns one
+        ``(key, {result_name: value})`` per distinct ``by`` value; a missing /
+        NULL key groups under ``key=None`` to match the Python reference path.
+        """
+        ...
+
+
 class IBlobStore(ABC):
     """Interface for storing and retrieving binary blobs.
 
@@ -1196,6 +1233,17 @@ class IStorage(ABC):
     between separate metadata and resource stores, providing a unified view
     while optimizing for different access patterns and performance requirements.
     """
+
+    @property
+    def meta_store(self) -> "IMetaStore | None":
+        """The single underlying metadata store, when this storage has one.
+
+        ``SimpleStorage`` returns its meta store; composite / cached storages
+        may return ``None``. Lets the ResourceManager reach a capability like
+        :class:`IMetaWithAgg` via ``isinstance`` without sniffing attributes.
+        Default ``None`` so existing storages need no change.
+        """
+        return None
 
     @abstractmethod
     def exists(self, resource_id: str) -> bool:

@@ -13,6 +13,8 @@ from typing import TypeVar
 from msgspec import UNSET
 
 from specstar.query_types import (
+    AggKeyRef,
+    AggSpec,
     DataSearchFilter,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -20,6 +22,7 @@ from specstar.query_types import (
 )
 from specstar.resource_manager.basic import (
     Encoding,
+    IMetaWithAgg,
     ISlowMetaStore,
     MsgspecSerializer,
 )
@@ -28,7 +31,7 @@ from specstar.types import ResourceMeta
 T = TypeVar("T")
 
 
-class SqliteMetaStore(ISlowMetaStore):
+class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
     def __init__(
         self,
         *,
@@ -267,7 +270,15 @@ class SqliteMetaStore(ISlowMetaStore):
         """
         self._list_fields.add(field_path)
 
-    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+    def _build_where(self, query: ResourceMetaSearchQuery) -> tuple[str, list]:
+        """Translate a search query into a SQL ``WHERE`` clause + params.
+
+        Shared by :meth:`iter_search` and :meth:`aggregate_by` so filtering
+        (meta columns + ``indexed_data`` JSON conditions) is built ONE way —
+        a pushed-down aggregate filters exactly like a search. Returns the
+        ``"WHERE ..."`` string (``""`` when unfiltered) and its param list;
+        ordering / paging are the caller's concern.
+        """
         conditions = []
         params = []
 
@@ -345,10 +356,13 @@ class SqliteMetaStore(ISlowMetaStore):
                     conditions.append(json_condition)
                     params.extend(json_params)
 
-        # 構建 WHERE 子句
         where_clause = ""
         if conditions:
             where_clause = "WHERE " + " AND ".join(conditions)
+        return where_clause, params
+
+    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+        where_clause, params = self._build_where(query)
 
         # 構建排序子句
         order_clause = ""
@@ -384,6 +398,43 @@ class SqliteMetaStore(ISlowMetaStore):
 
         for row in cursor:
             yield self._serializer.decode(row[0])
+
+    def aggregate_by(
+        self,
+        query: ResourceMetaSearchQuery,
+        by: AggKeyRef,
+        aggregates: list[AggSpec],
+    ) -> list[tuple[object, dict[str, object]]]:
+        """Push a ``Count`` group-by down to SQLite — ``GROUP BY`` over the
+        filtered set, never materialising one row per match.
+
+        The group key is a real column for ``source="meta"`` or a
+        ``json_extract`` of ``indexed_data`` for ``source="data"`` (a missing
+        field yields SQL ``NULL`` → ``None``, matching the Python path). The
+        ``WHERE`` is built by the SAME :meth:`_build_where` as
+        :meth:`iter_search`, and NO ``LIMIT``/``OFFSET`` is applied — an
+        aggregate spans the whole filtered set.
+        """
+        # v1 supports Count only; the ResourceManager's dispatch predicate
+        # guarantees this, so the assert is a defensive guard, not control flow.
+        assert all(a.op == "count" for a in aggregates), (
+            "SqliteMetaStore.aggregate_by v1 supports Count only"
+        )
+        if by.source == "meta":
+            key_expr = by.name  # a real resource_meta column
+        else:
+            key_expr = f"json_extract(indexed_data, '$.\"{by.name}\"')"
+        where_clause, params = self._build_where(query)
+        select_aggs = ", ".join(f"COUNT(*) AS a{i}" for i in range(len(aggregates)))
+        sql = (
+            f"SELECT {key_expr} AS k, {select_aggs} "
+            f"FROM resource_meta {where_clause} GROUP BY {key_expr}"
+        )
+        cursor = self._conns[threading.get_ident()].execute(sql, params)
+        return [
+            (row[0], {a.result_name: row[i + 1] for i, a in enumerate(aggregates)})
+            for row in cursor
+        ]
 
     def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 SQLite 查詢條件 (支援 Meta 欄位與 JSON 欄位)"""

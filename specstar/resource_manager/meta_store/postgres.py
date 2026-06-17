@@ -7,6 +7,8 @@ from typing import Any
 from msgspec import UNSET
 
 from specstar.query_types import (
+    AggKeyRef,
+    AggSpec,
     DataSearchFilter,
     DataSearchGroup,
     DataSearchLogicOperator,
@@ -20,6 +22,7 @@ from specstar.query_types import (
 )
 from specstar.resource_manager.basic import (
     Encoding,
+    IMetaWithAgg,
     ISlowMetaStore,
     MsgspecSerializer,
 )
@@ -36,7 +39,7 @@ except ImportError:  # pragma: no cover
     execute_batch = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
 
 
-class PostgresMetaStore(ISlowMetaStore):
+class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
     def __init__(
         self,
         pg_dsn: str,
@@ -574,10 +577,15 @@ class PostgresMetaStore(ISlowMetaStore):
             cur.execute(f'SELECT COUNT(*) FROM "{self.table_name}"')
             return cur.fetchone()[0]
 
-    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
-        # 直接从 PostgreSQL 查询
+    def _build_where(self, query: ResourceMetaSearchQuery) -> tuple[str, list]:
+        """Translate a search query into a SQL ``WHERE`` clause + params.
 
-        # 构建查询条件
+        Shared by :meth:`iter_search` and :meth:`aggregate_by` so a pushed-down
+        aggregate filters exactly like a search — meta columns + ``indexed_data``
+        JSONB conditions + vector conditions, built ONE way. Returns the
+        ``"WHERE ..."`` string (``""`` when unfiltered) and its params;
+        ordering / paging stay with the caller.
+        """
         conditions = []
         params = []
 
@@ -661,10 +669,13 @@ class PostgresMetaStore(ISlowMetaStore):
                     conditions.append(json_condition)
                     params.extend(json_params)
 
-        # 构建 WHERE 子句
         where_clause = ""
         if conditions:
             where_clause = "WHERE " + " AND ".join(conditions)
+        return where_clause, params
+
+    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+        where_clause, params = self._build_where(query)
 
         # 构建排序子句
         order_clause = ""
@@ -705,6 +716,44 @@ class PostgresMetaStore(ISlowMetaStore):
             cur.execute(sql, params)
             for row in cur:
                 yield self._serializer.decode(row["data"])
+
+    def aggregate_by(
+        self,
+        query: ResourceMetaSearchQuery,
+        by: AggKeyRef,
+        aggregates: list[AggSpec],
+    ) -> list[tuple[object, dict[str, object]]]:
+        """Push a ``Count`` group-by down to PostgreSQL — ``GROUP BY`` over the
+        filtered set, never materialising one row per match.
+
+        The group key is a real column for ``source="meta"`` or
+        ``indexed_data->>'field'`` (JSONB text) for ``source="data"`` (a missing
+        field yields SQL ``NULL`` → ``None``, matching the Python path). The
+        ``WHERE`` is built by the SAME :meth:`_build_where` as
+        :meth:`iter_search`, and NO ``LIMIT``/``OFFSET`` is applied — an
+        aggregate spans the whole filtered set.
+        """
+        # v1 supports Count only; the ResourceManager's dispatch predicate
+        # guarantees this, so the assert is a defensive guard, not control flow.
+        assert all(a.op == "count" for a in aggregates), (
+            "PostgresMetaStore.aggregate_by v1 supports Count only"
+        )
+        if by.source == "meta":
+            key_expr = by.name  # a real column
+        else:
+            key_expr = f"indexed_data->>'{by.name}'"
+        where_clause, params = self._build_where(query)
+        select_aggs = ", ".join(f"COUNT(*) AS a{i}" for i in range(len(aggregates)))
+        sql = (
+            f"SELECT {key_expr} AS k, {select_aggs} "
+            f'FROM "{self.table_name}" {where_clause} GROUP BY {key_expr}'
+        )
+        with self.stream_cursor() as cur:
+            cur.execute(sql, params)
+            return [
+                (row[0], {a.result_name: row[i + 1] for i, a in enumerate(aggregates)})
+                for row in cur
+            ]
 
     def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 PostgreSQL 查詢條件 (支援 Meta 欄位與 JSONB 欄位)"""

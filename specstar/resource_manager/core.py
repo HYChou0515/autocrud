@@ -20,6 +20,7 @@ from typing import (
     NamedTuple,
     TypedDict,
     TypeVar,
+    cast,
 )
 from uuid import uuid4
 
@@ -154,6 +155,7 @@ from specstar.resource_manager.basic import (
     Encoding,
     IBlobStore,
     IMetaStore,
+    IMetaWithAgg,
     IResourceStore,
     IStorage,
     MsgspecSerializer,
@@ -259,6 +261,12 @@ class SimpleStorage(IStorage):
     def __init__(self, meta_store: IMetaStore, resource_store: IResourceStore):
         self._meta_store = meta_store
         self._resource_store = resource_store
+
+    @property
+    def meta_store(self) -> IMetaStore:
+        """Expose the underlying meta store so the ResourceManager can detect
+        capabilities like :class:`IMetaWithAgg` (aggregate push-down)."""
+        return self._meta_store
 
     def exists(self, resource_id: str) -> bool:
         return resource_id in self._meta_store
@@ -2347,6 +2355,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         stabilising as ``aggregate_by``. Handles both single-RM group-by and
         cross-RM annotation in one method.
 
+        **Push-down:** a single-key, ``Count``-only group-by is pushed to the
+        store's engine when the meta store implements
+        :class:`~specstar.resource_manager.basic.IMetaWithAgg` (SQLite today) —
+        a real ``GROUP BY`` instead of streaming every matching row into
+        Python. Results are identical to the in-process path (enforced
+        cross-backend); it's scan-fast, not O(1) — for a genuinely hot,
+        high-fan-out count prefer a denormalised counter maintained on write.
+        Sum/Min/Max/Avg and ForeignAggregate still reduce in Python.
+
         Self aggregates (over this RM's rows in each group):
         :class:`~specstar.aggregates.Count` and
         :class:`~specstar.aggregates.Sum` / :class:`~specstar.aggregates.Min`
@@ -2508,18 +2525,53 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     )
                     state[n] = _update(a, state[n], val)
         else:
-            for meta in self.iter_all(query):
-                key = self._read_field(meta, by)
-                state = groups.get(key)
-                if state is None:
-                    state = groups[key] = {n: _init(a) for n, a in self_aggs.items()}
-                for n, a in self_aggs.items():
-                    val = (
-                        None
-                        if isinstance(a, Count)
-                        else self._read_field(meta, a.field)
-                    )
-                    state[n] = _update(a, state[n], val)
+            # Push a pure-``Count`` group-by down to the metastore engine when
+            # it advertises the capability (typed ``isinstance``, not
+            # ``hasattr``). Sum/Min/Max/Avg and ForeignAggregate stay on the
+            # Python path below; a pushed result MUST equal it (enforced
+            # cross-backend by tests/meta_store/test_aggregate_by.py).
+            ms = self.storage.meta_store
+            if (
+                self_aggs
+                and not foreign_aggs
+                and by.source in ("meta", "data")
+                and all(isinstance(a, Count) for a in self_aggs.values())
+                and isinstance(ms, IMetaWithAgg)
+            ):
+                from specstar.query_types import AggKeyRef, AggSpec
+                from specstar.query_types import ResourceMetaSearchQuery as _RMSQ
+
+                if query is None:
+                    q = _RMSQ()
+                elif isinstance(query, Query):
+                    q = query.build()
+                else:
+                    q = query
+                rows = ms.aggregate_by(
+                    q,
+                    # ``by.source`` is narrowed to meta/data by the guard above;
+                    # Field.source is typed ``str`` so spell the Literal out.
+                    AggKeyRef(
+                        source=cast(Literal["meta", "data"], by.source), name=by.name
+                    ),
+                    [AggSpec(result_name=n, op="count") for n in self_aggs],
+                )
+                groups = {key: dict(state) for key, state in rows}
+            else:
+                for meta in self.iter_all(query):
+                    key = self._read_field(meta, by)
+                    state = groups.get(key)
+                    if state is None:
+                        state = groups[key] = {
+                            n: _init(a) for n, a in self_aggs.items()
+                        }
+                    for n, a in self_aggs.items():
+                        val = (
+                            None
+                            if isinstance(a, Count)
+                            else self._read_field(meta, a.field)
+                        )
+                        state[n] = _update(a, state[n], val)
 
         # 4) Foreign aggregates: one query per foreign, scoped to the keys we
         #    actually have, then zip onto each group.
