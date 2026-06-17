@@ -376,6 +376,17 @@ def _evaluate_trivalent(
             return (condition.value.value & field_value) == condition.value.value
         # 標準字符串包含檢查
         return str(compare_value) in str(field_value)
+    if condition.operator == DataSearchOperator.contains_any:
+        # list field shares any element with the candidate values (set overlap);
+        # a scalar field degrades to membership (field in candidates).
+        cands = (
+            compare_value
+            if isinstance(compare_value, (list, tuple, set))
+            else [compare_value]
+        )
+        if isinstance(field_value, list):
+            return any(v in field_value for v in cands)
+        return field_value in cands
     if condition.operator == DataSearchOperator.starts_with:
         return str(field_value).startswith(
             str(compare_value),

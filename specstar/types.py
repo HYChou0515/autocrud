@@ -536,6 +536,78 @@ def extract_vector_field_infos(struct_type: type) -> "list[VectorFieldInfo]":
     return out
 
 
+class SetIndex:
+    """Annotation marker for a list field that should get a dedicated
+    set-overlap index.
+
+    Use with ``Annotated`` on a homogeneous ``list[...]`` field. On Postgres the
+    framework auto-creates a dedicated array column + GIN (mirroring how
+    :class:`Vector` fields auto-create pgvector columns), so
+    ``QB[field].contains_any([...])`` runs as one indexed ``&&`` overlap instead
+    of a per-candidate containment fan-out. Other backends serve ``contains_any``
+    from the shared path and need no shadow column. The element type is inferred
+    from the annotation (``list[str]`` → text, ``list[int]`` → bigint,
+    ``list[float]`` → double precision).
+
+    Example::
+
+        class Foo(Struct):
+            keys: Annotated[list[str], SetIndex()]
+    """
+
+    __slots__ = ()
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, SetIndex)
+
+    def __hash__(self) -> int:
+        return hash(SetIndex)
+
+
+class SetIndexFieldInfo(Struct, frozen=True, kw_only=True):
+    """Per-field info about a :class:`SetIndex`-annotated field, returned by
+    :func:`extract_set_index_field_infos`."""
+
+    name: str
+    elem_type: type
+
+
+def extract_set_index_field_infos(struct_type: type) -> "list[SetIndexFieldInfo]":
+    """Return info for every ``SetIndex``-annotated list field, with the list
+    element type inferred from the annotation (``list[str]`` → ``str``)."""
+    from typing import get_args
+
+    from specstar.util.type_utils import (
+        get_hints,
+        get_non_none_args,
+        is_annotated_type,
+        is_nullable_type,
+        unwrap_annotated,
+    )
+
+    out: list[SetIndexFieldInfo] = []
+    try:
+        hints = get_hints(struct_type)
+    except (TypeError, NameError):
+        return out
+    for field_name, hint in hints.items():
+        if not is_annotated_type(hint):
+            continue
+        inner, metadata = unwrap_annotated(hint)
+        if not any(isinstance(meta, SetIndex) for meta in metadata):
+            continue
+        # Peel Optional/Union to the list type, then read its element type.
+        value_type = inner
+        if is_nullable_type(inner):
+            non_none = get_non_none_args(inner)
+            if non_none:
+                value_type = non_none[0]
+        args = get_args(value_type)
+        elem_type = args[0] if args else str
+        out.append(SetIndexFieldInfo(name=field_name, elem_type=elem_type))
+    return out
+
+
 def extract_vectors(struct_type: type) -> "list[tuple[str, Vector]]":
     """Return ``(field_name, Vector)`` pairs for Vector-annotated fields."""
     from specstar.util.type_utils import (

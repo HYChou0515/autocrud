@@ -21,6 +21,7 @@ class DataSearchOperator(StrEnum):
     ends_with = "ends_with"  # For string fields
     in_list = "in"
     not_in_list = "not_in"
+    contains_any = "contains_any"  # list field shares any element with the given values
     is_null = "is_null"
     exists = "exists"
     isna = "isna"

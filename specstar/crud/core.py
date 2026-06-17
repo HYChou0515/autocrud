@@ -1509,6 +1509,19 @@ class SpecStar:
                         )
                     )
 
+        # SetIndex fields are indexed list fields (so contains_any can read them
+        # from indexed_data); the dedicated shadow column is wired below.
+        from specstar.types import extract_set_index_field_infos
+
+        set_infos = extract_set_index_field_infos(resolved_model)
+        if set_infos:
+            existing_keys = {(f.index_key or f.field_path) for f in _indexed_fields}
+            for sinfo in set_infos:
+                if sinfo.name not in existing_keys:
+                    _indexed_fields.append(
+                        IndexableField(field_path=sinfo.name, field_type=list)
+                    )
+
         # ResourceManager binds T from ``resolved_model`` (typed as bare
         # ``type`` after Pydantic conversion), erasing the caller's T.
         # Cast the parameterised inputs to the corresponding T-erased
@@ -1602,6 +1615,18 @@ class SpecStar:
                 origin = get_origin(ft) or ft
                 if origin is list or origin is tuple or origin is set:
                     meta_store.register_list_field(field.index_key or field.field_path)
+
+        # If the meta store supports native SetIndex acceleration, create the
+        # dedicated array column + GIN for each SetIndex field (same pattern as
+        # pgvector columns above; Postgres-only, others fall back to the shared
+        # contains_any path).
+        if (
+            set_infos
+            and meta_store is not None
+            and hasattr(meta_store, "ensure_set_column")
+        ):
+            for sinfo in set_infos:
+                meta_store.ensure_set_column(sinfo.name, sinfo.elem_type)
 
         # Scan Ref / RefRevision annotations and collect relationships
         refs = extract_refs(resolved_model, model_name)
