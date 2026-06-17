@@ -124,6 +124,7 @@ def test_add_model_auto_registers_list_typed_indexed_fields(monkeypatch):
 
     class Doc(Struct):
         title: str
+        note: str = ""
         tags: list[str] = []
 
     registered: list[str] = []
@@ -139,14 +140,41 @@ def test_add_model_auto_registers_list_typed_indexed_fields(monkeypatch):
     sp.add_model(
         Doc,
         indexed_fields=[
-            IndexableField(field_path="title", field_type=str),
-            IndexableField(field_path="tags", field_type=list[str]),
+            IndexableField(field_path="title", field_type=str),  # str → not registered
+            IndexableField(field_path="note"),  # field_type UNSET → skipped
+            IndexableField(field_path="tags", field_type=list[str]),  # list → registered
         ],
     )
 
     assert "tags" in registered, (
         f"register_list_field not invoked for list-typed field; got {registered!r}"
     )
-    assert "title" not in registered, (
-        f"register_list_field called on non-list field; got {registered!r}"
+    # A string field and an untyped (UNSET) field must both be left alone.
+    assert "title" not in registered and "note" not in registered, (
+        f"register_list_field called on a non-list field; got {registered!r}"
     )
+
+
+def test_add_model_is_a_noop_on_backends_without_register_list_field():
+    """The auto-wiring is guarded by ``hasattr(meta_store, "register_list_field")``.
+
+    On the default in-memory backend (no such method) ``add_model`` must skip
+    the wiring silently — list-field ``contains`` just stays on the shared path.
+    """
+    from msgspec import Struct
+
+    from specstar import SpecStar
+    from specstar.types import IndexableField
+
+    class Doc(Struct):
+        tags: list[str] = []
+
+    sp = SpecStar()
+    sp.configure(default_user="t")
+    # No monkeypatch: MemoryMetaStore has no register_list_field, so the guard
+    # is False and the loop is skipped — this must not raise.
+    sp.add_model(
+        Doc,
+        indexed_fields=[IndexableField(field_path="tags", field_type=list[str])],
+    )
+    assert sp.get_resource_manager(Doc) is not None
