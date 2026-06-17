@@ -39,6 +39,9 @@ class SqliteMetaStore(ISlowMetaStore):
             encoding=encoding,
             resource_type=ResourceMeta,
         )
+        # Field paths registered as list-typed. ``contains`` on these uses exact
+        # element membership (json_each) instead of substring LIKE. See #362.
+        self._list_fields: set[str] = set()
 
         def _get_conn_wrapper():
             conn = get_conn()
@@ -253,6 +256,16 @@ class SqliteMetaStore(ISlowMetaStore):
         _conn = self._conns[threading.get_ident()]
         cursor = _conn.execute("SELECT COUNT(*) FROM resource_meta")
         return cursor.fetchone()[0]
+
+    def register_list_field(self, field_path: str) -> None:
+        """Declare *field_path* as a list-typed indexed field.
+
+        Routes ``DataSearchOperator.contains`` on this field through exact
+        element membership (``json_each``) instead of the default substring
+        ``LIKE``. Idempotent — safe to call from ``add_model`` on every
+        registration. See #362.
+        """
+        self._list_fields.add(field_path)
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         conditions = []
@@ -556,6 +569,16 @@ class SqliteMetaStore(ISlowMetaStore):
         if operator == DataSearchOperator.less_than_or_equal:
             return f"CAST({json_extract} AS REAL) <= ?", [value]
         if operator == DataSearchOperator.contains:
+            # List-typed fields use exact element membership (json_each) so
+            # ``contains`` isn't a substring on the serialised JSON array — which
+            # produced false-positives like "c1" matching ["c10"]. String fields
+            # keep LIKE substring semantics. See #362.
+            if field_path in self._list_fields:
+                return (
+                    f"EXISTS (SELECT 1 FROM "
+                    f"json_each(indexed_data, '$.\"{field_path}\"') WHERE value = ?)",
+                    [value],
+                )
             return f"{json_extract} LIKE ?", [f"%{value}%"]
         if operator == DataSearchOperator.starts_with:
             return f"{json_extract} LIKE ?", [f"{value}%"]
