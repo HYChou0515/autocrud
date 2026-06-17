@@ -238,10 +238,39 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     """Sorting criteria for the search results."""
 
 
+class AggKeyRef(Struct, frozen=True):
+    """Storage-facing reference to the field a pushed-down aggregate groups by.
+
+    ``source`` mirrors a QB ``Field.source`` — ``"meta"`` for a ResourceMeta
+    column, ``"data"`` for an ``indexed_data`` JSON field — so a metastore can
+    build the right key expression without importing the high-level QB / query
+    layer. This is the narrow contract between ``ResourceManager`` and an
+    ``IMetaWithAgg`` store.
+    """
+
+    source: Literal["meta", "data"]
+    name: str
+
+
+class AggSpec(Struct, frozen=True):
+    """Storage-facing description of one aggregate in a group-by pushdown.
+
+    ``op`` is the reducer and ``result_name`` is the caller's label (echoed
+    back per group). v1 ships ``"count"`` only; ``field`` is unused for count
+    and reserved for ``sum``/``min``/``max``/``avg`` when they push down.
+    """
+
+    result_name: str
+    op: Literal["count"]
+    field: AggKeyRef | None = None
+
+
 __all__ = [
     "DEFAULT_QUERY_LIMIT",
     "DEFAULT_QUERY_LIMIT_ENV_VAR",
     "DEFAULT_QUERY_LIMIT_FALLBACK",
+    "AggKeyRef",
+    "AggSpec",
     "DataSearchCondition",
     "DataSearchFilter",
     "DataSearchGroup",
