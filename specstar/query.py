@@ -625,6 +625,13 @@ class Field(ConditionBuilder):
     def in_(self, value: list[Any]) -> ConditionBuilder:
         return self._cond(DataSearchOperator.in_list, value)
 
+    def contains_any(self, value: list[Any]) -> ConditionBuilder:
+        """Match when this (list) field shares at least one element with
+        ``value`` — ``set(field) & set(value) != {}``. The "any-of" sibling of
+        :meth:`contains` (single-element membership). On a scalar field it
+        degrades to membership (``field in value``)."""
+        return self._cond(DataSearchOperator.contains_any, value)
+
     def not_in(self, value: list[Any]) -> ConditionBuilder:
         return self._cond(DataSearchOperator.not_in_list, value)
 

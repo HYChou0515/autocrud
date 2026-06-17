@@ -65,6 +65,8 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         # Field paths registered as list-typed. ``contains`` on these uses
         # JSONB ``@>`` instead of the substring-based ``LIKE``. See #362.
         self._list_fields: set[str] = set()
+        # field_path → pg element type (e.g. "text") for SetIndex array columns
+        self._set_columns: dict[str, str] = {}
 
         # 初始化 PostgreSQL 表
         self._init_postgres_table()
@@ -170,6 +172,85 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             conn.close()
 
         self._vec_columns[field_path] = (indexed_dim, distance)
+
+    # ------------------------------------------------------------------
+    # SetIndex (array set-overlap) DDL helpers
+    # ------------------------------------------------------------------
+
+    # Python element type → Postgres array element type.
+    _SET_ELEM_TYPES: dict[type, str] = {
+        str: "text",
+        int: "bigint",
+        float: "double precision",
+    }
+
+    def _set_col_name(self, field_path: str) -> str:
+        return "set_" + field_path.replace(".", "_")
+
+    def ensure_set_column(self, field_path: str, elem_type: type = str) -> None:
+        """Create a dedicated array column + GIN for *field_path* so
+        ``contains_any`` runs as one indexed ``&&`` overlap instead of a
+        per-candidate ``@>`` fan-out on the shared index.
+
+        Idempotent; mirrors :meth:`ensure_vector_column` (pgvector). Other
+        backends serve ``contains_any`` from the shared path and need no
+        shadow column, so this is Postgres-only native acceleration.
+        """
+        pg_elem = self._SET_ELEM_TYPES.get(elem_type, "text")
+        col = self._set_col_name(field_path)
+        idx_name = f"idx_{self.table_name}_{col}_gin"
+        # ALTER TABLE / CREATE INDEX can't run inside the pool's txn; use a
+        # dedicated autocommit connection for DDL (same as ensure_vector_column).
+        conn = psycopg2.connect(self._pg_dsn)
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f'ALTER TABLE "{self.table_name}" '
+                    f'ADD COLUMN IF NOT EXISTS "{col}" {pg_elem}[]'
+                )
+                cur.execute(
+                    f'CREATE INDEX IF NOT EXISTS "{idx_name}" '
+                    f'ON "{self.table_name}" USING GIN ("{col}")'
+                )
+        finally:
+            conn.close()
+        self._set_columns[field_path] = pg_elem
+
+    def _extract_set_value(self, meta: ResourceMeta, field_path: str) -> "list | None":
+        """The list value for a SetIndex column, copied from indexed_data."""
+        if meta.indexed_data is UNSET or meta.indexed_data is None:
+            return None
+        v = meta.indexed_data.get(field_path)
+        return v if isinstance(v, list) else None
+
+    def backfill_set_column(self, field_path: str) -> int:
+        """Repopulate the SetIndex shadow column for *field_path* from
+        ``indexed_data`` across all existing rows — for rows written before the
+        column was added (it defaults to NULL there). One pushed-down ``UPDATE``;
+        returns rows touched. No-op when the field has no shadow column.
+
+        Analogous to :func:`backfill_vectors` for Vector fields, but the value
+        is a pure derivation of ``indexed_data`` (no re-encoding needed), so it
+        runs entirely in SQL.
+        """
+        if field_path not in self._set_columns:
+            return 0
+        pg_elem = self._set_columns[field_path]
+        col = self._set_col_name(field_path)
+        extract = "jsonb_array_elements_text(indexed_data->%s)"
+        arr = (
+            f"ARRAY(SELECT {extract})"
+            if pg_elem == "text"
+            else f"ARRAY(SELECT ({extract})::{pg_elem})"
+        )
+        sql = (
+            f'UPDATE "{self.table_name}" SET "{col}" = {arr} '
+            f"WHERE jsonb_typeof(indexed_data->%s) = 'array'"
+        )
+        with self.transaction() as cur:
+            cur.execute(sql, [field_path, field_path])
+            return cur.rowcount
 
     def _build_vector_condition(
         self, condition: "VectorDistanceCondition"
@@ -482,10 +563,14 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         # Append registered vec column values in deterministic order
         for field_path, (indexed_dim, _) in self._vec_columns.items():
             base = base + (self._extract_vec_value(meta, field_path, indexed_dim),)
+        # Then SetIndex array column values, same deterministic order.
+        for field_path in self._set_columns:
+            base = base + (self._extract_set_value(meta, field_path),)
         return base
 
     def _upsert_sql(self) -> str:
         vec_cols = [self._vec_col_name(fp) for fp in self._vec_columns]
+        set_cols = [self._set_col_name(fp) for fp in self._set_columns]
         base_cols = [
             "resource_id",
             "data",
@@ -502,11 +587,14 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             "rev_created_time",
             "rev_updated_time",
         ]
-        all_cols = base_cols + vec_cols
+        all_cols = base_cols + vec_cols + set_cols
         col_list = ", ".join(f'"{c}"' for c in all_cols)
-        # vec values are passed as strings; cast to vector
+        # vec values are passed as strings cast to vector; set values as lists
+        # cast to the column's array type (psycopg2 adapts a list → array).
         placeholders = ", ".join(
-            ["%s"] * len(base_cols) + ["%s::vector"] * len(vec_cols)
+            ["%s"] * len(base_cols)
+            + ["%s::vector"] * len(vec_cols)
+            + [f"%s::{self._set_columns[fp]}[]" for fp in self._set_columns]
         )
         update_clause = ", ".join(
             f'"{c}" = EXCLUDED."{c}"' for c in all_cols if c != "resource_id"
@@ -962,6 +1050,31 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
                 return f"{jsonb_text_extract} NOT IN ({placeholders})", [
                     str(v) for v in value
                 ]
+        if operator == DataSearchOperator.contains_any:
+            vals = list(value) if isinstance(value, (list, tuple, set)) else [value]
+            if not vals:
+                return "FALSE", []  # empty candidate set matches nothing
+            if field_path in self._set_columns:
+                # Fast path: ONE indexed array-overlap on the dedicated SetIndex
+                # column (its own GIN), instead of the per-candidate @> fan-out.
+                # psycopg2 adapts the Python list to an array literal.
+                col = self._set_col_name(field_path)
+                pg_elem = self._set_columns[field_path]
+                return f'"{col}" && %s::{pg_elem}[]', [list(vals)]
+            # Fallback (field not SetIndex-declared): OR one ``@>`` containment
+            # probe per candidate, served by the SINGLE GIN on the whole
+            # ``indexed_data`` (jsonb_ops supports ``@>``). We deliberately do NOT
+            # use ``indexed_data->'field' ?| ...`` — that extraction can't use the
+            # index — nor a per-field expression index here, which would force
+            # CREATE/DROP DDL when indexed fields change and break specstar's "the
+            # user never manages the DB / schema can vary freely" guarantee.
+            # ``@>`` also scopes to THIS field (a candidate living in another
+            # field won't false-match), and the planner BitmapOr's the probes.
+            import json
+
+            terms = " OR ".join(["indexed_data @> %s::jsonb"] * len(vals))
+            params = [json.dumps({field_path: [v]}, ensure_ascii=False) for v in vals]
+            return f"({terms})", params
         if operator == DataSearchOperator.is_null:
             if value:
                 # Strict is_null: Must exist AND be null

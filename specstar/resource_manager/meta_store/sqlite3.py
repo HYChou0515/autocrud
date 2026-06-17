@@ -645,6 +645,20 @@ class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
             if isinstance(value, (list, tuple, set)):
                 placeholders = ",".join("?" * len(value))
                 return f"{json_extract} NOT IN ({placeholders})", list(value)
+        if operator == DataSearchOperator.contains_any:
+            # List set-overlap: unnest the array (json_each) and test element
+            # membership against the candidate set — exact, unlike the LIKE hack
+            # `contains` uses. json_each yields one row for a scalar too, so this
+            # degrades to membership on a scalar field (matching the Python path).
+            vals = list(value) if isinstance(value, (list, tuple, set)) else [value]
+            if not vals:
+                return "1=0", []  # empty candidate set matches nothing
+            placeholders = ",".join("?" * len(vals))
+            return (
+                f"EXISTS (SELECT 1 FROM json_each(indexed_data, '$.\"{field_path}\"') "
+                f"WHERE value IN ({placeholders}))",
+                vals,
+            )
         if operator == DataSearchOperator.is_null:
             if value:
                 # Strict is_null: Must exist AND be null

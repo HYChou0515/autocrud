@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from msgspec import UNSET
 
@@ -71,4 +70,34 @@ def backfill_vectors(
         fresh_data = msgspec.structs.replace(data, **{field_name: fresh_emb})
         rm.update(meta.resource_id, fresh_data)
         summary.encoded += 1
+    return summary
+
+
+def backfill_set_columns(
+    rm: IResourceManager,
+    *,
+    field_name: str,
+) -> BackfillSummary:
+    """Repopulate the SetIndex shadow column for ``field_name`` across all
+    existing rows — needed for rows written before the column was added.
+
+    Unlike :func:`backfill_vectors`, the shadow column is a pure derivation of
+    ``indexed_data`` (no re-encoding), so this delegates to the meta store's
+    pushed-down backfill (one SQL ``UPDATE``). A no-op on backends without
+    native SetIndex acceleration, which serve ``contains_any`` from the shared
+    path and have no shadow column to fill.
+    """
+    from specstar.types import extract_set_index_field_infos
+
+    names = {i.name for i in extract_set_index_field_infos(rm.resource_type)}
+    if field_name not in names:
+        raise ValueError(
+            f"Field {field_name!r} is not a SetIndex field on "
+            f"{rm.resource_type.__name__}"
+        )
+    summary = BackfillSummary()
+    storage = getattr(rm, "storage", None)
+    meta_store = getattr(storage, "meta_store", None) if storage is not None else None
+    if meta_store is not None and hasattr(meta_store, "backfill_set_column"):
+        summary.encoded = meta_store.backfill_set_column(field_name)
     return summary
