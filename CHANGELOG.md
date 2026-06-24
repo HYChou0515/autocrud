@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.9] — 2026-06-24
+
+
+### Added
+
+- Push exp_aggregate_by Count group-by down to SQLite
+- Push exp_aggregate_by Count group-by down to PostgreSQL
+- Contains_any list-overlap operator + SetIndex Postgres acceleration
+
+
+### Fixed
+
+- Contains on list-typed indexed fields uses JSONB @> (#362)
+- Contains on list-typed indexed fields uses json_each membership (#362)
+- Auto-register list indexed fields from model annotations (#378)
+- Share one connection pool per DSN (#380)
+
 ## [Unreleased]
 
 
