@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+
+### Fixed
+
+- Postgres stores sharing a DSN now share one process-global connection
+  pool, so connection count scales with the number of distinct DSNs instead
+  of `models × 2 × replicas` — no more boot-time `too many clients` storms
+  (#380). Pools are lazy (`minconn=0`) by default and capped at
+  `maxconn=16` per process per DSN; both are tunable via the postgres
+  connection `options`. **Note:** `maxconn` is now a per-process, per-DSN
+  ceiling shared across every model and store role, not a per-store limit —
+  raise it for high-concurrency deployments.
+
 ## [0.11.8] — 2026-06-10
 
 

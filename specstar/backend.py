@@ -300,6 +300,19 @@ class PostgresBackendProvider(BackendProvider):
             raise ValueError("postgres backend requires options.dsn")
         return str(dsn)
 
+    def _pool_sizes(self, options: dict[str, Any]) -> tuple[int, int]:
+        # Pool sizing is shared per DSN (#380). ``maxconn`` is the
+        # per-process, per-DSN ceiling across every model / role on that DSN.
+        from specstar.resource_manager._pg_pool import (
+            DEFAULT_MAXCONN,
+            DEFAULT_MINCONN,
+        )
+
+        return (
+            int(options.get("minconn", DEFAULT_MINCONN)),
+            int(options.get("maxconn", DEFAULT_MAXCONN)),
+        )
+
     def build_meta(
         self, *, model_name: str, options: dict[str, Any], defaults: BackendDefaults
     ) -> IMetaStore:
@@ -308,10 +321,13 @@ class PostgresBackendProvider(BackendProvider):
         table_name = (
             f"{table_prefix}{safe_name}_meta" if table_prefix else f"{safe_name}_meta"
         )
+        minconn, maxconn = self._pool_sizes(options)
         return PostgresMetaStore(
             pg_dsn=self._dsn(options),
             encoding=options.get("encoding", defaults.encoding),
             table_name=table_name,
+            minconn=minconn,
+            maxconn=maxconn,
         )
 
     def build_resource(
@@ -322,10 +338,13 @@ class PostgresBackendProvider(BackendProvider):
         resource_prefix = (
             f"{table_prefix}{safe_name}_" if table_prefix else f"{safe_name}_"
         )
+        minconn, maxconn = self._pool_sizes(options)
         return PostgresResourceStore(
             pg_dsn=self._dsn(options),
             encoding=options.get("encoding", defaults.encoding),
             table_prefix=resource_prefix,
+            minconn=minconn,
+            maxconn=maxconn,
         )
 
 

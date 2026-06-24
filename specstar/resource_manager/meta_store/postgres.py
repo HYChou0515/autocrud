@@ -1,6 +1,6 @@
 import time
 from collections.abc import Generator, Iterable
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from enum import Enum as EnumType
 from typing import Any
 
@@ -20,6 +20,7 @@ from specstar.query_types import (
     VectorDistanceCondition,
     VectorDistanceSort,
 )
+from specstar.resource_manager import _pg_pool
 from specstar.resource_manager.basic import (
     Encoding,
     IMetaWithAgg,
@@ -40,24 +41,34 @@ except ImportError:  # pragma: no cover
 
 
 class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
+    """PostgreSQL-backed metadata store.
+
+    All stores resolving to the same DSN share one process-global
+    connection pool (#380), so connection count scales with the number of
+    distinct DSNs rather than the number of models. ``minconn`` defaults to
+    ``0`` (lazy) and ``maxconn`` to ``16`` — a per-process, per-DSN ceiling
+    shared across every store on that DSN, tunable for high concurrency.
+    """
+
     def __init__(
         self,
         pg_dsn: str,
         encoding: Encoding = Encoding.json,
         *,
         table_name: str = "resource_meta",
+        minconn: int = _pg_pool.DEFAULT_MINCONN,
+        maxconn: int = _pg_pool.DEFAULT_MAXCONN,
     ):
         self._serializer = MsgspecSerializer(
             encoding=encoding,
             resource_type=ResourceMeta,
         )
 
-        # 建立連線池
+        # Share one process-global pool per DSN (#380). The pool is owned by
+        # the registry for the process lifetime; this store never closes it.
         self._pg_dsn = pg_dsn
-        self._conn_pool = psycopg2.pool.SimpleConnectionPool(
-            minconn=1,
-            maxconn=10,
-            dsn=pg_dsn,
+        self._conn_pool = _pg_pool.get_pool(
+            pg_dsn, minconn=minconn, maxconn=maxconn
         )
         self.table_name = table_name
         # field_path → (indexed_dim, distance) for pgvector columns
@@ -320,25 +331,10 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             return None  # under-dim vector — leave NULL
         return self._format_vec_literal(clipped)
 
-    def __del__(self):
-        # 物件被回收時自動清理
-        with suppress(Exception):
-            self._cleanup()
-
-    def _cleanup(self):
-        # 額外嘗試把所有連線都回收一遍，防止池中連線還被占用
-        conns = []
-        while True:
-            try:
-                conn = self._conn_pool.getconn(timeout=1)  # ty:ignore[unknown-argument]
-                conns.append(conn)
-            except Exception:
-                break
-        for conn in conns:
-            with suppress(Exception):
-                conn.close()
-        with suppress(Exception):
-            self._conn_pool.closeall()
+    # The connection pool is shared across all stores on this DSN and owned
+    # by the process-global registry (#380); a store must not close it on
+    # garbage collection. Use ``_pg_pool.close_all_pools()`` for explicit
+    # shutdown / test teardown.
 
     def get_conn(self) -> Any:
         retry = 5

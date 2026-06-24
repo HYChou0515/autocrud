@@ -141,8 +141,19 @@ config = BackendConfig(
 | `connection_string` | yes* | accepted alias for `dsn` |
 | `table_prefix` | no | overrides `defaults.table_prefix` |
 | `encoding` | no | overrides `defaults.encoding` |
+| `minconn` | no | minimum pooled connections per DSN (default `0`, lazy) |
+| `maxconn` | no | maximum pooled connections per DSN (default `16`) |
 
 > `dsn` or `connection_string` must be provided.
+
+> **Connection pooling.** All postgres stores that resolve to the same DSN
+> share **one** process-global connection pool, so the number of open
+> connections is bounded by the number of distinct DSNs — not by the number
+> of models. `maxconn` is therefore a **per-process, per-DSN** ceiling shared
+> across every model and across the meta/resource roles, not a per-store
+> limit. Size it against your server's `max_connections` and replica count
+> (e.g. `maxconn=16` with 3 replicas keeps you at 48 connections). When the
+> pool is exhausted, checkouts retry with backoff before failing.
 
 ### `s3`
 

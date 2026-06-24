@@ -17,9 +17,10 @@ from __future__ import annotations
 import io
 import time
 from collections.abc import Generator, Iterable
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from typing import IO, Any
 
+from specstar.resource_manager import _pg_pool
 from specstar.resource_manager.basic import (
     Encoding,
     IResourceStore,
@@ -46,6 +47,11 @@ class PostgresResourceStore(IResourceStore):
             (default ``Encoding.json``).
         table_prefix: Optional prefix for table names, useful to isolate
             multiple tenants / test runs within the same database.
+        minconn: Minimum connections kept in the shared per-DSN pool
+            (default ``0`` — lazy, opens nothing until first use).
+        maxconn: Maximum connections in the shared per-DSN pool (default
+            ``16``). This is a per-process, per-DSN ceiling shared across
+            every store on the same DSN (#380), not a per-store limit.
     """
 
     def __init__(
@@ -54,16 +60,18 @@ class PostgresResourceStore(IResourceStore):
         encoding: Encoding = Encoding.json,
         *,
         table_prefix: str = "",
+        minconn: int = _pg_pool.DEFAULT_MINCONN,
+        maxconn: int = _pg_pool.DEFAULT_MAXCONN,
     ):
         self._info_serializer = MsgspecSerializer(
             encoding=encoding,
             resource_type=RevisionInfo,
         )
 
-        self._conn_pool = psycopg2.pool.SimpleConnectionPool(
-            minconn=1,
-            maxconn=10,
-            dsn=pg_dsn,
+        # Share one process-global pool per DSN (#380). The pool is owned by
+        # the registry for the process lifetime; this store never closes it.
+        self._conn_pool = _pg_pool.get_pool(
+            pg_dsn, minconn=minconn, maxconn=maxconn
         )
 
         self._data_table = f"{table_prefix}resource_data"
@@ -73,25 +81,12 @@ class PostgresResourceStore(IResourceStore):
 
     # ------------------------------------------------------------------
     # Connection helpers (same pattern as PostgresMetaStore)
+    #
+    # The connection pool is shared across all stores on this DSN and owned
+    # by the process-global registry (#380); a store must not close it on
+    # garbage collection. Use ``_pg_pool.close_all_pools()`` for explicit
+    # shutdown / test teardown.
     # ------------------------------------------------------------------
-
-    def __del__(self):  # pragma: no cover
-        with suppress(Exception):
-            self._cleanup()
-
-    def _cleanup(self):
-        conns: list[Any] = []
-        while True:
-            try:
-                conn = self._conn_pool.getconn(timeout=1)  # ty:ignore[unknown-argument]
-                conns.append(conn)
-            except Exception:
-                break
-        for conn in conns:
-            with suppress(Exception):
-                conn.close()
-        with suppress(Exception):
-            self._conn_pool.closeall()
 
     def _get_conn(self) -> Any:
         retry = 5
