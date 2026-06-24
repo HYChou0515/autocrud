@@ -1602,18 +1602,48 @@ class SpecStar:
                 )
 
         # Tell the meta store which indexed fields are list-typed so that
-        # ``contains`` can dispatch to JSONB ``@>`` instead of substring LIKE.
-        # See #362. Only PostgresMetaStore currently implements
-        # ``register_list_field``; the call is a no-op on other backends.
+        # ``contains`` does true element membership (PG ``@>``, SQLite
+        # ``json_each``, ...) instead of substring ``LIKE``. The type is taken
+        # from the ``IndexableField`` when given, else resolved from the model's
+        # own annotation — so the idiomatic bare-string declaration
+        # ``indexed_fields=["norm_keys"]`` is registered without the caller
+        # repeating ``list[str]`` (otherwise a list field silently degrades to
+        # substring matching on every SQL backend). ``Annotated``/``Optional``
+        # wrappers are unwrapped. See #362, #378. The call is a no-op on
+        # backends without ``register_list_field``.
         if meta_store is not None and hasattr(meta_store, "register_list_field"):
-            from typing import get_origin
+            from types import UnionType
+            from typing import Annotated, Union, get_args, get_origin
+
+            import msgspec as _msgspec
+
+            def _is_list_type(tp) -> bool:
+                if tp is UNSET or tp is None:
+                    return False
+                if get_origin(tp) is Annotated:
+                    tp = get_args(tp)[0]
+                if get_origin(tp) in (Union, UnionType):
+                    return any(
+                        _is_list_type(a) for a in get_args(tp) if a is not type(None)
+                    )
+                origin = get_origin(tp) or tp
+                return origin in (list, tuple, set)
+
+            # Top-level field name -> declared annotation, used to backfill an
+            # UNSET field_type. Dotted / transformed paths are not resolvable
+            # this way and keep their explicit type (if any).
+            try:
+                annotations = {
+                    f.name: f.type for f in _msgspec.structs.fields(resolved_model)
+                }
+            except TypeError:
+                annotations = {}
 
             for field in resource_manager.indexed_fields:
                 ft = field.field_type
                 if ft is UNSET:
-                    continue
-                origin = get_origin(ft) or ft
-                if origin is list or origin is tuple or origin is set:
+                    ft = annotations.get(field.field_path, UNSET)
+                if _is_list_type(ft):
                     meta_store.register_list_field(field.index_key or field.field_path)
 
         # If the meta store supports native SetIndex acceleration, create the
