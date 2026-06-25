@@ -145,6 +145,25 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 # Worker received stop signal, terminate gracefully
                 raise Ignore()  # Stop processing without retry
 
+            # Partition serialization (best-effort, #384): if a same-partition
+            # peer is already PROCESSING, re-schedule this job after a short
+            # delay instead of running it concurrently. Done *before* the main
+            # try/except so the Ignore() isn't swallowed by the failure
+            # handler, and via a fresh apply_async (NOT task_self.retry) so the
+            # deferral does not consume the job's retry budget — being blocked
+            # is not a failure.
+            try:
+                _pk = queue.rm.get(resource_id).data.partition_key
+            except Exception:
+                _pk = None
+            if _pk is not None and queue._is_partition_busy(_pk):
+                queue._celery_task.apply_async(
+                    args=(resource_id, retry_count),
+                    countdown=queue.partition_retry_delay_seconds,
+                    queue=queue.queue_name,
+                )
+                raise Ignore()
+
             blob_store = queue._blob_store
             log_key = queue._log_key(resource_id)
             lf: LogFlushThread | None = None

@@ -70,6 +70,12 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         self._recovery_interval: float = 60.0
         self._recovery_stop_event: threading.Event = threading.Event()
         self._recovery_thread: threading.Thread | None = None
+        # When a job is held back because a same-``partition_key`` peer is
+        # already PROCESSING (#384), it is re-scheduled after this many
+        # seconds rather than run concurrently. A blocked job is *not*
+        # counted as a retry. Public attribute — set it after construction
+        # to tune defer cadence.
+        self.partition_retry_delay_seconds: float = 1.0
 
     # ------------------------------------------------------------------
     # Handler introspection
@@ -150,6 +156,136 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
     def _rm_meta_provide(self, user: str):
         """Deprecated: use ``_rm_using`` instead."""
         return self._rm_using(user)
+
+    # ------------------------------------------------------------------
+    # Enqueue + partition serialization (#384)
+    # ------------------------------------------------------------------
+
+    def enqueue(
+        self,
+        payload: T,
+        *,
+        partition_key: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Resource[Job[T]]:
+        """Create-and-enqueue in one step, honoring optional dedup +
+        per-key serialization tags.
+
+        Why this exists alongside ``put()``:
+            ``put(resource_id)`` is the low-level "already-created" entry
+            point. ``enqueue()`` is the user-facing path that knows about
+            the dedup/serialization semantics — it owns the "is this a
+            retry of an enqueue I already processed?" check because that
+            check must happen *before* the new resource is created
+            (otherwise dedup is a race).
+
+        Defined here on :class:`BasicMessageQueue` so every backend
+        (Simple, RabbitMQ, Celery) exposes the same contract — see #384.
+        The ``partition_key`` *enforcement* is per-backend (it happens at
+        claim time); this method only records the tags on the job.
+
+        Args:
+            payload: The job payload.
+            partition_key: When set, no two jobs with this same key run
+                concurrently. ``None`` = no serialization. Enforcement is
+                strict on :class:`SimpleMessageQueue` (single consumer) and
+                best-effort on multi-worker backends.
+            idempotency_key: When set, a prior enqueue with this key
+                returns the *original* job — including after completion —
+                so caller retries are exactly-once. Re-using a key with a
+                different payload raises :class:`ValueError` (programming
+                error, not a benign retry).
+
+        Returns:
+            The job resource (existing one on dedup, fresh one otherwise).
+        """
+        if idempotency_key is not None:
+            existing = self._find_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if existing.data.payload != payload:
+                    raise ValueError(
+                        f"idempotency_key {idempotency_key!r} was previously "
+                        "used with a different payload — refusing to dedup "
+                        "across mismatched requests. Use a fresh key or "
+                        "send the original payload."
+                    )
+                return existing
+
+        job: Job[T] = Job(
+            payload=payload,
+            partition_key=partition_key,
+            idempotency_key=idempotency_key,
+        )
+        info = self.rm.create(job)  # ty:ignore[invalid-argument-type]
+        return self.put(info.resource_id)
+
+    def _find_by_idempotency_key(self, idempotency_key: str) -> Resource[Job[T]] | None:
+        """Look up an existing job by ``idempotency_key``.
+
+        Returns ``None`` if no prior enqueue used this key. Returns the
+        resource regardless of its current status — the contract is "same
+        key → same job, forever", including after completion (otherwise a
+        late retry would re-do the work).
+
+        Relies on ``idempotency_key`` being a registered indexed field so
+        the equality search hits an index rather than degrading on SQL
+        backends; ``crud`` auto-registers it for the job model (#384).
+        """
+        query = ResourceMetaSearchQuery(
+            conditions=[
+                DataSearchCondition(
+                    field_path="idempotency_key",
+                    operator=DataSearchOperator.equals,
+                    value=idempotency_key,
+                )
+            ],
+            limit=1,
+        )
+        metas = self.rm.search_resources(query)
+        for meta in metas:
+            try:
+                return self.rm.get(meta.resource_id)
+            except Exception:
+                return None
+        return None
+
+    def _busy_partition_keys(self) -> set[str]:
+        """Return the set of ``partition_key`` values currently in flight
+        (any job with status PROCESSING).
+
+        Walks the PROCESSING set rather than maintaining a separate index
+        so the source of truth stays the job records themselves — there's
+        no second structure to keep consistent across crashes / recovery.
+        """
+        query = ResourceMetaSearchQuery(
+            conditions=[
+                DataSearchCondition(
+                    field_path="status",
+                    operator=DataSearchOperator.equals,
+                    value=TaskStatus.PROCESSING,
+                )
+            ],
+        )
+        busy: set[str] = set()
+        for meta in self.rm.search_resources(query):
+            try:
+                pk = self.rm.get(meta.resource_id).data.partition_key
+            except Exception:
+                continue
+            if pk is not None:
+                busy.add(pk)
+        return busy
+
+    def _is_partition_busy(self, partition_key: str) -> bool:
+        """Best-effort check: is a peer in ``partition_key`` already PROCESSING?
+
+        Used by the multi-worker backends (RabbitMQ, Celery) at claim time
+        to decide whether to defer a job (#384). This is *not* atomic — two
+        workers receiving same-partition jobs simultaneously can both see
+        ``False`` and proceed, leaving a brief overlap window. For strict
+        serialization use a single consumer (:class:`SimpleMessageQueue`).
+        """
+        return partition_key in self._busy_partition_keys()
 
     # ------------------------------------------------------------------
     # Log helpers

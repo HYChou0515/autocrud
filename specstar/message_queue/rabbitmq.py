@@ -176,6 +176,19 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     # 1. Fetch resource
                     resource = self.rm.get(resource_id)
 
+                    # Partition serialization (best-effort, #384): if a
+                    # same-partition peer is already PROCESSING, defer this
+                    # job to a short delay queue instead of running it
+                    # concurrently, and report "nothing claimable" for now.
+                    pk = resource.data.partition_key
+                    if pk is not None and self._is_partition_busy(pk):
+                        retry_count = 0
+                        if header_frame and header_frame.headers:
+                            retry_count = header_frame.headers.get("x-retry-count", 0)
+                        self._defer_partition_job(channel, resource_id, retry_count)
+                        channel.basic_ack(method_frame.delivery_tag)
+                        return None
+
                     # 2. Update status to PROCESSING
                     # Note: We update RM first. If update fails, we don't Ack.
                     # Use draft status so HeartbeatThread can use modify()
@@ -297,6 +310,44 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         """
         with self._get_connection() as (_, channel):
             self._enqueue_periodic_job(channel, resource_id, delay_seconds)
+
+    def _defer_partition_job(
+        self, ch: BlockingChannel, resource_id: str, retry_count: int
+    ) -> None:
+        """Re-route a job held back by ``partition_key`` through a short
+        delay queue (#384, best-effort serialization).
+
+        A partition-blocked job is **not** a failure: ``x-retry-count`` is
+        carried through the round-trip (dead-lettering preserves message
+        headers) so the retry budget is unchanged when the job re-enters
+        the main queue. Delay granularity is whole seconds (broker TTL),
+        so :attr:`partition_retry_delay_seconds` is rounded up to ``>= 1``.
+
+        Args:
+            ch: An open RabbitMQ channel to publish on.
+            resource_id: The blocked job's resource ID.
+            retry_count: The job's current retry count, preserved verbatim.
+        """
+        delay_seconds = max(1, int(round(self.partition_retry_delay_seconds)))
+        delay_queue_name = f"{self.queue_name}:partition-wait:{delay_seconds}s"
+        ch.queue_declare(
+            queue=delay_queue_name,
+            durable=True,
+            arguments={
+                "x-message-ttl": delay_seconds * 1000,
+                "x-dead-letter-exchange": "",  # Default exchange
+                "x-dead-letter-routing-key": self.queue_name,  # Back to main
+            },  # ty:ignore[invalid-argument-type]
+        )
+        ch.basic_publish(
+            exchange="",
+            routing_key=delay_queue_name,
+            body=resource_id.encode("utf-8"),
+            properties=pika.BasicProperties(
+                delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
+                headers={"x-retry-count": retry_count} if retry_count else None,
+            ),
+        )
 
     def _execute_job(
         self,
@@ -496,6 +547,18 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     # Use draft status so HeartbeatThread can use modify()
                     resource = self.rm.get(resource_id)
                     job = resource.data
+
+                    # Partition serialization (best-effort, #384): if a
+                    # same-partition peer is already PROCESSING, defer this
+                    # job to a short delay queue rather than run it
+                    # concurrently. A deferred job is NOT a retry — it
+                    # re-enters the main queue with its retry budget intact.
+                    pk = job.partition_key
+                    if pk is not None and self._is_partition_busy(pk):
+                        self._defer_partition_job(ch, resource_id, retry_count)
+                        ch.basic_ack(delivery_tag=method.delivery_tag)  # ty:ignore[invalid-argument-type]
+                        return
+
                     job.status = TaskStatus.PROCESSING
                     with self._rm_using(resource.info.created_by):
                         self.rm.create_or_update(
