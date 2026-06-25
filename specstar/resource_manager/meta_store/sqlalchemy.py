@@ -19,9 +19,11 @@ from sqlalchemy import (
     Text,
     and_,
     case,
+    cast,
     create_engine,
     delete,
     func,
+    literal,
     literal_column,
     not_,
     or_,
@@ -151,6 +153,12 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             table_name, self._metadata, dialect=self._get_dialect()
         )
         self._Session = sessionmaker(bind=self._engine)
+
+        # Field paths registered as list-typed. ``contains`` on these uses true
+        # element membership (per-dialect: PG ``@>``, SQLite ``json_each``,
+        # MySQL ``JSON_CONTAINS``, Oracle ``JSON_EXISTS``) instead of the
+        # substring ``LIKE`` used for scalar string fields. See #362, #378.
+        self._list_fields: set[str] = set()
 
         # Create tables
         self._metadata.create_all(self._engine)
@@ -483,6 +491,18 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             rows = session.execute(stmt).fetchall()
             for row in rows:
                 yield self._serializer.decode(row[0])
+
+    def register_list_field(self, field_path: str) -> None:
+        """Declare *field_path* as a list-typed indexed field.
+
+        Routes ``DataSearchOperator.contains`` on this field through true
+        element membership instead of the default substring ``LIKE``, so the
+        SQL backends agree with the in-process backends' ``value in list``
+        semantics (``basic.py``) rather than matching substrings of the
+        serialised JSON array. Idempotent — safe to call from ``add_model`` on
+        every registration. See #362, #378.
+        """
+        self._list_fields.add(field_path)
 
     # ------------------------------------------------------------------
     # Dialect-aware helpers for JSONB / JSON extraction
@@ -898,6 +918,77 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
 
         return None
 
+    def _list_contains(self, field_path: str, value):
+        """Build a true element-membership predicate for a list-typed field.
+
+        Mirrors the in-process backends (``value in field_value``) and the raw
+        psycopg / sqlite3 meta stores, per SQL dialect:
+
+        * PostgreSQL: ``indexed_data -> 'f' @> '<json scalar>'::jsonb``
+        * SQLite:     ``EXISTS (SELECT 1 FROM json_each(indexed_data, '$.f')
+          WHERE value = :v)``
+        * MySQL:      ``JSON_CONTAINS(indexed_data, '<json scalar>', '$.f') = 1``
+        * Oracle:     ``JSON_EXISTS(indexed_data, '$.f[*]?(@ == <value>)')``
+
+        Unknown dialects fall back to substring ``LIKE`` (membership cannot be
+        expressed portably). See #362, #378.
+        """
+        t = self._table
+        dialect = self._get_dialect()
+
+        if dialect == DialectType.postgresql:
+            # JSONB containment: the array contains the JSON-encoded scalar.
+            # The encoded string is bound as plain text and cast to JSONB in
+            # SQL (``'"v"'::jsonb``). Casting a *String*-typed literal — not a
+            # JSONB-typed one — avoids the JSONB bind processor re-running
+            # ``json.dumps`` on the already-encoded value (double-encoding).
+            return self._jsonb_element(field_path).op("@>")(
+                cast(literal(json.dumps(value), String), JSONB)
+            )
+
+        if dialect == DialectType.mysql:
+            # JSON_CONTAINS(target, candidate, path): candidate must itself be
+            # valid JSON, so the scalar is JSON-encoded (a string becomes "v").
+            return (
+                func.JSON_CONTAINS(
+                    t.c.indexed_data,
+                    json.dumps(value),
+                    self._json_path(field_path),
+                )
+                == 1
+            )
+
+        if dialect == DialectType.oracle:
+            path = self._json_path(field_path).replace("'", "''")
+            # Strip the leading "$." for the array path expression.
+            array_path = path[2:] if path.startswith("$.") else path
+            if isinstance(value, bool):
+                json_value = "true" if value else "false"
+            elif isinstance(value, str):
+                json_value = f'"{value}"'
+            else:
+                json_value = str(value)
+            return literal_column(
+                f"JSON_EXISTS(indexed_data, '$.{array_path}[*]?(@ == {json_value})')"
+            )
+
+        if dialect == DialectType.sqlite:
+            # Unnest the JSON array (json_each) and test element equality. The
+            # bound value is auto-named/uniquified by SQLAlchemy, so several
+            # list-contains conditions can coexist in one query, and the
+            # correlated subquery references the outer ``indexed_data``.
+            return (
+                select(literal_column("1"))
+                .select_from(
+                    func.json_each(t.c.indexed_data, self._json_path(field_path))
+                )
+                .where(literal_column("value") == value)
+                .exists()
+            )
+
+        # Unknown dialect: best-effort substring fallback.
+        return self._jsonb_text(field_path).contains(str(value))
+
     # ------------------------------------------------------------------
     # Data (indexed_data) field conditions
     # ------------------------------------------------------------------
@@ -1004,30 +1095,20 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             return jsonb_numeric <= value
 
         if operator == DataSearchOperator.contains:
-            # Oracle: Use JSON_EXISTS for array member check, LIKE for string substring
+            # List-typed fields use true element membership so ``contains``
+            # agrees with the in-process backends' ``value in field_value``
+            # (basic.py) instead of matching a substring of the serialised
+            # JSON array — which diverged across backends and produced false
+            # positives like ``contains("m4")`` hitting ``["m40"]``. Scalar
+            # string fields keep substring ``LIKE``. See #362, #378.
+            if field_path in self._list_fields:
+                return self._list_contains(field_path, value)
+            # Oracle scalar string substring: JSON_VALUE + LIKE.
             if self._get_dialect() == DialectType.oracle:
-                # Heuristic: if field name contains 'list', treat as array
-                if "list" in field_path.lower():
-                    path = self._json_path(field_path).replace("'", "''")
-                    # Remove the leading $. for array path
-                    array_path = path[2:] if path.startswith("$.") else path
-                    # Format value for JSON path expression
-                    if isinstance(value, str):
-                        # String values need to be quoted in the path expression
-                        json_value = f'"{value}"'
-                    elif isinstance(value, bool):
-                        json_value = "true" if value else "false"
-                    else:
-                        json_value = str(value)
-                    return literal_column(
-                        f"JSON_EXISTS(indexed_data, '$.{array_path}[*]?(@ == {json_value})')"
-                    )
-                else:
-                    # String contains: use LIKE with JSON_VALUE
-                    path = self._json_path(field_path).replace("'", "''")
-                    return literal_column(f"JSON_VALUE(indexed_data, '{path}')").like(
-                        f"%{value}%"
-                    )
+                path = self._json_path(field_path).replace("'", "''")
+                return literal_column(f"JSON_VALUE(indexed_data, '{path}')").like(
+                    f"%{value}%"
+                )
             return jsonb_text.contains(str(value))
         if operator == DataSearchOperator.starts_with:
             return jsonb_text.startswith(str(value))
