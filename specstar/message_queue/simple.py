@@ -85,85 +85,6 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
         return resource
 
-    def enqueue(
-        self,
-        payload: T,
-        *,
-        partition_key: str | None = None,
-        idempotency_key: str | None = None,
-    ) -> Resource[Job[T]]:
-        """Create-and-enqueue in one step, honoring optional dedup +
-        per-key serialization tags.
-
-        Why this exists alongside ``put()``:
-            ``put(resource_id)`` is the low-level "already-created" entry
-            point. ``enqueue()`` is the user-facing path that knows about
-            the new dedup/serialization semantics — it owns the
-            "is this a retry of an enqueue I already processed?" check
-            because that check must happen *before* the new resource is
-            created (otherwise dedup is a race).
-
-        Args:
-            payload: The job payload.
-            partition_key: When set, no two jobs with this same key will
-                be PROCESSING simultaneously. ``None`` = no serialization.
-            idempotency_key: When set, a prior enqueue with this key
-                returns the *original* job — including after completion —
-                so caller retries are exactly-once. Re-using a key with a
-                different payload raises :class:`ValueError` (programming
-                error, not a benign retry).
-
-        Returns:
-            The job resource (existing one on dedup, fresh one otherwise).
-        """
-        if idempotency_key is not None:
-            existing = self._find_by_idempotency_key(idempotency_key)
-            if existing is not None:
-                if existing.data.payload != payload:
-                    raise ValueError(
-                        f"idempotency_key {idempotency_key!r} was previously "
-                        "used with a different payload — refusing to dedup "
-                        "across mismatched requests. Use a fresh key or "
-                        "send the original payload."
-                    )
-                return existing
-
-        job: Job[T] = Job(
-            payload=payload,
-            partition_key=partition_key,
-            idempotency_key=idempotency_key,
-        )
-        info = self.rm.create(job)  # ty:ignore[invalid-argument-type]
-        return self.put(info.resource_id)
-
-    def _find_by_idempotency_key(
-        self, idempotency_key: str
-    ) -> Resource[Job[T]] | None:
-        """Look up an existing job by ``idempotency_key``.
-
-        Returns ``None`` if no prior enqueue used this key. Returns the
-        resource regardless of its current status — the contract is "same
-        key → same job, forever", including after completion (otherwise a
-        late retry would re-do the work).
-        """
-        query = ResourceMetaSearchQuery(
-            conditions=[
-                DataSearchCondition(
-                    field_path="idempotency_key",
-                    operator=DataSearchOperator.equals,
-                    value=idempotency_key,
-                )
-            ],
-            limit=1,
-        )
-        metas = self.rm.search_resources(query)
-        for meta in metas:
-            try:
-                return self.rm.get(meta.resource_id)
-            except Exception:
-                return None
-        return None
-
     def pop(self) -> Resource[Job[T]] | None:
         """
         Dequeue the next pending job and mark it as processing.
@@ -248,33 +169,6 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 continue
 
         return None
-
-    def _busy_partition_keys(self) -> set[str]:
-        """Return the set of ``partition_key`` values currently in flight
-        (any job with status PROCESSING).
-
-        Walks the PROCESSING set rather than maintaining a separate index
-        so the source of truth stays the job records themselves — there's
-        no second structure to keep consistent across crashes / recovery.
-        """
-        query = ResourceMetaSearchQuery(
-            conditions=[
-                DataSearchCondition(
-                    field_path="status",
-                    operator=DataSearchOperator.equals,
-                    value=TaskStatus.PROCESSING,
-                )
-            ],
-        )
-        busy: set[str] = set()
-        for meta in self.rm.search_resources(query):
-            try:
-                pk = self.rm.get(meta.resource_id).data.partition_key
-            except Exception:
-                continue
-            if pk is not None:
-                busy.add(pk)
-        return busy
 
     def _schedule_periodic_job(self, resource_id: str, interval_seconds: int) -> None:
         """

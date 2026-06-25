@@ -28,6 +28,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `partition_key` / `idempotency_key` are now honored by **every** message
+  queue backend, not just `SimpleMessageQueue` (#384). RabbitMQ and Celery
+  previously accepted the tags on `Job` but silently ignored them, so
+  same-partition jobs ran concurrently and idempotent enqueue could
+  duplicate. Both backends now check for a PROCESSING peer before claiming a
+  job and defer it through a short delay (configurable via
+  `partition_retry_delay_seconds`) if the partition is busy; a deferred job
+  is not counted as a retry. Enforcement is **best-effort** on multi-worker
+  backends (the check-then-claim is not atomic across workers) and strict
+  only on the single-consumer `SimpleMessageQueue` — see `Job.partition_key`.
+  `enqueue()` is now part of the `IMessageQueue` contract, and the queue
+  auto-registers `partition_key` / `idempotency_key` as indexed fields so
+  the lookups don't silently degrade on SQL backends (cf. #378).
 - Postgres stores sharing a DSN now share one process-global connection
   pool, so connection count scales with the number of distinct DSNs instead
   of `models × 2 × replicas` — no more boot-time `too many clients` storms

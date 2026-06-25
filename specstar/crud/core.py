@@ -1471,6 +1471,19 @@ class SpecStar:
                         IndexableField(field_path="retries", field_type=int)
                     )
 
+                # partition_key / idempotency_key are queried by equality at
+                # claim/dedup time (#384). Register them as indexed fields so
+                # the search hits an index instead of silently degrading on
+                # SQL backends (cf. #378), which would make idempotent enqueue
+                # dedup unreliable.
+                for _job_field in ("partition_key", "idempotency_key"):
+                    if not any(
+                        field.field_path == _job_field for field in _indexed_fields
+                    ):
+                        _indexed_fields.append(
+                            IndexableField(field_path=_job_field, field_type=str)
+                        )
+
         # Auto-mount dim validator for any Vector / Embedding fields
         from specstar.resource_manager.vector_validator import (
             CompositeValidator,
