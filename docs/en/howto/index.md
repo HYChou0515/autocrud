@@ -34,6 +34,7 @@ Use it when you already know what you want to do in SpecStar and need the shorte
 - [GraphQL](/specstar/howto/graphql)
 - [Binary data](/specstar/howto/binary-data)
 - [Backup and restore](/specstar/howto/backup-restore)
+- [Prune old revisions](/specstar/howto/prune-revisions)
 - [Web UI](/specstar/howto/web-ui)
 
 ### Spec-driven authoring

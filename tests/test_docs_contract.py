@@ -190,3 +190,98 @@ def test_delete_returns_resource_meta_not_revision_info(tmp_path):
     assert meta.is_deleted is True
     assert isinstance(meta.current_revision_id, str)
     assert not hasattr(meta, "revision_id")
+
+
+# --- Prune revisions how-to (docs/en/howto/prune-revisions.md) ---
+
+
+class _Cfg(Struct):
+    value: str
+
+
+def _cfg_history(tmp_path, n=8):
+    """A resource with ``n`` revisions stamped one day apart (rev 1 oldest ...
+    rev n current), mirroring the how-to's example. Returns (mgr, rid, base)."""
+    sp = _fresh(tmp_path)
+    app = FastAPI()
+    sp.add_model(Schema(_Cfg, "v1"))
+    sp.apply(app)
+    mgr = sp.get_resource_manager(_Cfg)
+    base = dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc)
+    info = mgr.create(_Cfg(value="v0"), now=base)
+    rid = info.resource_id
+    for i in range(1, n):
+        mgr.update(rid, _Cfg(value=f"v{i}"), now=base + dt.timedelta(days=i))
+    return mgr, rid, base
+
+
+def test_prune_keep_last_n_drops_oldest_and_keeps_current(tmp_path):
+    """keep_last_n keeps the current + the (n-1) newest; the rest are pruned."""
+    mgr, rid, _ = _cfg_history(tmp_path)
+    assert len(mgr.list_revisions(rid)) == 8
+    assert mgr.get_meta(rid).total_revision_count == 8
+
+    pruned = mgr.prune_revisions(rid, keep_last_n=3)
+
+    assert isinstance(pruned, list) and all(isinstance(r, str) for r in pruned)
+    assert len(pruned) == 5
+    assert len(mgr.list_revisions(rid)) == 3
+    # the current revision is never pruned and stays readable
+    assert mgr.get(rid).data.value == "v7"
+
+
+def test_prune_leaves_total_revision_count_monotonic(tmp_path):
+    """The live count is len(list_revisions()); total_revision_count never drops
+    (it seeds new revision ids)."""
+    mgr, rid, _ = _cfg_history(tmp_path)
+    mgr.prune_revisions(rid, keep_last_n=3)
+    assert len(mgr.list_revisions(rid)) == 3
+    assert mgr.get_meta(rid).total_revision_count == 8
+
+
+def test_prune_before_drops_strictly_older(tmp_path):
+    """before keeps revisions created at/after the cutoff, prunes strictly older
+    ones."""
+    mgr, rid, base = _cfg_history(tmp_path)
+    cutoff = base + dt.timedelta(days=4)  # keep rev 5..8 (v4..v7), prune v0..v3
+    pruned = mgr.prune_revisions(rid, before=cutoff)
+    assert len(pruned) == 4
+    survivors = {
+        mgr.get(rid, revision_id=r).data.value for r in mgr.list_revisions(rid)
+    }
+    assert survivors == {"v4", "v5", "v6", "v7"}
+
+
+def test_prune_union_is_conservative(tmp_path):
+    """With both knobs the kept sets union: a revision survives if *either* knob
+    keeps it, so combining prunes no more than either knob alone."""
+    # keep_last_n=2 alone would prune 6 (keep only v6, v7) ...
+    mgr_a, rid_a, _ = _cfg_history(tmp_path)
+    assert len(mgr_a.prune_revisions(rid_a, keep_last_n=2)) == 6
+
+    # ... but unioned with before=day4 (which keeps v4..v7), only v0..v3 are
+    # pruned: v4, v5 survive because `before` keeps them.
+    mgr_b, rid_b, base = _cfg_history(tmp_path)
+    pruned = mgr_b.prune_revisions(
+        rid_b, keep_last_n=2, before=base + dt.timedelta(days=4)
+    )
+    assert len(pruned) == 4
+    survivors = {
+        mgr_b.get(rid_b, revision_id=r).data.value
+        for r in mgr_b.list_revisions(rid_b)
+    }
+    assert survivors == {"v4", "v5", "v6", "v7"}
+
+
+def test_prune_requires_a_knob_and_validates(tmp_path):
+    """Neither knob, or keep_last_n < 1, raises ValueError; an unknown resource
+    id raises ResourceIDNotFoundError."""
+    from specstar.types import ResourceIDNotFoundError
+
+    mgr, rid, _ = _cfg_history(tmp_path)
+    with pytest.raises(ValueError):
+        mgr.prune_revisions(rid)  # neither keep_last_n nor before
+    with pytest.raises(ValueError):
+        mgr.prune_revisions(rid, keep_last_n=0)
+    with pytest.raises(ResourceIDNotFoundError):
+        mgr.prune_revisions(rid.split(":")[0] + ":nonexistent", keep_last_n=1)

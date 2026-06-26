@@ -212,6 +212,7 @@ Next Steps:
 
 - [Set up backend persistence and storage](/specstar/guides/backend-setup)
 - [Handle schema evolution safely](/specstar/quickstart/schema-migration)
+- [Prune old revisions to reclaim storage](/specstar/howto/prune-revisions)
 - [Move from demo to production](/specstar/guides/from-demo-to-production)
 
 ---
