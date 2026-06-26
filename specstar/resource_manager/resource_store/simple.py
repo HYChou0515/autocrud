@@ -118,6 +118,34 @@ class MemoryResourceStore(IResourceStore):
                 self._raw_info_store.pop(uid, None)
         del self._store[resource_id]
 
+    def delete_revisions(self, resource_id: str, revision_ids: list[str]) -> None:
+        """Hard-delete specific revisions, ref-counting shared uids.
+
+        Idempotent: unknown revision ids are skipped. A uid payload is only
+        dropped once no surviving revision (across every resource, honouring
+        cross-resource uid dedup) still references it.
+        """
+        res = self._store.get(resource_id)
+        if not res:
+            return
+        candidate_uids: set[UID] = set()
+        for revision_id in revision_ids:
+            rev = res.pop(revision_id, None)
+            if rev:
+                candidate_uids.update(rev.values())
+        if not candidate_uids:
+            return
+        live_uids: set[UID] = {
+            uid
+            for resource in self._store.values()
+            for rev in resource.values()
+            for uid in rev.values()
+        }
+        for uid in candidate_uids:
+            if uid not in live_uids:
+                self._raw_data_store.pop(uid, None)
+                self._raw_info_store.pop(uid, None)
+
 
 def relative_walk_up(path: Path, start: Path) -> Path:
     """Compute a relative path from *start* to *path*, walking up if needed.
@@ -450,6 +478,55 @@ class DiskResourceStore(IResourceStore):
             for real_dir in self._realdir_candidates(uid):
                 if real_dir.exists():
                     shutil.rmtree(real_dir)
+
+    def delete_revisions(self, resource_id: str, revision_ids: list[str]) -> None:
+        """Hard-delete specific revisions from disk, ref-counting shared uids.
+
+        Mirrors ``purge_resource`` but scoped to *revision_ids*: removes each
+        listed revision's symlink subtree (all schema versions) across both
+        the sharded (#387) and legacy flat layouts, then reclaims a
+        ``store/<uid>`` payload only once no surviving symlink — in any
+        resource — still points at it. Idempotent: unknown revisions are
+        skipped.
+        """
+        import shutil
+
+        targets = set(revision_ids)
+        if not targets:
+            return
+        rid_dirs = [d for d in self._rid_dir_candidates(resource_id) if d.exists()]
+        if not rid_dirs:
+            return
+        # Collect the uids the to-be-removed revisions point at, then drop the
+        # revision symlink subtrees.
+        candidate_uids: set[str] = set()
+        for resource_dir in rid_dirs:
+            for revision_dir in list(resource_dir.iterdir()):
+                if revision_dir.name not in targets or not revision_dir.is_dir():
+                    continue
+                for schema_dir in revision_dir.iterdir():
+                    if not schema_dir.is_dir():
+                        continue
+                    with suppress(OSError):
+                        candidate_uids.add(schema_dir.resolve().name)
+                shutil.rmtree(revision_dir)
+        if not candidate_uids:
+            return
+        # Reference-count across every surviving revision (both layouts, all
+        # resources) so cross-revision / cross-resource uid sharing is honoured.
+        live_uids: set[str] = set()
+        for rid_dir in self._iter_rid_dirs():
+            for rev_dir in rid_dir.iterdir():
+                if not rev_dir.is_dir():
+                    continue
+                for ver_link in rev_dir.iterdir():
+                    with suppress(OSError):
+                        live_uids.add(ver_link.resolve().name)
+        for uid in candidate_uids:
+            if uid not in live_uids:
+                for real_dir in self._realdir_candidates(uid):
+                    if real_dir.exists():
+                        shutil.rmtree(real_dir)
 
     def migrate_layout(self, *, dry_run: bool = False) -> int:
         """Relocate pre-#387 flat resource/store data into the sharded trees.

@@ -372,6 +372,47 @@ class PostgresResourceStore(IResourceStore):
                         (uid,),
                     )
 
+    def delete_revisions(self, resource_id: str, revision_ids: list[str]) -> None:
+        """Hard-delete specific revisions, ref-counting shared uids.
+
+        Mirrors ``purge_resource`` but scoped to *revision_ids* (all of their
+        schema versions). Idempotent: revision ids without index rows are
+        no-ops. A data row is removed only once no surviving index row — for
+        any resource — still references its uid.
+        """
+        if not revision_ids:
+            return
+        rev_list = list(revision_ids)
+        with self._transaction() as cur:
+            # UIDs referenced by the revisions we're about to drop.
+            cur.execute(
+                f'SELECT DISTINCT uid FROM "{self._index_table}" '
+                f"WHERE resource_id = %s AND revision_id = ANY(%s)",
+                (resource_id, rev_list),
+            )
+            uids = [row[0] for row in cur.fetchall()]
+            if not uids:
+                return
+
+            # Remove index rows first (FK constraint).
+            cur.execute(
+                f'DELETE FROM "{self._index_table}" '
+                f"WHERE resource_id = %s AND revision_id = ANY(%s)",
+                (resource_id, rev_list),
+            )
+
+            # Remove data rows only if no other index references them.
+            for uid in uids:
+                cur.execute(
+                    f'SELECT 1 FROM "{self._index_table}" WHERE uid = %s LIMIT 1',
+                    (uid,),
+                )
+                if cur.fetchone() is None:
+                    cur.execute(
+                        f'DELETE FROM "{self._data_table}" WHERE uid = %s',
+                        (uid,),
+                    )
+
     def cleanup(self) -> None:
         """Remove all data (both tables). Useful for test teardown."""
         with self._transaction() as cur:

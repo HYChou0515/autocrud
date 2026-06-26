@@ -829,6 +829,63 @@ OnFailurePermanentlyDelete = defstruct(
 
 
 # ============================================================================
+# Prune Context Classes
+# ============================================================================
+
+_prune_context: list[_DefstructField] = [
+    ("action", Literal[ResourceAction.prune], ResourceAction.prune),
+    ("resource_id", str),
+    ("keep_last_n", int | UnsetType, UNSET),
+    ("before", dt.datetime | UnsetType, UNSET),
+]
+
+BeforePrune = defstruct(
+    "BeforePrune",
+    [
+        *_before_context,
+        *_prune_context,
+    ],
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
+)
+
+AfterPrune = defstruct(
+    "AfterPrune",
+    [
+        *_after_context,
+        *_prune_context,
+    ],
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
+)
+
+OnSuccessPrune = defstruct(
+    "OnSuccessPrune",
+    [
+        *_on_success_context,
+        *_prune_context,
+        ("pruned", list[str]),
+    ],
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
+)
+
+OnFailurePrune = defstruct(
+    "OnFailurePrune",
+    [
+        *_on_failure_context,
+        *_prune_context,
+    ],
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
+)
+
+
+# ============================================================================
 # Restore Context Classes
 # ============================================================================
 
@@ -1090,6 +1147,10 @@ EventContext = (
     | AfterPermanentlyDelete
     | OnSuccessPermanentlyDelete
     | OnFailurePermanentlyDelete
+    | BeforePrune
+    | AfterPrune
+    | OnSuccessPrune
+    | OnFailurePrune
     | BeforeRestore
     | AfterRestore
     | OnSuccessRestore
@@ -1261,6 +1322,7 @@ __all__ = [
     "AfterModify",
     "AfterPatch",
     "AfterPermanentlyDelete",
+    "AfterPrune",
     "AfterRestore",
     "AfterSearchResources",
     "AfterSwitch",
@@ -1277,6 +1339,7 @@ __all__ = [
     "BeforeModify",
     "BeforePatch",
     "BeforePermanentlyDelete",
+    "BeforePrune",
     "BeforeRestore",
     "BeforeSearchResources",
     "BeforeSwitch",
@@ -1302,6 +1365,7 @@ __all__ = [
     "OnFailureModify",
     "OnFailurePatch",
     "OnFailurePermanentlyDelete",
+    "OnFailurePrune",
     "OnFailureRestore",
     "OnFailureSearchResources",
     "OnFailureSwitch",
@@ -1318,6 +1382,7 @@ __all__ = [
     "OnSuccessModify",
     "OnSuccessPatch",
     "OnSuccessPermanentlyDelete",
+    "OnSuccessPrune",
     "OnSuccessRestore",
     "OnSuccessSearchResources",
     "OnSuccessSwitch",

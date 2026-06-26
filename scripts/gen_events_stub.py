@@ -313,6 +313,22 @@ def main() -> None:
     out.append(
         "def do(func: ContextFunc | list[ContextFunc]) -> SimpleEventHandlerBuilder: ..."
     )
+    out.append("")
+    # Hand-written runtime handler with no defstruct backing — mirror it so the
+    # stub stays a complete view of ``events.py``'s public surface.
+    out.append("class StringRefEventHandler(IEventHandler):")
+    out.append("    target: str")
+    out.append("    phase: str")
+    out.append("    action: ResourceAction")
+    out.append("    def __init__(")
+    out.append("        self,")
+    out.append("        target: str,")
+    out.append("        *,")
+    out.append("        phase: str,")
+    out.append("        action: ResourceAction,")
+    out.append("    ) -> None: ...")
+    out.append("    def is_supported(self, context: EventContext) -> bool: ...")
+    out.append("    def handle_event(self, context: EventContext) -> None: ...")
 
     sys.stdout.write("\n".join(out) + "\n")
 
