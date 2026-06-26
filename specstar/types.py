@@ -1023,7 +1023,7 @@ class MergePatch(dict):
     ``jsonpatch.JsonPatch`` marks an RFC 6902 operation list. Construct it
     around the changed fields::
 
-        mgr.patch(rid, MergePatch({"qty": 50}))   # merge, keep other fields
+        mgr.patch(rid, MergePatch({"qty": 50}))  # merge, keep other fields
     """
 
     @property
@@ -2417,24 +2417,48 @@ class Job(Struct, Generic[T, D]):
     partition_key: str | None = None
     """Per-key serialization tag (``#342 #3``).
 
-    Two jobs sharing the same ``partition_key`` never run concurrently —
+    Two jobs sharing the same ``partition_key`` are not run concurrently:
     the consumer holds back a pending job whose partition already has a
-    PROCESSING peer. ``None`` (default) means no serialization (every
-    pending job is independently eligible, matching legacy behavior).
-    Typical use: a per-tenant or per-aggregate write workflow where
-    inflight reruns would trample each other.
+    PROCESSING peer and re-schedules it after a short delay. ``None``
+    (default) means no serialization (every pending job is independently
+    eligible, matching legacy behavior). Typical use: a per-tenant or
+    per-aggregate write workflow where inflight reruns would trample each
+    other.
+
+    Enforcement strength depends on the backend (#384):
+
+    * :class:`~specstar.message_queue.simple.SimpleMessageQueue` — **strict**.
+      Its single consumer checks and claims in one thread, so two
+      same-partition jobs never overlap.
+    * :class:`~specstar.message_queue.rabbitmq.RabbitMQMessageQueue` and
+      :class:`~specstar.message_queue.celery_queue.CeleryMessageQueue` —
+      **best-effort**. Each worker checks for a PROCESSING peer before
+      claiming and defers if it finds one, but the check-then-claim is not
+      atomic across workers: two same-partition jobs that arrive at
+      different workers simultaneously can briefly overlap. Order within a
+      partition is **not** guaranteed.
+
+    For strictly-serialized partitions on a multi-worker deployment, run a
+    single consumer (``SimpleMessageQueue``); a future release may add an
+    atomic cross-worker lock backend for strict guarantees.
     """
 
     idempotency_key: str | None = None
     """Exactly-once enqueue tag (``#342 #4``).
 
-    When supplied to ``enqueue()``, a second call with the same
-    ``idempotency_key`` returns the *original* job instead of creating
-    a new one — including after the original ran to completion. This is
-    the standard contract for retry-prone client paths (mobile, webhook
-    receivers, public APIs). Re-using a key with a *different* payload
-    is rejected as a programming error. ``None`` (default) disables
+    When supplied to :meth:`~specstar.types.IMessageQueue.enqueue`, a second
+    call with the same ``idempotency_key`` returns the *original* job instead
+    of creating a new one — including after the original ran to completion.
+    This is the standard contract for retry-prone client paths (mobile,
+    webhook receivers, public APIs). Re-using a key with a *different*
+    payload is rejected as a programming error. ``None`` (default) disables
     dedup.
+
+    ``enqueue`` (and therefore this dedup) is available on every backend
+    (#384). The lookup is best-effort across workers: two enqueues racing
+    on the same key from different processes can briefly both miss and
+    create two jobs, since the find-then-create is not atomic. For a single
+    enqueue producer the dedup is exact.
     """
 
 
@@ -2456,6 +2480,37 @@ class IMessageQueue(ABC, Generic[T]):
     @abstractmethod
     def pop(self) -> Resource[Job[T]] | None:
         """Dequeue the next pending job."""
+        ...
+
+    @abstractmethod
+    def enqueue(
+        self,
+        payload: T,
+        *,
+        partition_key: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Resource[Job[T]]:
+        """Create-and-enqueue a job in one step, honoring optional dedup and
+        per-key serialization tags.
+
+        This is the user-facing companion to :meth:`put` (which enqueues an
+        already-created resource). It is implemented uniformly by every
+        backend (#384); see :attr:`Job.partition_key` and
+        :attr:`Job.idempotency_key` for the per-backend enforcement strength.
+
+        Args:
+            payload: The job payload.
+            partition_key: When set, jobs sharing this key are not run
+                concurrently (strict on a single consumer, best-effort on
+                multi-worker backends). ``None`` = no serialization.
+            idempotency_key: When set, a prior enqueue with the same key
+                returns the *original* job. Re-using a key with a different
+                payload raises :class:`ValueError`. ``None`` = no dedup.
+
+        Returns:
+            The job resource (the existing one on dedup, a fresh one
+            otherwise).
+        """
         ...
 
     @abstractmethod

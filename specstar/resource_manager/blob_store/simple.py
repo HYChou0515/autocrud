@@ -18,6 +18,12 @@ from specstar.types import (
     BlobStreamInfo,
     BlobUploadSession,
 )
+from specstar.util.fanout import (
+    SHARD_ROOT,
+    iter_legacy_children,
+    sharded_dir,
+    sharded_path,
+)
 from specstar.util.fs_retry import retry_on_estale
 
 
@@ -486,9 +492,18 @@ class _DiskBlobMeta(Struct, kw_only=True):
 class DiskBlobStore(BasicBlobStore):
     """Disk-based blob store — data persisted to local filesystem.
 
-    Upload sessions are persisted to disk under ``root_path/_sessions/``
-    so that multiple processes (or Kubernetes pods sharing a PVC) can
-    cooperate on the same upload lifecycle.
+    Blobs are spread across a sharded subdirectory tree
+    (``root_path/_sh/<ab>/<cd>/<file_id>`` plus a ``.blobmeta`` sidecar in
+    the same directory) so that no single directory accumulates an unbounded
+    number of entries — which on NAS / networked filesystems hits
+    per-directory inode/dirent limits. Blobs written before this layout
+    (flat at ``root_path/<file_id>``) are still read transparently; call
+    :meth:`migrate_layout` to relocate them. See #387.
+
+    Upload sessions are persisted under ``root_path/_sessions/`` (each
+    session in its own sharded ``_sh/<ab>/<cd>/<upload_id>/`` directory) so
+    that multiple processes (or Kubernetes pods sharing a PVC) can cooperate
+    on the same upload lifecycle.
     """
 
     def __init__(self, root_path: str | Path):
@@ -504,21 +519,32 @@ class DiskBlobStore(BasicBlobStore):
 
     # -- Internal helpers for disk-persisted sessions ---------------------
 
+    def _session_dir(self, upload_id: str) -> Path:
+        """Per-session directory ``_sessions/_sh/<ab>/<cd>/<upload_id>/``.
+
+        Each upload owns one directory holding all of its files (``meta``,
+        ``data``, ``part.N``, ``lock``). Sharding the session directory keeps
+        ``_sessions/`` from accumulating an unbounded number of entries, and a
+        per-session directory makes transient cleanup (``data``/``part.*``) a
+        single bounded operation. See #387.
+        """
+        return sharded_dir(self._sessions_dir, upload_id) / upload_id
+
     def _session_meta_path(self, upload_id: str) -> Path:
         """Path for the msgpack-encoded session metadata file."""
-        return self._sessions_dir / f"{upload_id}.meta"
+        return self._session_dir(upload_id) / "meta"
 
     def _session_data_path(self, upload_id: str) -> Path:
         """Path for the raw uploaded bytes (merged/final data)."""
-        return self._sessions_dir / f"{upload_id}.data"
+        return self._session_dir(upload_id) / "data"
 
     def _session_part_path(self, upload_id: str, part_number: int) -> Path:
         """Path for an out-of-order part file."""
-        return self._sessions_dir / f"{upload_id}.part.{part_number}"
+        return self._session_dir(upload_id) / f"part.{part_number}"
 
     def _session_lock_path(self, upload_id: str) -> Path:
         """Path for the per-session POSIX lock file."""
-        return self._sessions_dir / f"{upload_id}.lock"
+        return self._session_dir(upload_id) / "lock"
 
     @contextmanager
     def _lock_session(self, upload_id: str):
@@ -530,6 +556,7 @@ class DiskBlobStore(BasicBlobStore):
         (including on exceptions or process crashes).
         """
         lock_path = self._session_lock_path(upload_id)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
         fd = lock_path.open("w")
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
@@ -542,7 +569,8 @@ class DiskBlobStore(BasicBlobStore):
         """Persist session metadata atomically (write-to-tmp + rename)."""
         encoded = self._session_meta_encoder.encode(meta)
         path = self._session_meta_path(meta.upload_id)
-        tmp = path.with_suffix(".meta.tmp")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name("meta.tmp")
         tmp.write_bytes(encoded)
         tmp.rename(path)
 
@@ -561,9 +589,23 @@ class DiskBlobStore(BasicBlobStore):
 
     # -- Blob put / get / exists ------------------------------------------
 
-    def _blob_meta_path(self, safe_name: str) -> Path:
-        """Path for the ``.blobmeta`` sidecar of a stored blob."""
-        return self.root_path / f"{safe_name}.blobmeta"
+    @staticmethod
+    def _safe_name(file_id: str) -> str:
+        """Filesystem-safe leaf name for *file_id*."""
+        return file_id.replace("/", "_").replace("..", "_")
+
+    def _candidate_data_paths(self, safe_name: str):
+        """Yield data-file paths to try on read: sharded first, legacy flat last.
+
+        New writes land in the sharded tree (``_sh/<ab>/<cd>/<name>``); blobs
+        written before #387 are still flat at the root. The ``.blobmeta``
+        sidecar always lives next to whichever data file is found. See #387.
+        """
+        yield sharded_path(self.root_path, safe_name)
+        yield self.root_path / safe_name
+
+    def _blob_exists(self, safe_name: str) -> bool:
+        return any(p.exists() for p in self._candidate_data_paths(safe_name))
 
     def put(
         self,
@@ -573,24 +615,30 @@ class DiskBlobStore(BasicBlobStore):
         content_type: str | UnsetType = UNSET,
     ) -> Binary:
         file_id = key if key is not None else xxh3_128_hexdigest(data)
-        # Make filename safe for filesystem
-        safe_name = file_id.replace("/", "_").replace("..", "_")
+        safe_name = self._safe_name(file_id)
 
-        file_path = self.root_path / safe_name
+        # New blobs are written into the sharded tree to keep any single
+        # directory from accumulating an unbounded number of entries (NAS
+        # per-directory inode/dirent limits). See #387.
+        blob_dir = sharded_dir(self.root_path, safe_name)
+        file_path = blob_dir / safe_name
         final_content_type = self.guess_content_type(data, content_type)
-        # When key is caller-specified, always overwrite; for hash keys skip if exists
-        if key is not None or not file_path.exists():
+        # Caller-specified key always overwrites; content-addressed (hash) keys
+        # are immutable, so skip the write when the blob already exists in
+        # *either* layout (sharded or legacy flat). See #387, #352.
+        if key is not None or not self._blob_exists(safe_name):
             # Atomic write: dump bytes into a uniquely-named tmp file in the
-            # same directory, then ``os.replace`` it onto the final path. A
-            # concurrent reader either sees the previous complete file or the
-            # new complete file — never a truncated mid-write prefix.
+            # same (shard) directory, then ``os.replace`` it onto the final
+            # path. A concurrent reader either sees the previous complete file
+            # or the new complete file — never a truncated mid-write prefix.
             # See #352 (local-FS half).
+            blob_dir.mkdir(parents=True, exist_ok=True)
             blob_meta = _DiskBlobMeta(
                 file_id=file_id,
                 size=len(data),
                 content_type=final_content_type,
             )
-            meta_path = self._blob_meta_path(safe_name)
+            meta_path = blob_dir / f"{safe_name}.blobmeta"
             _atomic_write_bytes(file_path, data)
             _atomic_write_bytes(meta_path, self.encoder.encode(blob_meta))
         return Binary(
@@ -600,26 +648,39 @@ class DiskBlobStore(BasicBlobStore):
             content_type=final_content_type,
         )
 
+    # -- Blob read / GC-aware get / exists / delete -----------------------
+
     @property
-    def _quarantine_dir(self) -> Path:
+    def _quarantine_root(self) -> Path:
+        """Reserved container for quarantined blobs (issue #370), itself
+        sharded. A directory, so :meth:`migrate_layout` skips it."""
         return self.root_path / "_quarantine"
 
-    def _read_binary_from(self, base: Path, safe_name: str) -> Binary | None:
-        """Read a blob (data + sidecar) from *base*, or ``None`` if absent.
+    def _quarantine_data_path(self, safe_name: str) -> Path:
+        return sharded_path(self._quarantine_root, safe_name)
 
-        Skips the ``exists()`` guard: it would race a concurrent purge and
-        leak a raw "[Errno 2] ..." path. Translate ENOENT to ``None``. See #352.
+    def _find_active(self, safe_name: str) -> Path | None:
+        """Return the active blob's data file (sharded or legacy flat), or None."""
+        for candidate in self._candidate_data_paths(safe_name):
+            if candidate.exists():
+                return candidate
+        return None
+
+    def _read_blob_at(self, data_path: Path, safe_name: str) -> Binary | None:
+        """Read a blob (data + adjacent ``.blobmeta``) at *data_path*, or None.
+
+        Skips an ``exists()`` guard: it would race a concurrent purge/migration
+        and leak a raw "[Errno 2] ..." path. Translate ENOENT to None. See #352.
         """
-        file_path = base / safe_name
         try:
-            data = retry_on_estale(file_path.read_bytes)
+            data = retry_on_estale(data_path.read_bytes)
         except FileNotFoundError:
             return None
-        meta_path = base / f"{safe_name}.blobmeta"
+        meta_path = data_path.parent / f"{safe_name}.blobmeta"
         try:
             meta_bytes = retry_on_estale(meta_path.read_bytes)
         except FileNotFoundError:
-            # Legacy fallback: pre-sidecar format had the Binary msgpack-encoded
+            # Legacy fallback: pre-sidecar format msgpack-encoded the Binary
             # inside the data file itself.
             return self.decoder.decode(data)
         blob_meta = self._blob_meta_decoder.decode(meta_bytes)
@@ -631,123 +692,177 @@ class DiskBlobStore(BasicBlobStore):
         )
 
     def get(self, file_id: str) -> Binary:
-        safe_name = file_id.replace("/", "_").replace("..", "_")
-        # Active first (zero overhead on hit); on miss fall through to the
+        safe_name = self._safe_name(file_id)
+        # Active first (sharded, then legacy flat); on miss fall through to the
         # quarantine area so a transiently-quarantined blob is never lost (#370).
-        for base in (self.root_path, self._quarantine_dir):
-            result = self._read_binary_from(base, safe_name)
+        for data_path in (
+            sharded_path(self.root_path, safe_name),
+            self.root_path / safe_name,
+            self._quarantine_data_path(safe_name),
+        ):
+            result = self._read_blob_at(data_path, safe_name)
             if result is not None:
                 return result
         raise FileNotFoundError(f"Blob {file_id} not found")
 
     def exists(self, file_id: str) -> bool:
-        safe_name = file_id.replace("/", "_").replace("..", "_")
-        return (self.root_path / safe_name).exists() or (
-            self._quarantine_dir / safe_name
-        ).exists()
+        safe_name = self._safe_name(file_id)
+        return (
+            self._blob_exists(safe_name)
+            or self._quarantine_data_path(safe_name).exists()
+        )
 
     def delete(self, file_id: str) -> None:
         """Idempotently remove a blob (active or quarantined) and its sidecars."""
-        safe_name = file_id.replace("/", "_").replace("..", "_")
-        for base in (self.root_path, self._quarantine_dir):
-            (base / safe_name).unlink(missing_ok=True)
-            (base / f"{safe_name}.blobmeta").unlink(missing_ok=True)
+        safe_name = self._safe_name(file_id)
+        for data_path in (
+            sharded_path(self.root_path, safe_name),
+            self.root_path / safe_name,
+            self._quarantine_data_path(safe_name),
+        ):
+            data_path.unlink(missing_ok=True)
+            (data_path.parent / f"{safe_name}.blobmeta").unlink(missing_ok=True)
         self._refcount_path(safe_name).unlink(missing_ok=True)
+        (self.root_path / f"{safe_name}.refcount").unlink(missing_ok=True)
         self._clear_candidate(file_id)
 
+    # -- GC primitives (issue #370) ---------------------------------------
+
     def quarantine(self, file_id: str, *, now: dt.datetime) -> None:
-        """Move an active blob into quarantine, stamping ``now`` as its entry
-        time (recorded as the quarantined file's mtime). No-op if not active."""
-        safe_name = file_id.replace("/", "_").replace("..", "_")
-        src = self.root_path / safe_name
-        if not src.exists():
+        """Move an active blob (with its sidecar) into the quarantine tree,
+        stamping ``now`` as its entry time (the quarantined file's mtime).
+        No-op if the blob is not active."""
+        safe_name = self._safe_name(file_id)
+        src = self._find_active(safe_name)
+        if src is None:
             return
-        self._quarantine_dir.mkdir(exist_ok=True)
-        dst = self._quarantine_dir / safe_name
+        dst = self._quarantine_data_path(safe_name)
+        dst.parent.mkdir(parents=True, exist_ok=True)
         os.replace(src, dst)
-        src_meta = self._blob_meta_path(safe_name)
+        src_meta = src.parent / f"{safe_name}.blobmeta"
         if src_meta.exists():
-            os.replace(src_meta, self._quarantine_dir / f"{safe_name}.blobmeta")
+            os.replace(src_meta, dst.parent / f"{safe_name}.blobmeta")
         ts = now.timestamp()
         os.utime(dst, (ts, ts))
         self._clear_candidate(file_id)
 
     def restore_from_quarantine(self, file_id: str) -> None:
-        """Move a blob back from quarantine to the active area. No-op if absent."""
-        safe_name = file_id.replace("/", "_").replace("..", "_")
-        src = self._quarantine_dir / safe_name
+        """Move a blob back from quarantine into the active sharded tree.
+        No-op if not quarantined."""
+        safe_name = self._safe_name(file_id)
+        src = self._quarantine_data_path(safe_name)
         if not src.exists():
             return
-        os.replace(src, self.root_path / safe_name)
-        src_meta = self._quarantine_dir / f"{safe_name}.blobmeta"
+        dst = sharded_path(self.root_path, safe_name)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(src, dst)
+        src_meta = src.parent / f"{safe_name}.blobmeta"
         if src_meta.exists():
-            os.replace(src_meta, self._blob_meta_path(safe_name))
+            os.replace(src_meta, dst.parent / f"{safe_name}.blobmeta")
 
     def _refcount_path(self, safe_name: str) -> Path:
-        return self.root_path / f"{safe_name}.refcount"
+        """Refcount sidecar, kept in the blob's sharded directory."""
+        return sharded_dir(self.root_path, safe_name) / f"{safe_name}.refcount"
 
     def _read_refcount(self, safe_name: str) -> int:
-        try:
-            return int(self._refcount_path(safe_name).read_text())
-        except (FileNotFoundError, ValueError):
-            return 0
+        for path in (
+            self._refcount_path(safe_name),
+            self.root_path / f"{safe_name}.refcount",  # legacy flat
+        ):
+            try:
+                return int(path.read_text())
+            except FileNotFoundError:
+                continue
+            except ValueError:
+                return 0
+        return 0
 
     def incref(self, file_id: str) -> int:
-        safe_name = file_id.replace("/", "_").replace("..", "_")
+        safe_name = self._safe_name(file_id)
         n = self._read_refcount(safe_name) + 1
-        self._refcount_path(safe_name).write_text(str(n))
+        path = self._refcount_path(safe_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(n))
         self._note_count(file_id, n)
         return n
 
     def decref(self, file_id: str) -> int:
-        safe_name = file_id.replace("/", "_").replace("..", "_")
+        safe_name = self._safe_name(file_id)
         n = max(0, self._read_refcount(safe_name) - 1)
-        self._refcount_path(safe_name).write_text(str(n))
+        path = self._refcount_path(safe_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(n))
         self._note_count(file_id, n)
         return n
 
     def get_mtime(self, file_id: str) -> dt.datetime | None:
-        safe_name = file_id.replace("/", "_").replace("..", "_")
+        safe_name = self._safe_name(file_id)
+        src = self._find_active(safe_name)
+        if src is None:
+            return None
         try:
-            ts = (self.root_path / safe_name).stat().st_mtime
+            ts = src.stat().st_mtime
         except FileNotFoundError:
             return None
         return dt.datetime.fromtimestamp(ts, dt.timezone.utc)
 
     def touch(self, file_id: str, *, now: dt.datetime | None = None) -> None:
-        safe_name = file_id.replace("/", "_").replace("..", "_")
-        path = self.root_path / safe_name
-        if not path.exists():
+        safe_name = self._safe_name(file_id)
+        src = self._find_active(safe_name)
+        if src is None:
             return
         ts = (now or dt.datetime.now(dt.timezone.utc)).timestamp()
-        os.utime(path, (ts, ts))
+        os.utime(src, (ts, ts))
+
+    @staticmethod
+    def _is_blob_data_file(name: str) -> bool:
+        return not (
+            name.endswith(".blobmeta")
+            or name.endswith(".refcount")
+            or ".tmp." in name
+            or name.endswith(".tmp")
+        )
+
+    def _blob_id_at(self, data_file: Path) -> str:
+        meta_file = data_file.parent / f"{data_file.name}.blobmeta"
+        if meta_file.exists():
+            try:
+                return self._blob_meta_decoder.decode(meta_file.read_bytes()).file_id
+            except Exception:
+                pass
+        return data_file.name
 
     def iter_active(self):
-        for entry in self.root_path.iterdir():
-            if not entry.is_file():
-                continue  # skips _sessions/ and _quarantine/ subdirs
-            name = entry.name
-            if (
-                name.endswith(".blobmeta")
-                or name.endswith(".refcount")
-                or ".tmp." in name
-            ):
+        seen: set[str] = set()
+        # Legacy flat blobs (files directly under root, excluding reserved dirs).
+        for child in iter_legacy_children(self.root_path):
+            if not child.is_file() or not self._is_blob_data_file(child.name):
                 continue
-            meta_file = self._blob_meta_path(name)
-            if meta_file.exists():
-                meta = self._blob_meta_decoder.decode(meta_file.read_bytes())
-                yield meta.file_id
-            else:
-                yield name
+            fid = self._blob_id_at(child)
+            if fid not in seen:
+                seen.add(fid)
+                yield fid
+        # Sharded active blobs under root/_sh/.
+        shard_root = self.root_path / SHARD_ROOT
+        if shard_root.exists():
+            for data_file in shard_root.rglob("*"):
+                if not data_file.is_file() or not self._is_blob_data_file(
+                    data_file.name
+                ):
+                    continue
+                fid = self._blob_id_at(data_file)
+                if fid not in seen:
+                    seen.add(fid)
+                    yield fid
 
     def iter_quarantined(self, *, entered_before: dt.datetime):
         """Yield file_ids quarantined strictly before ``entered_before``."""
-        qdir = self._quarantine_dir
-        if not qdir.exists():
+        qroot = self._quarantine_root
+        if not qroot.exists():
             return
         cutoff = entered_before.timestamp()
-        for data_file in qdir.iterdir():
-            if data_file.name.endswith(".blobmeta") or not data_file.is_file():
+        for data_file in qroot.rglob("*"):
+            if not data_file.is_file() or not self._is_blob_data_file(data_file.name):
                 continue
             try:
                 mtime = data_file.stat().st_mtime
@@ -755,29 +870,29 @@ class DiskBlobStore(BasicBlobStore):
                 continue
             if mtime >= cutoff:
                 continue
-            meta_file = qdir / f"{data_file.name}.blobmeta"
-            if meta_file.exists():
-                meta = self._blob_meta_decoder.decode(meta_file.read_bytes())
-                yield meta.file_id
-            else:
-                yield data_file.name
+            yield self._blob_id_at(data_file)
 
     def get_stream(self, file_id: str):
         """Stream blob content in 8 MB chunks without loading into memory."""
         from specstar.types import BlobStreamInfo
 
-        safe_name = file_id.replace("/", "_").replace("..", "_")
-        file_path = self.root_path / safe_name
-        # Race-tolerant stat: an ``exists()`` guard here would TOCTOU against
-        # a concurrent purge and leak a raw "[Errno 2] ..." path to the
-        # caller. Catch ENOENT from stat() and translate to the controlled
-        # surface. See #352.
-        try:
-            size = retry_on_estale(file_path.stat).st_size
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Blob {file_id} not found") from None
+        safe_name = self._safe_name(file_id)
+        # Race-tolerant stat across both layouts (sharded first, legacy flat).
+        # An exists() guard would TOCTOU against a concurrent purge/migration
+        # and leak a raw "[Errno 2] ..." path. See #352, #387.
+        size = None
+        found_path: Path | None = None
+        for candidate in self._candidate_data_paths(safe_name):
+            try:
+                size = retry_on_estale(candidate.stat).st_size
+                found_path = candidate
+                break
+            except FileNotFoundError:
+                continue
+        if found_path is None:
+            raise FileNotFoundError(f"Blob {file_id} not found")
         content_type = UNSET
-        meta_path = self._blob_meta_path(safe_name)
+        meta_path = found_path.parent / f"{safe_name}.blobmeta"
         try:
             meta_bytes = retry_on_estale(meta_path.read_bytes)
         except FileNotFoundError:
@@ -786,10 +901,10 @@ class DiskBlobStore(BasicBlobStore):
             blob_meta = self._blob_meta_decoder.decode(meta_bytes)
             content_type = blob_meta.content_type
 
-        def _iterate():
+        def _iterate(path: Path = found_path):
             # The open itself can ESTALE on NFS even when the parent dir
             # listing said the file is present. See #352.
-            f = retry_on_estale(open, file_path, "rb")
+            f = retry_on_estale(open, path, "rb")
             try:
                 while True:
                     chunk = f.read(8 * 1024 * 1024)  # 8 MB
@@ -802,6 +917,83 @@ class DiskBlobStore(BasicBlobStore):
         return BlobStreamInfo(
             _iterate(), size=size, content_type=content_type, file_id=file_id
         )
+
+    def migrate_layout(self, *, dry_run: bool = False) -> int:
+        """Relocate pre-#387 flat blobs into the sharded tree.
+
+        Walks the legacy flat layout (blob files written directly under
+        ``root_path``) and moves each blob — together with its ``.blobmeta``
+        sidecar — into ``_sh/<ab>/<cd>/``. Safe to run on a live store:
+        each move is an atomic ``os.replace`` on the same filesystem and
+        reads fall back to the flat layout until the move lands. Idempotent
+        (a blob already present in the sharded tree is skipped) and
+        re-runnable after an interruption.
+
+        Returns the number of legacy entries relocated (or, when *dry_run*,
+        that would be relocated): flat blobs plus any leftover flat session
+        files. A blob's ``.blobmeta`` sidecar is moved with its blob and not
+        counted separately.
+        """
+        moved = 0
+        for child in iter_legacy_children(self.root_path):
+            # Sharded data (``_sh/``) is already excluded by iter_legacy_children;
+            # ``_sessions/`` and any other directory is not a flat blob.
+            if child.is_dir():
+                continue
+            name = child.name
+            if name.endswith(".blobmeta"):
+                continue  # moved alongside its blob
+            if name.endswith(".tmp") or ".tmp." in name:
+                continue  # in-flight atomic write
+            target_dir = sharded_dir(self.root_path, name)
+            target = target_dir / name
+            if target.exists():
+                continue  # already migrated
+            moved += 1
+            if dry_run:
+                continue
+            target_dir.mkdir(parents=True, exist_ok=True)
+            os.replace(child, target)
+            legacy_meta = self.root_path / f"{name}.blobmeta"
+            if legacy_meta.exists():
+                os.replace(legacy_meta, target_dir / f"{name}.blobmeta")
+        return moved + self._migrate_sessions(dry_run=dry_run)
+
+    def _migrate_sessions(self, *, dry_run: bool = False) -> int:
+        """Relocate pre-#387 flat session files into per-session sharded dirs.
+
+        Legacy sessions stored each file flat under ``_sessions/`` as
+        ``<upload_id>.<kind>`` (``.meta`` / ``.data`` / ``.lock`` /
+        ``.part.N``). They are regrouped into ``_sessions/_sh/<ab>/<cd>/
+        <upload_id>/<kind>`` so ``_sessions/`` stops accumulating entries.
+        Returns the number of session files moved.
+        """
+        moved = 0
+        for child in iter_legacy_children(self._sessions_dir):
+            if child.is_dir():
+                continue
+            name = child.name
+            if name.endswith(".tmp"):
+                continue
+            upload_id, _, kind = name.partition(".")
+            if not kind:
+                continue
+            if kind in ("meta", "data", "lock"):
+                leaf = kind
+            elif kind.startswith("part."):
+                leaf = kind  # "part.N"
+            else:
+                continue
+            target_dir = self._session_dir(upload_id)
+            target = target_dir / leaf
+            if target.exists():
+                continue
+            moved += 1
+            if dry_run:
+                continue
+            target_dir.mkdir(parents=True, exist_ok=True)
+            os.replace(child, target)
+        return moved
 
     # -- Upload session methods (disk-persisted) --------------------------
 
@@ -885,7 +1077,7 @@ class DiskBlobStore(BasicBlobStore):
         """
         data_path = self._session_data_path(upload_id)
         size = data_path.stat().st_size if data_path.exists() else 0
-        for part_file in self._sessions_dir.glob(f"{upload_id}.part.*"):
+        for part_file in self._session_dir(upload_id).glob("part.*"):
             size += part_file.stat().st_size
         return size
 
@@ -902,6 +1094,7 @@ class DiskBlobStore(BasicBlobStore):
         # uploads of *different* parts never interfere.  A retry of the
         # *same* part_number simply overwrites the file (idempotent).
         part_path = self._session_part_path(upload_id, part_number)
+        part_path.parent.mkdir(parents=True, exist_ok=True)
         part_path.write_bytes(data)
 
         # ---- Phase 2 (SHORT LOCK): update meta + eager-merge --------
@@ -951,7 +1144,7 @@ class DiskBlobStore(BasicBlobStore):
             # Check for remaining buffered part files (gaps)
             remaining_parts = sorted(
                 int(p.name.split(".")[-1])
-                for p in self._sessions_dir.glob(f"{upload_id}.part.*")
+                for p in self._session_dir(upload_id).glob("part.*")
             )
             if remaining_parts:
                 raise ValueError(
@@ -988,23 +1181,28 @@ class DiskBlobStore(BasicBlobStore):
                         hasher.update(chunk)
                 file_id = hasher.hexdigest()
 
-            safe_name = file_id.replace("/", "_").replace("..", "_")
-            final_path = self.root_path / safe_name
+            safe_name = self._safe_name(file_id)
+            blob_dir = sharded_dir(self.root_path, safe_name)
+            final_path = blob_dir / safe_name
 
-            # Move data to final blob location (zero-copy on same filesystem)
-            if meta.key is not None or not final_path.exists():
+            # Move data to its final (sharded) blob location — zero-copy on the
+            # same filesystem. See #387.
+            if meta.key is not None or not self._blob_exists(safe_name):
+                blob_dir.mkdir(parents=True, exist_ok=True)
                 data_path.rename(final_path)
+                # Write metadata sidecar alongside the blob.
+                blob_meta = _DiskBlobMeta(
+                    file_id=file_id,
+                    size=size,
+                    content_type=final_content_type,
+                )
+                (blob_dir / f"{safe_name}.blobmeta").write_bytes(
+                    self.encoder.encode(blob_meta)
+                )
             else:
-                # Content-addressed blob already exists — discard duplicate
+                # Content-addressed blob already exists (either layout) — discard
+                # the duplicate; the existing blob + sidecar remain authoritative.
                 data_path.unlink()
-
-            # Write metadata sidecar
-            blob_meta = _DiskBlobMeta(
-                file_id=file_id,
-                size=size,
-                content_type=final_content_type,
-            )
-            self._blob_meta_path(safe_name).write_bytes(self.encoder.encode(blob_meta))
 
             meta.status = "finalized"
             self._save_session_meta(meta)
@@ -1021,7 +1219,11 @@ class DiskBlobStore(BasicBlobStore):
                 raise ValueError("Cannot abort a finalized session")
             meta.status = "aborted"
             self._save_session_meta(meta)
-            # Clean up data file and all part files
+            # Clean up the transient bulk (data + part files). The tiny ``meta``
+            # (now ``aborted``) and ``lock`` are retained: ``meta`` is the
+            # cross-instance status SSOT and unlinking a live ``flock`` anchor
+            # races concurrent lockers. They live in the per-session sharded
+            # directory, so no single directory bombs. See #387.
             self._session_data_path(upload_id).unlink(missing_ok=True)
-            for part_file in self._sessions_dir.glob(f"{upload_id}.part.*"):
+            for part_file in self._session_dir(upload_id).glob("part.*"):
                 part_file.unlink(missing_ok=True)

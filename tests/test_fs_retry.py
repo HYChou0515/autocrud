@@ -32,6 +32,7 @@ from specstar.resource_manager.blob_store.simple import DiskBlobStore
 from specstar.resource_manager.meta_store.simple import DiskMetaStore
 from specstar.resource_manager.resource_store.simple import DiskResourceStore
 from specstar.types import ResourceMeta, RevisionInfo, RevisionStatus
+from specstar.util.fanout import sharded_path
 
 faker = Faker()
 
@@ -437,7 +438,7 @@ def test_blob_get_translates_toctou_race_to_controlled_error(
 
     # Force the exists() check to lie, then make the file truly absent.
     monkeypatch.setattr(pathlib.Path, "exists", lambda self: True)
-    (tmpdir_path / "race-key").unlink()
+    sharded_path(tmpdir_path, "race-key").unlink()
 
     with pytest.raises(FileNotFoundError) as exc_info:
         store.get(stored.file_id)
@@ -458,7 +459,7 @@ def test_blob_get_stream_translates_toctou_race_to_controlled_error(
     stored = store.put(b"payload", key="race-stream-key")
 
     monkeypatch.setattr(pathlib.Path, "exists", lambda self: True)
-    (tmpdir_path / "race-stream-key").unlink()
+    sharded_path(tmpdir_path, "race-stream-key").unlink()
 
     with pytest.raises(FileNotFoundError) as exc_info:
         store.get_stream(stored.file_id)
@@ -482,7 +483,7 @@ def test_load_session_meta_translates_toctou_race_to_controlled_error(
     upload_id = session.upload_id
 
     monkeypatch.setattr(pathlib.Path, "exists", lambda self: True)
-    (tmpdir_path / "_sessions" / f"{upload_id}.meta").unlink()
+    store._session_meta_path(upload_id).unlink()
 
     with pytest.raises(FileNotFoundError) as exc_info:
         store._load_session_meta(upload_id)

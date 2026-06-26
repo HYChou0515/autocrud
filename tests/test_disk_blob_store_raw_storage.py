@@ -6,6 +6,7 @@ zero-copy finalization via file rename.
 """
 
 from specstar.resource_manager.blob_store.simple import DiskBlobStore
+from specstar.util.fanout import sharded_dir, sharded_path
 
 
 class TestDiskBlobStoreRawStorage:
@@ -18,7 +19,7 @@ class TestDiskBlobStoreRawStorage:
         result = store.put(data)
 
         safe_name = result.file_id.replace("/", "_").replace("..", "_")  # ty:ignore[unresolved-attribute]
-        blob_path = tmp_path / safe_name
+        blob_path = sharded_path(tmp_path, safe_name)
         assert blob_path.read_bytes() == data
 
     def test_put_writes_metadata_sidecar(self, tmp_path):
@@ -28,7 +29,7 @@ class TestDiskBlobStoreRawStorage:
         result = store.put(data, content_type="text/plain")
 
         safe_name = result.file_id.replace("/", "_").replace("..", "_")  # ty:ignore[unresolved-attribute]
-        meta_path = tmp_path / f"{safe_name}.blobmeta"
+        meta_path = sharded_dir(tmp_path, safe_name) / f"{safe_name}.blobmeta"
         assert meta_path.exists()
 
     def test_put_get_roundtrip(self, tmp_path):
@@ -79,7 +80,7 @@ class TestDiskBlobStoreRawStorage:
         result = store.finalize_upload_session(session.upload_id)
 
         safe_name = result.file_id.replace("/", "_").replace("..", "_")  # ty:ignore[unresolved-attribute]
-        blob_path = tmp_path / safe_name
+        blob_path = sharded_path(tmp_path, safe_name)
         # The blob file should contain raw bytes, NOT msgpack-encoded Binary
         assert blob_path.read_bytes() == data
 
@@ -99,7 +100,7 @@ class TestDiskBlobStoreRawStorage:
         result = store.finalize_upload_session(session.upload_id)
         assert result.file_id == "blob-key"
 
-        blob_path = tmp_path / "blob-key"
+        blob_path = sharded_path(tmp_path, "blob-key")
         # Same inode = renamed, not copied via read+write
         assert blob_path.stat().st_ino == data_inode
 
