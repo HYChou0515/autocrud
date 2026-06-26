@@ -1,3 +1,4 @@
+import datetime as dt
 from collections.abc import Generator
 
 import pytest
@@ -212,3 +213,155 @@ class TestIBlobStoreBehavior:
 
         self.blob_store.put(b"exists_data", key=unique_key)
         assert self.blob_store.exists(unique_key) is True
+
+
+class TestIBlobStoreGarbageCollection:
+    """Contract tests for the blob garbage-collection primitives (issue #370).
+
+    Exercised against every ``IBlobStore`` implementation via the shared
+    ``blob_store`` fixture.
+    """
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self, blob_store: IBlobStore):
+        self.blob_store = blob_store
+
+    def test_delete_removes_blob(self):
+        """delete(file_id) makes the blob no longer retrievable."""
+        file_id = self.blob_store.put(b"to_be_deleted").file_id
+
+        self.blob_store.delete(file_id)
+
+        assert self.blob_store.exists(file_id) is False
+        with pytest.raises(FileNotFoundError):
+            self.blob_store.get(file_id)
+
+    def test_quarantine_lists_and_keeps_retrievable(self):
+        """A quarantined blob stays readable (fall-through) and is listed by
+        iter_quarantined, filtered by its recorded entry time."""
+        t = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+        file_id = self.blob_store.put(b"quarantined_payload").file_id
+
+        self.blob_store.quarantine(file_id, now=t)
+
+        # Reversible: data is not lost — get/exists fall through to quarantine.
+        assert self.blob_store.get(file_id).data == b"quarantined_payload"
+        assert self.blob_store.exists(file_id) is True
+
+        # Listed when the cutoff is after its entry time, not before.
+        after = set(
+            self.blob_store.iter_quarantined(entered_before=t + dt.timedelta(seconds=1))
+        )
+        before = set(
+            self.blob_store.iter_quarantined(entered_before=t - dt.timedelta(seconds=1))
+        )
+        assert file_id in after
+        assert file_id not in before
+
+    def test_restore_from_quarantine_brings_back_to_active(self):
+        """restore_from_quarantine moves a blob back to active; it leaves the
+        quarantine listing and stays retrievable."""
+        t = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+        file_id = self.blob_store.put(b"resurrect_me").file_id
+        self.blob_store.quarantine(file_id, now=t)
+
+        self.blob_store.restore_from_quarantine(file_id)
+
+        assert self.blob_store.get(file_id).data == b"resurrect_me"
+        listed = set(
+            self.blob_store.iter_quarantined(entered_before=t + dt.timedelta(days=999))
+        )
+        assert file_id not in listed
+
+    def test_delete_removes_quarantined_blob(self):
+        """delete() removes a blob even while it sits in quarantine."""
+        t = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+        file_id = self.blob_store.put(b"quarantined_then_deleted").file_id
+        self.blob_store.quarantine(file_id, now=t)
+
+        self.blob_store.delete(file_id)
+
+        assert self.blob_store.exists(file_id) is False
+        assert file_id not in set(
+            self.blob_store.iter_quarantined(entered_before=t + dt.timedelta(days=999))
+        )
+
+    def test_incref_decref_track_count(self):
+        """incref/decref return the adjusted approximate count; decref clamps at 0."""
+        file_id = self.blob_store.put(b"counted").file_id
+
+        assert self.blob_store.incref(file_id) == 1
+        assert self.blob_store.incref(file_id) == 2
+        assert self.blob_store.decref(file_id) == 1
+        assert self.blob_store.decref(file_id) == 0
+        # Approximate / best-effort: never goes negative.
+        assert self.blob_store.decref(file_id) == 0
+
+    def test_iter_active_lists_active_blobs_only(self):
+        """iter_active yields active file_ids and excludes quarantined ones."""
+        t = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+        active_id = self.blob_store.put(b"i_am_active").file_id
+        quarantined_id = self.blob_store.put(b"i_am_quarantined").file_id
+        self.blob_store.quarantine(quarantined_id, now=t)
+
+        active = set(self.blob_store.iter_active())
+
+        assert active_id in active
+        assert quarantined_id not in active
+
+    def test_get_mtime_reports_recent_write_time(self):
+        """get_mtime returns the blob's last-write time (≈ now at put)."""
+        before = dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=5)
+        file_id = self.blob_store.put(b"freshly_written").file_id
+        after = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=5)
+
+        mtime = self.blob_store.get_mtime(file_id)
+
+        assert mtime is not None
+        assert before <= mtime <= after
+
+    def test_get_mtime_missing_returns_none(self):
+        assert self.blob_store.get_mtime("no-such-blob-xyz") is None
+
+    def test_touch_advances_mtime(self):
+        """touch refreshes the blob's mtime forward."""
+        file_id = self.blob_store.put(b"touch_me").file_id
+        m0 = self.blob_store.get_mtime(file_id)
+        assert m0 is not None
+
+        self.blob_store.touch(file_id, now=m0 + dt.timedelta(hours=1))
+
+        m1 = self.blob_store.get_mtime(file_id)
+        assert m1 is not None
+        assert m1 > m0
+
+    def test_decref_to_zero_makes_orphan_candidate(self):
+        """A blob whose count drops to <=0 becomes an orphan candidate eligible
+        for the incremental pass (once older than the modified_before cutoff)."""
+        file_id = self.blob_store.put(b"candidate").file_id
+        self.blob_store.incref(file_id)
+        self.blob_store.decref(file_id)  # back to 0 -> candidate
+
+        cutoff = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+        candidates = set(self.blob_store.iter_orphan_candidates(modified_before=cutoff))
+        assert file_id in candidates
+
+    def test_incref_clears_orphan_candidate(self):
+        """A re-referenced blob is no longer an orphan candidate."""
+        file_id = self.blob_store.put(b"recandidate").file_id
+        self.blob_store.decref(file_id)  # 0 -> candidate
+        self.blob_store.incref(file_id)  # 1 -> cleared
+
+        cutoff = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+        candidates = set(self.blob_store.iter_orphan_candidates(modified_before=cutoff))
+        assert file_id not in candidates
+
+    def test_fresh_orphan_candidate_excluded_by_cutoff(self):
+        """A candidate written after the cutoff (too fresh) is not yielded —
+        this is the T1 grace at the blob-store level."""
+        file_id = self.blob_store.put(b"fresh_candidate").file_id
+        self.blob_store.decref(file_id)  # candidate
+
+        cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
+        candidates = set(self.blob_store.iter_orphan_candidates(modified_before=cutoff))
+        assert file_id not in candidates

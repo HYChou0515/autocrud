@@ -852,6 +852,115 @@ class IBlobStore(ABC):
         pass
 
     @abstractmethod
+    def delete(self, file_id: str) -> None:
+        """Permanently remove a blob by ``file_id``.
+
+        This is the **irreversible** primitive used by garbage collection
+        (issue #370) once a blob has been confirmed unreferenced.  It is
+        **idempotent**: deleting a ``file_id`` that does not exist is a
+        no-op, never an error, so a crashed/restarted GC can safely retry.
+
+        Removes the blob whether it lives in the active area or in
+        quarantine.
+        """
+        pass
+
+    @abstractmethod
+    def quarantine(self, file_id: str, *, now: dt.datetime) -> None:
+        """Move a blob from the active area into a reversible quarantine area.
+
+        ``now`` is recorded as the blob's quarantine **entry time** so that
+        :meth:`iter_quarantined` can later select blobs that have dwelt long
+        enough (the GC's ``T2`` grace period).  Quarantining is **reversible**
+        via :meth:`restore_from_quarantine`, and a quarantined blob remains
+        readable through :meth:`get` / :meth:`exists` (active-miss
+        fall-through).  No-op if ``file_id`` is not currently active.
+        """
+        pass
+
+    @abstractmethod
+    def restore_from_quarantine(self, file_id: str) -> None:
+        """Move a blob back from quarantine to the active area (resurrection).
+
+        No-op if ``file_id`` is not currently quarantined.
+        """
+        pass
+
+    @abstractmethod
+    def iter_quarantined(self, *, entered_before: dt.datetime) -> Generator[str]:
+        """Yield ``file_id``s quarantined strictly before ``entered_before``.
+
+        Used by the reconcile pass to find quarantined blobs old enough to be
+        considered for the irreversible :meth:`delete`.
+        """
+        pass
+
+    @abstractmethod
+    def incref(self, file_id: str) -> int:
+        """Increment the blob's approximate reference count, returning the new
+        value.
+
+        The count is a **best-effort, non-atomic** hint (issue #370): it is
+        only used to cheaply nominate orphan candidates, never as the sole
+        authority for deletion.  The reconcile pass recomputes exact counts.
+        """
+        pass
+
+    @abstractmethod
+    def decref(self, file_id: str) -> int:
+        """Decrement the blob's approximate reference count, returning the new
+        value.  Clamps at zero (never negative).  Best-effort / non-atomic."""
+        pass
+
+    @abstractmethod
+    def iter_active(self) -> Generator[str]:
+        """Yield the ``file_id`` of every blob in the **active** area
+        (excluding quarantined blobs).
+
+        Used by the reconcile pass to discover orphans (active blobs that no
+        live revision references).
+        """
+        pass
+
+    @abstractmethod
+    def get_mtime(self, file_id: str) -> "dt.datetime | None":
+        """Return the active blob's last-write time, or ``None`` if absent.
+
+        This is the blob's *age* source (issue #370): the GC protects blobs
+        younger than the ``T1`` grace period from being quarantined, covering
+        the "uploaded-but-not-yet-referenced" window.  Implementations use the
+        backend's native modification time (filesystem ``mtime`` / S3
+        ``LastModified`` / in-memory put timestamp).  Returns a timezone-aware
+        UTC datetime.
+        """
+        pass
+
+    @abstractmethod
+    def touch(self, file_id: str, *, now: "dt.datetime | None" = None) -> None:
+        """Refresh an active blob's last-write time to ``now`` (default: the
+        current UTC time).
+
+        Called on the reference hot path (issue #370): re-referencing a blob
+        keeps its *age* fresh so the ``T1`` grace covers the gap between
+        "someone referenced it" and "the count caught up".  No-op if the blob
+        is not active.  (S3 stamps the server's current time regardless of
+        ``now``, since object ``LastModified`` is server-controlled.)
+        """
+        pass
+
+    @abstractmethod
+    def iter_orphan_candidates(self, *, modified_before: dt.datetime) -> Generator[str]:
+        """Yield active ``file_id``s whose approximate count has dropped to
+        ``<= 0`` (orphan suspects) and whose last-write time precedes
+        ``modified_before`` (the ``T1`` grace cutoff).
+
+        This is the cheap, scan-free candidate feed for the incremental GC
+        pass — populated as a side effect of :meth:`decref`.  Best-effort:
+        the authoritative truth is always the reconcile scan.
+        """
+        pass
+
+    @abstractmethod
     def get_url(self, file_id: str) -> str | None:
         """
         Get a direct download URL for the blob if supported.

@@ -106,6 +106,62 @@ Depending on the backend, SpecStar may:
 
 ---
 
+## 6. Blob lifecycle and garbage collection
+
+Blobs are **content-addressed and deduplicated**: identical bytes always map to the
+same `file_id`, so a single blob can be shared by many revisions, many resources, and
+even many models that share the same blob store.
+
+Because of that sharing, SpecStar never deletes a blob the moment a resource goes away.
+Even `permanently_delete` only removes the resource's metadata and revisions — the blob
+itself may still be referenced elsewhere. Reclaiming truly-unreferenced blobs is done by
+explicit garbage-collection passes that you run (or schedule) yourself:
+
+```python
+# Cheap, scan-free pass: quarantine blobs that just lost their last reference.
+spec.gc(mode="incremental")
+
+# Authoritative pass: rescans every model's revisions, then permanently removes
+# blobs that no live revision references. This is the only pass that deletes.
+spec.gc(mode="reconcile")
+
+# Tune the two grace periods (defaults shown).
+spec.gc(mode="reconcile", t1="1h", t2="24h")
+```
+
+The two passes work together:
+
+- **`incremental`** is cheap and never rescans revision data. When `permanently_delete`
+  drops a blob's last reference, that blob becomes a candidate; after the `t1` grace the
+  incremental pass *moves it to a quarantine area* — a reversible step, not a delete. It
+  never deletes.
+- **`reconcile`** is authoritative. It rescans the revisions of **all** models, computes
+  the exact set of still-referenced blobs, **restores** any blob that is still referenced
+  (self-healing), **quarantines** any newly orphaned blob older than `t1`, and
+  **permanently deletes** quarantined blobs that no revision references and that have sat in
+  quarantine past `t2`. It also brings pre-existing blobs under management on its first run,
+  so **no migration is needed**.
+
+A typical schedule runs `incremental` often (e.g. hourly) and `reconcile` occasionally
+(e.g. nightly). SpecStar does **not** spawn a background thread for you — wire `gc()` into
+your own scheduler/cron.
+
+Safety: a blob is never deleted while any revision still references it (including
+soft-deleted resources, whose revisions are retained). A blob is only removed after it has
+sat unreferenced in quarantine past `t2`, confirmed by a scan that is authoritative across
+every model that shares the blob store. While a blob sits in quarantine it remains fully
+readable, and if it is referenced again it is restored out of quarantine immediately.
+
+> **Caveats**
+>
+> - GC only manages content-addressed blobs that are referenced through a resource's
+>   `Binary` fields. Blobs you `put` with an explicit `key` and reference out-of-band are
+>   not tracked and may be collected.
+> - A blob store must be owned by a single SpecStar app. Sharing one bucket/prefix across
+>   independent apps breaks GC's view of what is referenced.
+
+---
+
 ## What the Binary type stores
 
 A `Binary` value typically contains:
@@ -126,6 +182,7 @@ In most stored resources, the raw byte content is not kept inline.
 - store only the metadata you need in the resource itself
 - use content types when available so downloads are served correctly
 - combine blob support with S3-compatible storage for multi-node deployments
+- schedule `gc()` (incremental often, reconcile occasionally) so unreferenced blobs are reclaimed
 
 ---
 
