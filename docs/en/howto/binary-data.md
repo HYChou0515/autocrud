@@ -190,5 +190,6 @@ In most stored resources, the raw byte content is not kept inline.
 
 - [API conventions](/specstar/howto/api-conventions)
 - [Routes generation](/specstar/howto/routes)
+- [Prune old revisions](/specstar/howto/prune-revisions) — decrefs blobs for GC to reclaim
 - [From demo to production](/specstar/guides/from-demo-to-production)
 - [Examples](/specstar/examples/)
