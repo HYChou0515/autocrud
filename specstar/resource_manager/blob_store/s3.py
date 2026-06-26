@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Any, Literal
 
@@ -158,10 +159,26 @@ class S3BlobStore(BasicBlobStore):
             content_type=content_type_ if content_type_ else UNSET,
         )
 
+    def _active_key(self, file_id: str) -> str:
+        return f"{self.prefix}{file_id}"
+
+    def _quarantine_key(self, file_id: str) -> str:
+        return f"{self.prefix}_quarantine/{file_id}"
+
+    def _refcount_key(self, file_id: str) -> str:
+        return f"{self.prefix}_refcount/{file_id}"
+
     def get(self, file_id: str) -> Binary:
-        key = f"{self.prefix}{file_id}"
-        try:
-            response = self.client.get_object(Bucket=self.bucket, Key=key)
+        # Active first (zero overhead on hit); on miss fall through to the
+        # quarantine area so a transiently-quarantined blob is never lost (#370).
+        for key in (self._active_key(file_id), self._quarantine_key(file_id)):
+            try:
+                response = self.client.get_object(Bucket=self.bucket, Key=key)
+            except _ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code")
+                if error_code in ("NoSuchKey", "404"):
+                    continue
+                raise
             content = response["Body"].read()
             content_type = response.get("ContentType")
             if content_type is None:
@@ -172,22 +189,177 @@ class S3BlobStore(BasicBlobStore):
                 data=content,
                 content_type=content_type,
             )
-        except _ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code")
-            if error_code == "NoSuchKey":
-                raise FileNotFoundError(f"Blob {file_id} not found")
-            raise
+        raise FileNotFoundError(f"Blob {file_id} not found")
 
     def exists(self, file_id: str) -> bool:
-        key = f"{self.prefix}{file_id}"
+        for key in (self._active_key(file_id), self._quarantine_key(file_id)):
+            try:
+                self.client.head_object(Bucket=self.bucket, Key=key)
+                return True
+            except _ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code")
+                if error_code in ("404", "NoSuchKey"):
+                    continue
+                raise
+        return False
+
+    def delete(self, file_id: str) -> None:
+        """Idempotently remove a blob (active or quarantined) and its refcount.
+        S3 delete is already a no-op for a missing key."""
+        for key in (
+            self._active_key(file_id),
+            self._quarantine_key(file_id),
+            self._refcount_key(file_id),
+        ):
+            try:
+                self.client.delete_object(Bucket=self.bucket, Key=key)
+            except _ClientError:
+                pass
+        self._clear_candidate(file_id)
+
+    def _read_refcount(self, file_id: str) -> int:
         try:
-            self.client.head_object(Bucket=self.bucket, Key=key)
-            return True
+            resp = self.client.get_object(
+                Bucket=self.bucket, Key=self._refcount_key(file_id)
+            )
+            return int(resp["Body"].read().decode())
+        except _ClientError:
+            return 0
+        except ValueError:
+            return 0
+
+    def incref(self, file_id: str) -> int:
+        n = self._read_refcount(file_id) + 1
+        self.client.put_object(
+            Bucket=self.bucket, Key=self._refcount_key(file_id), Body=str(n).encode()
+        )
+        self._note_count(file_id, n)
+        return n
+
+    def decref(self, file_id: str) -> int:
+        n = max(0, self._read_refcount(file_id) - 1)
+        self.client.put_object(
+            Bucket=self.bucket, Key=self._refcount_key(file_id), Body=str(n).encode()
+        )
+        self._note_count(file_id, n)
+        return n
+
+    def get_mtime(self, file_id: str) -> dt.datetime | None:
+        try:
+            head = self.client.head_object(
+                Bucket=self.bucket, Key=self._active_key(file_id)
+            )
+        except _ClientError:
+            return None
+        last_modified = head.get("LastModified")
+        if last_modified is None:
+            return None
+        # boto returns an aware datetime; normalise to UTC.
+        return last_modified.astimezone(dt.timezone.utc)
+
+    def touch(self, file_id: str, *, now: dt.datetime | None = None) -> None:
+        """Refresh ``LastModified`` via an in-place server-side self-copy.
+
+        S3 sets ``LastModified`` to the server's current time on copy, so the
+        ``now`` argument is accepted for API uniformity but not used as the
+        stored stamp.  No-op if the blob is not active.
+        """
+        key = self._active_key(file_id)
+        try:
+            head = self.client.head_object(Bucket=self.bucket, Key=key)
+        except _ClientError:
+            return
+        copy_kwargs: dict[str, Any] = {
+            "Bucket": self.bucket,
+            "CopySource": {"Bucket": self.bucket, "Key": key},
+            "Key": key,
+            "Metadata": head.get("Metadata", {}),
+            "MetadataDirective": "REPLACE",
+        }
+        ct = head.get("ContentType")
+        if ct:
+            copy_kwargs["ContentType"] = ct
+        try:
+            self.client.copy_object(**copy_kwargs)
+        except _ClientError:
+            pass
+
+    def iter_active(self):
+        internal = ("_quarantine/", "_refcount/", "_sessions/", "_uploads/")
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=self.prefix):
+            for obj in page.get("Contents", []):
+                rest = obj["Key"][len(self.prefix) :]
+                if not rest or any(rest.startswith(p) for p in internal):
+                    continue
+                yield rest
+
+    def quarantine(self, file_id: str, *, now: dt.datetime) -> None:
+        """Move an active object into the quarantine prefix, recording ``now``
+        in object metadata as the entry time. No-op if not active."""
+        src = self._active_key(file_id)
+        dst = self._quarantine_key(file_id)
+        try:
+            head = self.client.head_object(Bucket=self.bucket, Key=src)
         except _ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code")
-            if error_code == "404" or error_code == "NoSuchKey":
-                return False
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("NoSuchKey", "404"):
+                return
             raise
+        copy_kwargs: dict[str, Any] = {
+            "Bucket": self.bucket,
+            "CopySource": {"Bucket": self.bucket, "Key": src},
+            "Key": dst,
+            "Metadata": {"quarantine-entered": now.isoformat()},
+            "MetadataDirective": "REPLACE",
+        }
+        ct = head.get("ContentType")
+        if ct:
+            copy_kwargs["ContentType"] = ct
+        self.client.copy_object(**copy_kwargs)
+        self.client.delete_object(Bucket=self.bucket, Key=src)
+        self._clear_candidate(file_id)
+
+    def restore_from_quarantine(self, file_id: str) -> None:
+        """Move an object back from the quarantine prefix to active. No-op if absent."""
+        src = self._quarantine_key(file_id)
+        dst = self._active_key(file_id)
+        try:
+            head = self.client.head_object(Bucket=self.bucket, Key=src)
+        except _ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("NoSuchKey", "404"):
+                return
+            raise
+        copy_kwargs: dict[str, Any] = {
+            "Bucket": self.bucket,
+            "CopySource": {"Bucket": self.bucket, "Key": src},
+            "Key": dst,
+            "Metadata": {},
+            "MetadataDirective": "REPLACE",
+        }
+        ct = head.get("ContentType")
+        if ct:
+            copy_kwargs["ContentType"] = ct
+        self.client.copy_object(**copy_kwargs)
+        self.client.delete_object(Bucket=self.bucket, Key=src)
+
+    def iter_quarantined(self, *, entered_before: dt.datetime):
+        """Yield file_ids quarantined strictly before ``entered_before``."""
+        qprefix = f"{self.prefix}_quarantine/"
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=qprefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                file_id = key[len(qprefix) :]
+                if not file_id:
+                    continue
+                head = self.client.head_object(Bucket=self.bucket, Key=key)
+                entered_str = head.get("Metadata", {}).get("quarantine-entered")
+                if entered_str is None:
+                    continue
+                if dt.datetime.fromisoformat(entered_str) < entered_before:
+                    yield file_id
 
     def get_url(self, file_id: str) -> str | None:
         key = f"{self.prefix}{file_id}"

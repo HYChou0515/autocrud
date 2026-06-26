@@ -1,3 +1,4 @@
+import datetime as dt
 import fcntl
 import os
 import threading
@@ -134,6 +135,40 @@ class BasicBlobStore(IBlobStore):
 
         raise FileNotFoundError(f"Blob {file_id} not found")
 
+    # ------------------------------------------------------------------
+    # Orphan-candidate tracking (issue #370, incremental GC)
+    #
+    # A best-effort, in-memory, process-local set of file_ids whose
+    # approximate count has dropped to <= 0.  Populated by ``decref`` and
+    # cleared by ``incref`` / ``quarantine`` / ``delete``.  Non-persistent on
+    # purpose: a restart loses it, and the reconcile pass recovers everything.
+    # ------------------------------------------------------------------
+
+    def _candidate_set(self) -> set[str]:
+        candidates = getattr(self, "_candidates", None)
+        if candidates is None:
+            candidates = set()
+            self._candidates = candidates
+        return candidates
+
+    def _note_count(self, file_id: str, count: int) -> None:
+        """Record/clear *file_id* as an orphan candidate from a count update."""
+        if count <= 0:
+            self._candidate_set().add(file_id)
+        else:
+            self._candidate_set().discard(file_id)
+
+    def _clear_candidate(self, file_id: str) -> None:
+        self._candidate_set().discard(file_id)
+
+    def iter_orphan_candidates(self, *, modified_before: dt.datetime):
+        for file_id in list(self._candidate_set()):
+            mtime = self.get_mtime(file_id)
+            # Skip non-active (already quarantined/deleted) and too-fresh blobs.
+            if mtime is None or mtime >= modified_before:
+                continue
+            yield file_id
+
 
 # ---------------------------------------------------------------------------
 # Shared session state dataclass (used by MemoryBlobStore and DiskBlobStore)
@@ -168,6 +203,12 @@ class MemoryBlobStore(BasicBlobStore):
 
     def __init__(self):
         self._store: dict[str, Binary] = {}
+        # Quarantined blobs (issue #370): file_id -> (Binary, entered_at).
+        self._quarantine: dict[str, tuple[Binary, dt.datetime]] = {}
+        # Approximate, non-atomic ref counts (issue #370).
+        self._refcount: dict[str, int] = {}
+        # Last-write time per active blob (the "age" source for the T1 gate).
+        self._mtime: dict[str, dt.datetime] = {}
         self._sessions: dict[str, _UploadSessionState] = {}
         self._session_locks: dict[str, threading.Lock] = {}
         self._global_lock = threading.Lock()
@@ -190,15 +231,76 @@ class MemoryBlobStore(BasicBlobStore):
         )
 
         self._store[file_id] = stored_binary
+        self._mtime[file_id] = dt.datetime.now(dt.timezone.utc)
         return stored_binary
 
     def get(self, file_id: str) -> Binary:
-        if file_id not in self._store:
-            raise FileNotFoundError(f"Blob {file_id} not found")
-        return self._store[file_id]
+        if file_id in self._store:
+            return self._store[file_id]
+        # Active miss: fall through to quarantine so a transiently-quarantined
+        # blob is never lost to readers (issue #370).
+        if file_id in self._quarantine:
+            return self._quarantine[file_id][0]
+        raise FileNotFoundError(f"Blob {file_id} not found")
 
     def exists(self, file_id: str) -> bool:
-        return file_id in self._store
+        return file_id in self._store or file_id in self._quarantine
+
+    def delete(self, file_id: str) -> None:
+        """Idempotently remove a blob from active or quarantine (no error if absent)."""
+        self._store.pop(file_id, None)
+        self._quarantine.pop(file_id, None)
+        self._mtime.pop(file_id, None)
+        self._refcount.pop(file_id, None)
+        self._clear_candidate(file_id)
+
+    def quarantine(self, file_id: str, *, now: dt.datetime) -> None:
+        """Move a blob from the active area into quarantine, stamping ``now``
+        as its entry time. No-op if the blob is not active."""
+        binary = self._store.pop(file_id, None)
+        if binary is None:
+            return
+        self._mtime.pop(file_id, None)
+        self._clear_candidate(file_id)
+        self._quarantine[file_id] = (binary, now)
+
+    def get_mtime(self, file_id: str) -> dt.datetime | None:
+        return self._mtime.get(file_id)
+
+    def touch(self, file_id: str, *, now: dt.datetime | None = None) -> None:
+        if file_id not in self._store:
+            return
+        self._mtime[file_id] = now or dt.datetime.now(dt.timezone.utc)
+
+    def restore_from_quarantine(self, file_id: str) -> None:
+        """Move a blob back from quarantine to the active area. No-op if absent."""
+        entry = self._quarantine.pop(file_id, None)
+        if entry is None:
+            return
+        binary, entered_at = entry
+        self._store[file_id] = binary
+        self._mtime[file_id] = entered_at
+
+    def incref(self, file_id: str) -> int:
+        n = self._refcount.get(file_id, 0) + 1
+        self._refcount[file_id] = n
+        self._note_count(file_id, n)
+        return n
+
+    def decref(self, file_id: str) -> int:
+        n = max(0, self._refcount.get(file_id, 0) - 1)
+        self._refcount[file_id] = n
+        self._note_count(file_id, n)
+        return n
+
+    def iter_active(self):
+        yield from list(self._store.keys())
+
+    def iter_quarantined(self, *, entered_before: dt.datetime):
+        """Yield file_ids quarantined strictly before ``entered_before``."""
+        for fid, (_binary, entered_at) in list(self._quarantine.items()):
+            if entered_at < entered_before:
+                yield fid
 
     # -- Session locking ------------------------------------------------
 
@@ -498,18 +600,22 @@ class DiskBlobStore(BasicBlobStore):
             content_type=final_content_type,
         )
 
-    def get(self, file_id: str) -> Binary:
-        safe_name = file_id.replace("/", "_").replace("..", "_")
-        file_path = self.root_path / safe_name
-        # Skip the exists() guard: it would race against a concurrent purge
-        # and leak the raw "[Errno 2] No such file or directory: '/abs/path'"
-        # message to the caller. Read straight and translate ENOENT into the
-        # same controlled "Blob {file_id} not found" surface. See #352.
+    @property
+    def _quarantine_dir(self) -> Path:
+        return self.root_path / "_quarantine"
+
+    def _read_binary_from(self, base: Path, safe_name: str) -> Binary | None:
+        """Read a blob (data + sidecar) from *base*, or ``None`` if absent.
+
+        Skips the ``exists()`` guard: it would race a concurrent purge and
+        leak a raw "[Errno 2] ..." path. Translate ENOENT to ``None``. See #352.
+        """
+        file_path = base / safe_name
         try:
             data = retry_on_estale(file_path.read_bytes)
         except FileNotFoundError:
-            raise FileNotFoundError(f"Blob {file_id} not found") from None
-        meta_path = self._blob_meta_path(safe_name)
+            return None
+        meta_path = base / f"{safe_name}.blobmeta"
         try:
             meta_bytes = retry_on_estale(meta_path.read_bytes)
         except FileNotFoundError:
@@ -524,9 +630,137 @@ class DiskBlobStore(BasicBlobStore):
             content_type=blob_meta.content_type,
         )
 
+    def get(self, file_id: str) -> Binary:
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        # Active first (zero overhead on hit); on miss fall through to the
+        # quarantine area so a transiently-quarantined blob is never lost (#370).
+        for base in (self.root_path, self._quarantine_dir):
+            result = self._read_binary_from(base, safe_name)
+            if result is not None:
+                return result
+        raise FileNotFoundError(f"Blob {file_id} not found")
+
     def exists(self, file_id: str) -> bool:
         safe_name = file_id.replace("/", "_").replace("..", "_")
-        return (self.root_path / safe_name).exists()
+        return (self.root_path / safe_name).exists() or (
+            self._quarantine_dir / safe_name
+        ).exists()
+
+    def delete(self, file_id: str) -> None:
+        """Idempotently remove a blob (active or quarantined) and its sidecars."""
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        for base in (self.root_path, self._quarantine_dir):
+            (base / safe_name).unlink(missing_ok=True)
+            (base / f"{safe_name}.blobmeta").unlink(missing_ok=True)
+        self._refcount_path(safe_name).unlink(missing_ok=True)
+        self._clear_candidate(file_id)
+
+    def quarantine(self, file_id: str, *, now: dt.datetime) -> None:
+        """Move an active blob into quarantine, stamping ``now`` as its entry
+        time (recorded as the quarantined file's mtime). No-op if not active."""
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        src = self.root_path / safe_name
+        if not src.exists():
+            return
+        self._quarantine_dir.mkdir(exist_ok=True)
+        dst = self._quarantine_dir / safe_name
+        os.replace(src, dst)
+        src_meta = self._blob_meta_path(safe_name)
+        if src_meta.exists():
+            os.replace(src_meta, self._quarantine_dir / f"{safe_name}.blobmeta")
+        ts = now.timestamp()
+        os.utime(dst, (ts, ts))
+        self._clear_candidate(file_id)
+
+    def restore_from_quarantine(self, file_id: str) -> None:
+        """Move a blob back from quarantine to the active area. No-op if absent."""
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        src = self._quarantine_dir / safe_name
+        if not src.exists():
+            return
+        os.replace(src, self.root_path / safe_name)
+        src_meta = self._quarantine_dir / f"{safe_name}.blobmeta"
+        if src_meta.exists():
+            os.replace(src_meta, self._blob_meta_path(safe_name))
+
+    def _refcount_path(self, safe_name: str) -> Path:
+        return self.root_path / f"{safe_name}.refcount"
+
+    def _read_refcount(self, safe_name: str) -> int:
+        try:
+            return int(self._refcount_path(safe_name).read_text())
+        except (FileNotFoundError, ValueError):
+            return 0
+
+    def incref(self, file_id: str) -> int:
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        n = self._read_refcount(safe_name) + 1
+        self._refcount_path(safe_name).write_text(str(n))
+        self._note_count(file_id, n)
+        return n
+
+    def decref(self, file_id: str) -> int:
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        n = max(0, self._read_refcount(safe_name) - 1)
+        self._refcount_path(safe_name).write_text(str(n))
+        self._note_count(file_id, n)
+        return n
+
+    def get_mtime(self, file_id: str) -> dt.datetime | None:
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        try:
+            ts = (self.root_path / safe_name).stat().st_mtime
+        except FileNotFoundError:
+            return None
+        return dt.datetime.fromtimestamp(ts, dt.timezone.utc)
+
+    def touch(self, file_id: str, *, now: dt.datetime | None = None) -> None:
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        path = self.root_path / safe_name
+        if not path.exists():
+            return
+        ts = (now or dt.datetime.now(dt.timezone.utc)).timestamp()
+        os.utime(path, (ts, ts))
+
+    def iter_active(self):
+        for entry in self.root_path.iterdir():
+            if not entry.is_file():
+                continue  # skips _sessions/ and _quarantine/ subdirs
+            name = entry.name
+            if (
+                name.endswith(".blobmeta")
+                or name.endswith(".refcount")
+                or ".tmp." in name
+            ):
+                continue
+            meta_file = self._blob_meta_path(name)
+            if meta_file.exists():
+                meta = self._blob_meta_decoder.decode(meta_file.read_bytes())
+                yield meta.file_id
+            else:
+                yield name
+
+    def iter_quarantined(self, *, entered_before: dt.datetime):
+        """Yield file_ids quarantined strictly before ``entered_before``."""
+        qdir = self._quarantine_dir
+        if not qdir.exists():
+            return
+        cutoff = entered_before.timestamp()
+        for data_file in qdir.iterdir():
+            if data_file.name.endswith(".blobmeta") or not data_file.is_file():
+                continue
+            try:
+                mtime = data_file.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if mtime >= cutoff:
+                continue
+            meta_file = qdir / f"{data_file.name}.blobmeta"
+            if meta_file.exists():
+                meta = self._blob_meta_decoder.decode(meta_file.read_bytes())
+                yield meta.file_id
+            else:
+                yield data_file.name
 
     def get_stream(self, file_id: str):
         """Stream blob content in 8 MB chunks without loading into memory."""

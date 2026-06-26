@@ -163,6 +163,47 @@ class LoadStats:
         )
 
 
+class GcStats:
+    """Statistics returned by :meth:`SpecStar.gc` (issue #370)."""
+
+    __slots__ = ("mode", "quarantined", "restored", "deleted", "live", "scan_complete")
+
+    def __init__(self, mode: str) -> None:
+        self.mode = mode
+        self.quarantined = 0
+        self.restored = 0
+        self.deleted = 0
+        self.live = 0
+        self.scan_complete = True
+
+    def __repr__(self) -> str:
+        return (
+            f"GcStats(mode={self.mode!r}, quarantined={self.quarantined}, "
+            f"restored={self.restored}, deleted={self.deleted}, "
+            f"live={self.live}, scan_complete={self.scan_complete})"
+        )
+
+
+_DURATION_UNITS = {
+    "s": "seconds",
+    "m": "minutes",
+    "h": "hours",
+    "d": "days",
+    "w": "weeks",
+}
+
+
+def _coerce_duration(value: "str | dt.timedelta") -> dt.timedelta:
+    """Coerce ``"1h"`` / ``"30m"`` / ``"7d"`` / ``"10s"`` (or a bare-number
+    seconds string) or a ``timedelta`` into a ``timedelta``."""
+    if isinstance(value, dt.timedelta):
+        return value
+    s = value.strip().lower()
+    if s and s[-1] in _DURATION_UNITS:
+        return dt.timedelta(**{_DURATION_UNITS[s[-1]]: float(s[:-1])})
+    return dt.timedelta(seconds=float(s))
+
+
 class SpecStar:
     """High-level entry point for registering resource models and generating CRUD routes.
 
@@ -3261,6 +3302,129 @@ class SpecStar:
         encoded = _json.format(_json.encode(descriptor), indent=2)
         Path(path).write_bytes(encoded)
         return None
+
+    def gc(
+        self,
+        *,
+        mode: str = "reconcile",
+        t1: "str | dt.timedelta" = "1h",
+        t2: "str | dt.timedelta" = "24h",
+        now: "dt.datetime | None" = None,
+    ) -> GcStats:
+        """Reclaim blobs no longer referenced by any resource revision (issue #370).
+
+        Blobs are content-addressed and shared across resources, revisions, and
+        models, so a blob is only safe to remove once **no** live revision in
+        **any** registered model references it.  This method is the explicit,
+        user-scheduled garbage collector — the library never runs it on a
+        background thread.
+
+        Args:
+            mode: ``"reconcile"`` (default) rescans every model's revisions to
+                compute the authoritative live set, then quarantines newly
+                orphaned blobs and permanently deletes quarantined blobs that
+                no revision references and that have dwelt past ``t2``.  This is
+                the only mode that deletes, and it also self-heals (restores
+                blobs quarantined by mistake) and backfills bookkeeping for
+                pre-existing blobs — so no migration is needed.
+            t1: Grace period protecting freshly-written blobs from being
+                quarantined (covers the upload-then-reference window).
+            t2: Grace period a blob must dwell in quarantine before it can be
+                permanently deleted.
+            now: Reference time (defaults to the current UTC time); injectable
+                for testing and deterministic scheduling.
+
+        Returns:
+            A :class:`GcStats` with counts of quarantined / restored / deleted
+            blobs.
+
+        Note:
+            A blob store must be owned by a single SpecStar app.  Sharing one
+            bucket/prefix across independent apps breaks the live-set view and
+            can orphan cross-app references.  GC also only manages blobs
+            referenced through resource ``Binary`` fields; blobs ``put`` with an
+            explicit ``key`` and referenced out-of-band are not tracked.
+        """
+        stats = GcStats(mode)
+        if self.blob_store is None:
+            return stats
+        if now is None:
+            now = dt.datetime.now(dt.timezone.utc)
+        t1_delta = _coerce_duration(t1)
+        t2_delta = _coerce_duration(t2)
+        if mode == "reconcile":
+            return self._gc_reconcile(stats, now=now, t1=t1_delta, t2=t2_delta)
+        if mode == "incremental":
+            return self._gc_incremental(stats, now=now, t1=t1_delta)
+        raise ValueError(
+            f"Unknown gc mode {mode!r}; expected 'reconcile' or 'incremental'."
+        )
+
+    def _gc_incremental(
+        self,
+        stats: GcStats,
+        *,
+        now: dt.datetime,
+        t1: dt.timedelta,
+    ) -> GcStats:
+        """Cheap, scan-free pass: quarantine orphan candidates (blobs whose
+        approximate count hit zero via ``permanently_delete``) older than
+        ``t1``.  Never scans revisions and never deletes — only ``reconcile``
+        deletes."""
+        store = self.blob_store
+        assert store is not None
+        t1_cutoff = now - t1
+        for file_id in list(store.iter_orphan_candidates(modified_before=t1_cutoff)):
+            store.quarantine(file_id, now=now)
+            stats.quarantined += 1
+        return stats
+
+    def _gc_reconcile(
+        self,
+        stats: GcStats,
+        *,
+        now: dt.datetime,
+        t1: dt.timedelta,
+        t2: dt.timedelta,
+    ) -> GcStats:
+        store = self.blob_store
+        assert store is not None
+
+        # 1. Authoritative live set = union across ALL models sharing this store.
+        live: set[str] = set()
+        complete = True
+        for mgr in self.resource_managers.values():
+            ids, ok = mgr.collect_all_referenced_file_ids()
+            live |= ids
+            complete = complete and ok
+        stats.live = len(live)
+        stats.scan_complete = complete
+
+        # 2. Active orphans older than T1 -> quarantine (reversible).
+        t1_cutoff = now - t1
+        for file_id in list(store.iter_active()):
+            if file_id in live:
+                continue
+            mtime = store.get_mtime(file_id)
+            if mtime is not None and mtime > t1_cutoff:
+                continue  # too fresh — protect the upload->reference window
+            store.quarantine(file_id, now=now)
+            stats.quarantined += 1
+
+        # 3. Quarantined blobs: restore the referenced, delete the long-orphaned.
+        far_future = now + dt.timedelta(days=36500)
+        all_quarantined = set(store.iter_quarantined(entered_before=far_future))
+        old_enough = set(store.iter_quarantined(entered_before=now - t2))
+        for file_id in all_quarantined:
+            if file_id in live:
+                store.restore_from_quarantine(file_id)
+                stats.restored += 1
+            elif complete and file_id in old_enough:
+                # Only delete when the scan was complete: an un-decodable
+                # revision might reference this blob unseen.
+                store.delete(file_id)
+                stats.deleted += 1
+        return stats
 
     def dump(
         self,

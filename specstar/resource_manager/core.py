@@ -188,7 +188,11 @@ def _validate_resource_id(resource_id: str) -> None:
     """
     if not isinstance(resource_id, str) or not resource_id.strip():
         raise ValidationError("resource_id must be a non-empty string.")
-    if "/" in resource_id or "\\" in resource_id or any(ord(c) < 32 for c in resource_id):
+    if (
+        "/" in resource_id
+        or "\\" in resource_id
+        or any(ord(c) < 32 for c in resource_id)
+    ):
         raise ValidationError(
             f"resource_id {resource_id!r} contains characters that are not "
             "allowed: path separators ('/', '\\') or control characters. A "
@@ -1589,7 +1593,20 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return data_hash
 
     def _process_binary_fields(self, data: Any) -> Any:
-        return self._binary_processor.process(data, self.blob_store)
+        result = self._binary_processor.process(data, self.blob_store)
+        store = self.blob_store
+        if store is not None:
+            # Phase-2 ref accounting (issue #370): once per (revision, file_id).
+            # Best-effort — a hiccup here must never break the write; the
+            # reconcile pass is the authoritative source of truth.
+            for file_id in self._binary_processor.collect_file_ids(result):
+                try:
+                    store.restore_from_quarantine(file_id)  # resurrection
+                    store.incref(file_id)
+                    store.touch(file_id)
+                except Exception:
+                    pass
+        return result
 
     def restore_binary(self, data: T) -> T:
         """
@@ -2420,7 +2437,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if not isinstance(by, _Field):
             raise TypeError(
                 "exp_aggregate_by: ``by`` must be a QB Field "
-                "(e.g. QB[\"source_doc_id\"] for indexed data or "
+                '(e.g. QB["source_doc_id"] for indexed data or '
                 "QB.resource_id() / QB.created_by() for ResourceMeta); "
                 f"got {type(by).__name__}."
             )
@@ -2446,9 +2463,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             a.field for a in self_aggs.values() if isinstance(a, (Sum, Min, Max, Avg))
         ]
         bad = [
-            f.name
-            for f in (by, *agg_field_specs)
-            if not self._is_field_queryable(f)
+            f.name for f in (by, *agg_field_specs) if not self._is_field_queryable(f)
         ]
         if bad:
             from specstar.types import OnUnindexedQuery, UnindexedQueryError
@@ -2598,7 +2613,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             row_kwargs = {n: _finalize(self_aggs[n], state[n]) for n in self_aggs}
             for n, fa in foreign_aggs.items():
                 row_kwargs[n] = foreign_results[n].get(key, _foreign_zero(fa))
-            out.append(GroupRow(key=key, resource=resource_by_key.get(key), **row_kwargs))
+            out.append(
+                GroupRow(key=key, resource=resource_by_key.get(key), **row_kwargs)
+            )
         return out
 
     def _read_field(self, meta: ResourceMeta, field: "object") -> object:
@@ -2841,10 +2858,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id, revision_id, schema_version
         ) as data_io:
             raw = data_io.read()
-        if (
-            self._migration is not None
-            and info.schema_version != self._schema_version
-        ):
+        if self._migration is not None and info.schema_version != self._schema_version:
             # Lazy read-time migration: the row is stored at an older version,
             # so apply the registered migration to present it as the current
             # model. Storage is NOT rewritten — ``info.schema_version`` keeps
@@ -3357,8 +3371,41 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             ResourceIDNotFoundError: If the resource ID does not exist.
         """
         meta = self._get_meta_no_check_is_deleted(resource_id)
+        # Phase-2 ref accounting (issue #370): decref this resource's blobs
+        # before purging its revisions, so blobs that hit zero feed the
+        # incremental GC's candidate set. Best-effort; reconcile is authoritative.
+        self._decref_resource_blobs(resource_id)
         self.storage.purge_resource(resource_id)
         return meta
+
+    def _decref_resource_blobs(self, resource_id: str) -> None:
+        """Best-effort ``decref`` of every blob referenced by *resource_id*'s
+        revisions, once per (revision, file_id).
+
+        ``dump_resource`` yields once per (revision, schema_version), so a
+        migrated revision appears multiple times; we dedupe by ``revision_id``
+        so the decref count matches ``incref`` (which fires once per logical
+        revision write)."""
+        store = self.blob_store
+        if store is None or self._binary_processor._collector is None:
+            return
+        decode = self._data_serializer.decode
+        collect = self._binary_processor.collect_file_ids
+        decremented: dict[str, set[str]] = {}
+        try:
+            for info, data_io in self.storage.dump_resource(resource_id):
+                try:
+                    file_ids = collect(decode(data_io.read()))
+                except Exception:
+                    continue
+                seen = decremented.setdefault(info.revision_id, set())
+                for file_id in file_ids:
+                    if file_id in seen:
+                        continue
+                    seen.add(file_id)
+                    store.decref(file_id)
+        except Exception:
+            pass
 
     @execute_with_events(
         (BeforeDump, AfterDump, OnSuccessDump, OnFailureDump),
@@ -3455,6 +3502,53 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                         )
                 except Exception:
                     pass
+
+    def collect_all_referenced_file_ids(self) -> tuple[set[str], bool]:
+        """Scan every revision of every resource for referenced blob file_ids.
+
+        Returns ``(referenced_file_ids, complete)`` (issue #370):
+
+        * ``referenced_file_ids`` — every blob ``file_id`` referenced by any
+          stored revision (any resource, including soft-deleted ones, any
+          schema version).  This is the authoritative "live" set used by the
+          garbage collector's reconcile pass.
+        * ``complete`` — ``False`` if any revision failed to decode.  When
+          incomplete the caller must **not** treat a missing file_id as proof
+          that a blob is unreferenced (it must skip irreversible deletion),
+          because an un-decodable revision may reference blobs we could not
+          see.
+
+        Returns ``(set(), True)`` when the model has no blob store or no
+        ``Binary`` fields.
+        """
+        if self.blob_store is None or self._binary_processor._collector is None:
+            return set(), True
+        collect = self._binary_processor.collect_file_ids
+        data_decode = self._data_serializer.decode
+        result: set[str] = set()
+        complete = True
+
+        metas_list = list(self.storage.dump_meta(None))
+        rid_set = frozenset(m.resource_id for m in metas_list)
+        bulk = self.storage.dump_resources_bulk(resource_ids=rid_set)
+
+        def _accumulate(raw_data: bytes) -> None:
+            nonlocal complete
+            try:
+                result.update(collect(data_decode(raw_data)))
+            except Exception:
+                complete = False
+
+        if bulk is not None:
+            for meta in metas_list:
+                for _info, raw_data in bulk.get(meta.resource_id, []):
+                    _accumulate(raw_data)
+        else:
+            for meta in metas_list:
+                for _info, data_io in self.storage.dump_resource(meta.resource_id):
+                    _accumulate(data_io.read())
+
+        return result, complete
 
     @execute_with_events(
         (BeforeLoad, AfterLoad, OnSuccessLoad, OnFailureLoad),
