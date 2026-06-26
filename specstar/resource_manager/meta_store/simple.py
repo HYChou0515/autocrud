@@ -16,6 +16,11 @@ from specstar.resource_manager.basic import (
     is_match_query,
 )
 from specstar.types import ResourceMeta
+from specstar.util.fanout import (
+    SHARD_ROOT,
+    iter_legacy_children,
+    sharded_dir,
+)
 from specstar.util.fs_retry import is_transient_fs_error, retry_on_estale
 
 T = TypeVar("T")
@@ -88,39 +93,67 @@ class DiskMetaStore(IFastMetaStore):
         # high-volume batch ingest (the workload most likely to be interrupted).
         self._fsync = fsync
 
-    def _get_path(self, pk: str) -> Path:
-        return self._rootdir / f"{pk}{self._suffix}"
+    def _leaf(self, pk: str) -> str:
+        return f"{pk}{self._suffix}"
+
+    def _write_path(self, pk: str) -> Path:
+        """Sharded path new records for *pk* are written to (#387)."""
+        return sharded_dir(self._rootdir, pk) / self._leaf(pk)
+
+    def _candidate_paths(self, pk: str):
+        """Yield paths to try on read: sharded first, then legacy flat (#387)."""
+        leaf = self._leaf(pk)
+        yield sharded_dir(self._rootdir, pk) / leaf
+        yield self._rootdir / leaf
+
+    def _iter_data_files(self) -> Generator[Path]:
+        """Yield every record file across both layouts, deduped by stem.
+
+        Sharded entries (``_sh/<ab>/<cd>/<pk>.data``) take precedence over a
+        stale legacy twin (``<pk>.data``) should both momentarily exist. The
+        top-level glob matches only legacy files — the ``_sh`` container has no
+        ``.data`` suffix and is not recursed into. See #387.
+        """
+        seen: set[str] = set()
+        for file in self._rootdir.glob(f"{SHARD_ROOT}/*/*/*{self._suffix}"):
+            seen.add(file.stem)
+            yield file
+        for file in self._rootdir.glob(f"*{self._suffix}"):
+            if file.stem not in seen:
+                yield file
 
     def __contains__(self, pk: str):  # ty:ignore[invalid-method-override]
-        path = self._get_path(pk)
-        return path.exists()
+        return any(p.exists() for p in self._candidate_paths(pk))
 
     def __getitem__(self, pk: str) -> ResourceMeta:
-        path = self._get_path(pk)
+        for path in self._candidate_paths(pk):
 
-        def _read() -> bytes:
-            with path.open("rb") as f:
-                return f.read()
+            def _read(p: Path = path) -> bytes:
+                with p.open("rb") as f:
+                    return f.read()
 
-        try:
-            # ESTALE retried inside; ENOENT still maps to KeyError so the
-            # "resource does not exist" contract matches every other meta
-            # store. See #352.
-            raw = retry_on_estale(_read)
-        except FileNotFoundError:
-            raise KeyError(pk) from None
-        return self._serializer.decode(raw)
+            try:
+                # ESTALE retried inside; ENOENT falls through to the next
+                # candidate (sharded -> legacy), and KeyError only if neither
+                # layout has it — matching every other meta store. See #352, #387.
+                raw = retry_on_estale(_read)
+            except FileNotFoundError:
+                continue
+            return self._serializer.decode(raw)
+        raise KeyError(pk)
 
     def __setitem__(self, pk: str, b: ResourceMeta) -> None:
-        path = self._get_path(pk)
+        path = self._write_path(pk)
+        path.parent.mkdir(parents=True, exist_ok=True)
         data = self._serializer.encode(b)
-        # Write to a temp file in the same directory, then atomically rename it
-        # into place. A finalised ``<pk>.data`` therefore always holds a
-        # complete record and acts as the "commit marker": an interrupted write
-        # leaves only the temp file (excluded by the ``*.data`` glob and never
-        # decoded), so it is invisible to the loader instead of crashing boot.
+        # Write to a temp file in the same (shard) directory, then atomically
+        # rename it into place. A finalised ``<pk>.data`` therefore always holds
+        # a complete record and acts as the "commit marker": an interrupted
+        # write leaves only the temp file (excluded by the ``*.data`` glob and
+        # never decoded), so it is invisible to the loader instead of crashing
+        # boot.
         fd, tmp = tempfile.mkstemp(
-            dir=self._rootdir, prefix=f"{pk}.", suffix=".data.tmp"
+            dir=path.parent, prefix=f"{pk}.", suffix=".data.tmp"
         )
         try:
             with os.fdopen(fd, "wb") as f:
@@ -135,24 +168,32 @@ class DiskMetaStore(IFastMetaStore):
             with suppress(FileNotFoundError):
                 os.unlink(tmp)
             raise
+        # Drop any legacy flat twin so the record exists in exactly one place
+        # (write-through migration). See #387.
+        with suppress(FileNotFoundError):
+            (self._rootdir / self._leaf(pk)).unlink()
 
     def __delitem__(self, pk: str) -> None:
-        path = self._get_path(pk)
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            raise KeyError(pk) from None
+        removed = False
+        for path in self._candidate_paths(pk):
+            try:
+                path.unlink()
+                removed = True
+            except FileNotFoundError:
+                continue
+        if not removed:
+            raise KeyError(pk)
 
     def __iter__(self) -> Generator[str]:
-        for file in self._rootdir.glob(f"*{self._suffix}"):
+        for file in self._iter_data_files():
             yield file.stem
 
     def __len__(self) -> int:
-        return len(list(self._rootdir.glob(f"*{self._suffix}")))
+        return sum(1 for _ in self._iter_data_files())
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         results: list[ResourceMeta] = []
-        for file in self._rootdir.glob(f"*{self._suffix}"):
+        for file in self._iter_data_files():
 
             def _read(p: Path = file) -> bytes:
                 with p.open("rb") as f:
@@ -185,3 +226,29 @@ class DiskMetaStore(IFastMetaStore):
         for pk in pks:
             with suppress(FileNotFoundError):
                 del self[pk]
+
+    def migrate_layout(self, *, dry_run: bool = False) -> int:
+        """Relocate pre-#387 flat ``<pk>.data`` records into the sharded tree.
+
+        Walks the legacy flat layout and moves each record into
+        ``_sh/<ab>/<cd>/``. Safe to run on a live store: each move is an
+        atomic ``os.replace`` on the same filesystem and reads fall back to
+        the flat layout until the move lands. Idempotent and re-runnable.
+        Returns the number of records moved (or, when *dry_run*, that would
+        be moved).
+        """
+        moved = 0
+        for child in iter_legacy_children(self._rootdir):
+            if child.is_dir():
+                continue
+            if not child.name.endswith(self._suffix):
+                continue  # skip in-flight ``*.data.tmp`` temp files
+            target = sharded_dir(self._rootdir, child.stem) / child.name
+            if target.exists():
+                continue
+            moved += 1
+            if dry_run:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(child, target)
+        return moved
