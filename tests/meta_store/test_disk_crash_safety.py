@@ -23,6 +23,7 @@ from specstar.resource_manager.core import (
 from specstar.resource_manager.meta_store.simple import DiskMetaStore
 from specstar.resource_manager.resource_store.simple import DiskResourceStore
 from specstar.types import ResourceIDNotFoundError, ResourceMeta
+from specstar.util.fanout import sharded_dir
 
 faker = Faker()
 
@@ -125,7 +126,7 @@ def test_interrupted_create_meta_missing_is_invisible(my_tmpdir: Path):
 
         # Drop only the finalised meta marker, leaving the resource dir behind
         # — exactly the on-disk shape of an aborted create().
-        (meta_dir / f"{rid}.data").unlink()
+        (sharded_dir(meta_dir, rid) / f"{rid}.data").unlink()
 
         with pytest.raises(ResourceIDNotFoundError):
             mgr.get_meta(rid)
@@ -147,7 +148,7 @@ def test_toctou_meta_vanishes_after_exists_check(my_tmpdir: Path, monkeypatch):
 
         # Force the stale "it exists" answer, then make the file truly absent.
         monkeypatch.setattr(mgr.storage, "exists", lambda _rid: True)
-        (meta_dir / f"{rid}.data").unlink()
+        (sharded_dir(meta_dir, rid) / f"{rid}.data").unlink()
 
         with pytest.raises(ResourceIDNotFoundError):
             mgr.get_meta(rid)
@@ -249,10 +250,11 @@ def test_collect_orphans_removes_unreferenced_data(my_tmpdir: Path):
         orphan = _create(mgr, Data(name="drop", age=2))
 
         # Make `orphan` an aborted create: drop its meta, keep data/resource.
-        (meta_dir / f"{orphan.resource_id}.data").unlink()
+        rid = orphan.resource_id
+        (sharded_dir(meta_dir, rid) / f"{rid}.data").unlink()
 
-        orphan_res = res_dir / "resource" / orphan.resource_id
-        orphan_blob = res_dir / "store" / str(orphan.uid)
+        orphan_res = sharded_dir(res_dir / "resource", rid) / rid
+        orphan_blob = sharded_dir(res_dir / "store", str(orphan.uid)) / str(orphan.uid)
         assert orphan_res.exists() and orphan_blob.exists()
 
         removed = mgr.collect_orphans()
@@ -262,7 +264,9 @@ def test_collect_orphans_removes_unreferenced_data(my_tmpdir: Path):
         assert not orphan_blob.exists()
         # The live resource is untouched and still readable.
         assert mgr.get(live.resource_id).data.name == "keep"
-        assert (res_dir / "store" / str(live.uid)).exists()
+        assert (
+            sharded_dir(res_dir / "store", str(live.uid)) / str(live.uid)
+        ).exists()
 
 
 def test_collect_orphans_noop_when_clean(my_tmpdir: Path):
