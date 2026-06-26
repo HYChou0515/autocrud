@@ -44,6 +44,7 @@ from specstar.events import (
     AfterModify,
     AfterPatch,
     AfterPermanentlyDelete,
+    AfterPrune,
     AfterRestore,
     AfterSearchResources,
     AfterSwitch,
@@ -60,6 +61,7 @@ from specstar.events import (
     BeforeModify,
     BeforePatch,
     BeforePermanentlyDelete,
+    BeforePrune,
     BeforeRestore,
     BeforeSearchResources,
     BeforeSwitch,
@@ -78,6 +80,7 @@ from specstar.events import (
     OnFailureModify,
     OnFailurePatch,
     OnFailurePermanentlyDelete,
+    OnFailurePrune,
     OnFailureRestore,
     OnFailureSearchResources,
     OnFailureSwitch,
@@ -94,6 +97,7 @@ from specstar.events import (
     OnSuccessModify,
     OnSuccessPatch,
     OnSuccessPermanentlyDelete,
+    OnSuccessPrune,
     OnSuccessRestore,
     OnSuccessSearchResources,
     OnSuccessSwitch,
@@ -370,6 +374,14 @@ class SimpleStorage(IStorage):
         """
         del self._meta_store[resource_id]
         self._resource_store.purge_resource(resource_id)
+
+    def delete_revisions(self, resource_id: str, revision_ids: list[str]) -> None:
+        """Hard-delete a set of revisions, leaving metadata untouched.
+
+        Delegates to the resource store; the meta store (current revision,
+        ``total_revision_count``) is intentionally not modified.
+        """
+        self._resource_store.delete_revisions(resource_id, revision_ids)
 
     def dump_meta(
         self, resource_ids: frozenset[str] | None = None
@@ -3378,14 +3390,120 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.purge_resource(resource_id)
         return meta
 
-    def _decref_resource_blobs(self, resource_id: str) -> None:
+    @execute_with_events(
+        (BeforePrune, AfterPrune, OnSuccessPrune, OnFailurePrune),
+        "pruned",
+        context_aware=True,
+    )
+    def prune_revisions(
+        self,
+        resource_id: str,
+        *,
+        keep_last_n: int | UnsetType = UNSET,
+        before: dt.datetime | UnsetType = UNSET,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> list[str]:
+        """Prune old revisions of a resource to reclaim storage space.
+
+        See :meth:`IResourceManager.prune_revisions`.  The current revision is
+        always preserved; ``total_revision_count`` is left unchanged (it seeds
+        new revision ids).  Pruned revisions' blobs are ``decref``'d so the
+        #370 garbage collector can reclaim them — no blob is deleted here.
+        """
+        if keep_last_n is UNSET and before is UNSET:
+            raise ValueError(
+                "prune_revisions requires at least one of keep_last_n or before"
+            )
+        if keep_last_n is not UNSET and keep_last_n < 1:
+            raise ValueError("keep_last_n must be >= 1")
+
+        meta = self._get_meta_no_check_is_deleted(resource_id)
+        current = meta.current_revision_id
+
+        # Gather revision info for every revision that has retrievable data.
+        # created_time / parent_revision_id are identical across a revision's
+        # schema versions, so any stored version's info will do.
+        infos: dict[str, RevisionInfo] = {}
+        for rid in self.storage.list_revisions(resource_id):
+            sv = self.storage.find_revision_schema_version(resource_id, rid)
+            if sv is UNSET:
+                continue
+            try:
+                infos[rid] = self.storage.get_resource_revision_info(
+                    resource_id, rid, sv
+                )
+            except (KeyError, FileNotFoundError):
+                continue
+        if len(infos) <= 1:
+            return []
+
+        # Lineage = the current revision's ancestry chain (its "直系"/lineal
+        # revisions). Walk parent_revision_id from current to the root.
+        lineage: set[str] = set()
+        cursor: str | None = current
+        while cursor is not None and cursor in infos and cursor not in lineage:
+            lineage.add(cursor)
+            cursor = infos[cursor].parent_revision_id
+
+        # Sort key: lineal first, then newer first. ``created_time`` is the
+        # primary recency signal; the revision sequence number (the trailing
+        # ``:N`` of the default ``<resource_id>:N`` scheme) is a deterministic
+        # tie-breaker so revisions written at the same ``now`` still order by
+        # authoring sequence — otherwise keep_last_n would be non-deterministic
+        # on batch-created history. The current revision is always lineal and
+        # the newest of its own lineage, so it ranks #1.
+        def _seq(revision_id: str) -> int:
+            tail = revision_id.rsplit(":", 1)[-1]
+            return int(tail) if tail.isdigit() else -1
+
+        ordered = sorted(
+            infos,
+            key=lambda r: (r in lineage, infos[r].created_time, _seq(r)),
+            reverse=True,
+        )
+
+        # Union of the two retention floors (conservative): keep the top
+        # ``keep_last_n`` and/or anything newer than ``before``; the current
+        # revision is always kept (the keep_last_n>=1 floor).
+        kept: set[str] = {current}
+        if keep_last_n is not UNSET:
+            kept.update(ordered[:keep_last_n])
+        if before is not UNSET:
+            kept.update(r for r in infos if infos[r].created_time >= before)
+
+        prune_set = [r for r in ordered if r not in kept]
+
+        # Defensive concurrency guard: re-read the current revision right
+        # before deleting and never prune it — a concurrent switch() could
+        # have made an about-to-be-pruned revision the current one.
+        current_now = self._get_meta_no_check_is_deleted(
+            resource_id
+        ).current_revision_id
+        prune_set = [r for r in prune_set if r != current_now]
+        if not prune_set:
+            return []
+
+        # Keep #370 blob refcounts correct before the data disappears.
+        self._decref_resource_blobs(resource_id, only_revisions=set(prune_set))
+        self.storage.delete_revisions(resource_id, prune_set)
+        return prune_set
+
+    def _decref_resource_blobs(
+        self, resource_id: str, *, only_revisions: "set[str] | None" = None
+    ) -> None:
         """Best-effort ``decref`` of every blob referenced by *resource_id*'s
         revisions, once per (revision, file_id).
 
         ``dump_resource`` yields once per (revision, schema_version), so a
         migrated revision appears multiple times; we dedupe by ``revision_id``
         so the decref count matches ``incref`` (which fires once per logical
-        revision write)."""
+        revision write).
+
+        When *only_revisions* is given, only those revisions are decref'd —
+        used by :meth:`prune_revisions` so pruning a subset of a resource's
+        history keeps the #370 blob refcounts correct (the pruned revisions'
+        ``incref`` would otherwise never be matched and their blobs leak)."""
         store = self.blob_store
         if store is None or self._binary_processor._collector is None:
             return
@@ -3394,6 +3512,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         decremented: dict[str, set[str]] = {}
         try:
             for info, data_io in self.storage.dump_resource(resource_id):
+                if (
+                    only_revisions is not None
+                    and info.revision_id not in only_revisions
+                ):
+                    continue
                 try:
                     file_ids = collect(decode(data_io.read()))
                 except Exception:

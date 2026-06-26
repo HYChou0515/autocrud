@@ -966,6 +966,7 @@ class ResourceAction(Flag):
     load = auto()
     migrate = auto()
     modify = auto()
+    prune = auto()
 
     create_or_update = create | update | modify
 
@@ -1796,6 +1797,59 @@ class IResourceManager(ABC, Generic[T]):
         The resource cannot be restored after this operation.
         This method does NOT require the resource to be soft-deleted first;
         it can permanently delete both active and soft-deleted resources.
+        """
+
+    @abstractmethod
+    def prune_revisions(
+        self,
+        resource_id: str,
+        *,
+        keep_last_n: int | UnsetType = UNSET,
+        before: dt.datetime | UnsetType = UNSET,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> list[str]:
+        """Prune old revisions of a resource to reclaim storage space.
+
+        Hard-deletes historical revisions that are no longer worth keeping
+        while always preserving the resource's current revision.  The set to
+        delete is selected by two optional, composable knobs:
+
+        Args:
+            resource_id (str): the id of the resource whose revisions to prune.
+            keep_last_n: keep the *n* most important revisions and prune the
+                rest.  Importance is ranked by the sort key
+                ``(is_lineal, created_time)`` descending — revisions on the
+                current revision's ancestry chain (``parent_revision_id``) rank
+                above collateral branches, and newer above older.  The current
+                revision is always rank 1, so it is never pruned.  Must be
+                ``>= 1``.
+            before: prune revisions created strictly before this timestamp.
+            user: The user performing the action.
+            now: The current timestamp.
+
+        Returns:
+            list[str]: the revision ids that were pruned (empty when nothing
+                matched).
+
+        Raises:
+            ResourceIDNotFoundError: if resource id does not exist.
+            ValueError: if neither ``keep_last_n`` nor ``before`` is given, or
+                if ``keep_last_n < 1``.
+
+        ---
+
+        When both knobs are given the kept set is their **union** (the
+        conservative choice): a revision is pruned only when it is *both*
+        beyond ``keep_last_n`` *and* older than ``before``.  The current
+        revision is always retained regardless of the knobs.
+
+        Like ``permanently_delete``, this only removes revision payload data
+        (and underlying uid data once no surviving revision references it); it
+        never touches blob-store contents — orphaned blobs are reclaimed
+        separately (see #370).  ``total_revision_count`` is intentionally left
+        unchanged because it seeds new ``revision_id`` values and must stay
+        monotonic.  Works on soft-deleted resources too.
         """
 
     @abstractmethod

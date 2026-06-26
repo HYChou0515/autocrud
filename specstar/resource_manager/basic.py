@@ -1329,6 +1329,32 @@ class IResourceStore(ABC):
             "Override this method to support permanent deletion."
         )
 
+    def delete_revisions(self, resource_id: str, revision_ids: list[str]) -> None:
+        """Hard-delete a specific set of revisions for a resource.
+
+        Removes the listed revisions (all of their schema versions) and the
+        underlying uid payload once no surviving revision still references it
+        — the same reference-counted cleanup ``purge_resource`` performs, but
+        scoped to *revision_ids* instead of the whole resource.  This is the
+        physical primitive behind :meth:`IResourceManager.prune_revisions`.
+
+        Implementations must be idempotent: revision ids that do not exist are
+        silently skipped, so a concurrent prune / delete cannot raise here.
+        Callers are responsible for never asking to delete a resource's
+        current revision; this method does not consult metadata.
+
+        The base implementation raises :exc:`NotImplementedError`.  Storage
+        backends that support revision pruning must override this method.
+
+        Arguments:
+            resource_id (str): The resource whose revisions to delete.
+            revision_ids (list[str]): The revision ids to remove.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement delete_revisions(). "
+            "Override this method to support revision pruning."
+        )
+
 
 class IStorage(ABC):
     """Interface for unified storage management combining metadata and resource data.
@@ -1614,6 +1640,27 @@ class IStorage(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not implement purge_resource(). "
             "Override this method to support permanent deletion."
+        )
+
+    def delete_revisions(self, resource_id: str, revision_ids: list[str]) -> None:
+        """Hard-delete a specific set of revisions for a resource.
+
+        Delegates to the underlying resource store's
+        :meth:`IResourceStore.delete_revisions`.  Unlike ``purge_resource``
+        this leaves the resource metadata untouched (the current revision and
+        ``total_revision_count`` survive); it only removes the listed
+        revisions' payloads.  Idempotent: unknown revision ids are skipped.
+
+        The base implementation raises :exc:`NotImplementedError`.  Storage
+        backends that support revision pruning must override this method.
+
+        Arguments:
+            resource_id (str): The resource whose revisions to delete.
+            revision_ids (list[str]): The revision ids to remove.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement delete_revisions(). "
+            "Override this method to support revision pruning."
         )
 
     @abstractmethod

@@ -63,6 +63,7 @@ class BeforeCreate(
     action: Literal[ResourceAction.create] = ResourceAction.create
     data: T
     status: RevisionStatus | UnsetType = UNSET
+    if_not_exists: bool | UnsetType = UNSET
 
 class AfterCreate(Struct, Generic[T], kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -72,6 +73,7 @@ class AfterCreate(Struct, Generic[T], kw_only=True, tag=True, tag_field="context
     action: Literal[ResourceAction.create] = ResourceAction.create
     data: T
     status: RevisionStatus | UnsetType = UNSET
+    if_not_exists: bool | UnsetType = UNSET
 
 class OnSuccessCreate(
     Struct, Generic[T], kw_only=True, tag=True, tag_field="context_type"
@@ -83,6 +85,7 @@ class OnSuccessCreate(
     action: Literal[ResourceAction.create] = ResourceAction.create
     data: T
     status: RevisionStatus | UnsetType = UNSET
+    if_not_exists: bool | UnsetType = UNSET
     info: RevisionInfo
 
 class OnFailureCreate(
@@ -97,6 +100,7 @@ class OnFailureCreate(
     action: Literal[ResourceAction.create] = ResourceAction.create
     data: T
     status: RevisionStatus | UnsetType = UNSET
+    if_not_exists: bool | UnsetType = UNSET
 
 class BeforeDelete(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["before"] = "before"
@@ -426,6 +430,8 @@ class BeforeModify(
     resource_id: str
     data: T | UnsetType = UNSET
     status: RevisionStatus | UnsetType = UNSET
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
 
 class AfterModify(Struct, Generic[T], kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -436,6 +442,8 @@ class AfterModify(Struct, Generic[T], kw_only=True, tag=True, tag_field="context
     resource_id: str
     data: T | UnsetType = UNSET
     status: RevisionStatus | UnsetType = UNSET
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
 
 class OnSuccessModify(
     Struct, Generic[T], kw_only=True, tag=True, tag_field="context_type"
@@ -448,6 +456,8 @@ class OnSuccessModify(
     resource_id: str
     data: T | UnsetType = UNSET
     status: RevisionStatus | UnsetType = UNSET
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
     revision_info: RevisionInfo
 
 class OnFailureModify(
@@ -463,6 +473,8 @@ class OnFailureModify(
     resource_id: str
     data: T | UnsetType = UNSET
     status: RevisionStatus | UnsetType = UNSET
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
 
 class BeforePatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["before"] = "before"
@@ -472,6 +484,8 @@ class BeforePatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     action: Literal[ResourceAction.patch] = ResourceAction.patch
     resource_id: str
     patch_data: JsonPatch
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
 
 class AfterPatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -481,6 +495,8 @@ class AfterPatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     action: Literal[ResourceAction.patch] = ResourceAction.patch
     resource_id: str
     patch_data: JsonPatch
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
 
 class OnSuccessPatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["on_success"] = "on_success"
@@ -490,6 +506,8 @@ class OnSuccessPatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     action: Literal[ResourceAction.patch] = ResourceAction.patch
     resource_id: str
     patch_data: JsonPatch
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
     revision_info: RevisionInfo
 
 class OnFailurePatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
@@ -502,6 +520,8 @@ class OnFailurePatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     action: Literal[ResourceAction.patch] = ResourceAction.patch
     resource_id: str
     patch_data: JsonPatch
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
 
 class BeforePermanentlyDelete(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["before"] = "before"
@@ -549,6 +569,49 @@ class OnFailurePermanentlyDelete(
         ResourceAction.permanently_delete
     )
     resource_id: str
+
+class BeforePrune(Struct, kw_only=True, tag=True, tag_field="context_type"):
+    phase: Literal["before"] = "before"
+    user: str | UnsetType
+    now: dt.datetime | UnsetType
+    resource_name: str
+    action: Literal[ResourceAction.prune] = ResourceAction.prune
+    resource_id: str
+    keep_last_n: int | UnsetType = UNSET
+    before: dt.datetime | UnsetType = UNSET
+
+class AfterPrune(Struct, kw_only=True, tag=True, tag_field="context_type"):
+    phase: Literal["after"] = "after"
+    user: str | UnsetType
+    now: dt.datetime | UnsetType
+    resource_name: str
+    action: Literal[ResourceAction.prune] = ResourceAction.prune
+    resource_id: str
+    keep_last_n: int | UnsetType = UNSET
+    before: dt.datetime | UnsetType = UNSET
+
+class OnSuccessPrune(Struct, kw_only=True, tag=True, tag_field="context_type"):
+    phase: Literal["on_success"] = "on_success"
+    user: str | UnsetType
+    now: dt.datetime | UnsetType
+    resource_name: str
+    action: Literal[ResourceAction.prune] = ResourceAction.prune
+    resource_id: str
+    keep_last_n: int | UnsetType = UNSET
+    before: dt.datetime | UnsetType = UNSET
+    pruned: list[str]
+
+class OnFailurePrune(Struct, kw_only=True, tag=True, tag_field="context_type"):
+    phase: Literal["on_failure"] = "on_failure"
+    user: str | UnsetType
+    now: dt.datetime | UnsetType
+    resource_name: str
+    error: str
+    stack_trace: str | None = None
+    action: Literal[ResourceAction.prune] = ResourceAction.prune
+    resource_id: str
+    keep_last_n: int | UnsetType = UNSET
+    before: dt.datetime | UnsetType = UNSET
 
 class BeforeRestore(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["before"] = "before"
@@ -674,6 +737,8 @@ class BeforeUpdate(
     resource_id: str
     data: T
     status: RevisionStatus | UnsetType = UNSET
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
 
 class AfterUpdate(Struct, Generic[T], kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -684,6 +749,8 @@ class AfterUpdate(Struct, Generic[T], kw_only=True, tag=True, tag_field="context
     resource_id: str
     data: T
     status: RevisionStatus | UnsetType = UNSET
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
 
 class OnSuccessUpdate(
     Struct, Generic[T], kw_only=True, tag=True, tag_field="context_type"
@@ -696,6 +763,8 @@ class OnSuccessUpdate(
     resource_id: str
     data: T
     status: RevisionStatus | UnsetType = UNSET
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
     revision_info: RevisionInfo
 
 class OnFailureUpdate(
@@ -711,6 +780,8 @@ class OnFailureUpdate(
     resource_id: str
     data: T
     status: RevisionStatus | UnsetType = UNSET
+    expected_revision_id: str | UnsetType = UNSET
+    expected_etag: str | UnsetType = UNSET
 
 # ── Union of every event-context class ───────────────────
 EventContext = (
@@ -762,6 +833,10 @@ EventContext = (
     | AfterPermanentlyDelete
     | OnSuccessPermanentlyDelete
     | OnFailurePermanentlyDelete
+    | BeforePrune
+    | AfterPrune
+    | OnSuccessPrune
+    | OnFailurePrune
     | BeforeRestore
     | AfterRestore
     | OnSuccessRestore
@@ -813,6 +888,8 @@ class SimpleEventHandlerBuilder(Sequence[SimpleEventHandler]):
     def on_success(self, action: ResourceAction) -> Self: ...
     def on_failure(self, action: ResourceAction) -> Self: ...
 
+def do(func: ContextFunc | list[ContextFunc]) -> SimpleEventHandlerBuilder: ...
+
 class StringRefEventHandler(IEventHandler):
     target: str
     phase: str
@@ -826,5 +903,3 @@ class StringRefEventHandler(IEventHandler):
     ) -> None: ...
     def is_supported(self, context: EventContext) -> bool: ...
     def handle_event(self, context: EventContext) -> None: ...
-
-def do(func: ContextFunc | list[ContextFunc]) -> SimpleEventHandlerBuilder: ...
