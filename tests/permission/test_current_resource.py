@@ -65,12 +65,12 @@ def _seed(rm: ResourceManager, user: str = "alice", level: str = "public") -> st
 
 
 def _owner_checker() -> ActionBasedPermissionChecker:
-    # ``read`` (= get/get_meta/...) must be allowed so the internal reads each
-    # write performs aren't denied by the cascade.
+    # No ``read`` mapping needed: since #402 a write authorizes once at its
+    # outermost op, so the nested reads it performs internally are not
+    # re-checked against ``read`` (which would otherwise be denied here).
     return ActionBasedPermissionChecker.from_dict(
         {
             ResourceAction.create: any_user,
-            ResourceAction.read: any_user,
             ResourceAction.update: owner_self,
             ResourceAction.delete: owner_self,
         }
@@ -223,7 +223,6 @@ def _embedded_checker() -> ActionBasedPermissionChecker:
     return ActionBasedPermissionChecker.from_dict(
         {
             ResourceAction.create: any_user,
-            ResourceAction.read: any_user,
             ResourceAction.update: _allow_only_public,
         }
     )
@@ -262,7 +261,6 @@ def test_incoming_vs_stored_data_compare() -> None:
         ActionBasedPermissionChecker.from_dict(
             {
                 ResourceAction.create: any_user,
-                ResourceAction.read: any_user,
                 ResourceAction.update: _level_is_immutable,
             }
         )
@@ -308,7 +306,10 @@ def _owner_lifecycle_checker() -> ActionBasedPermissionChecker:
     return ActionBasedPermissionChecker.from_dict(
         {
             ResourceAction.create: any_user,
-            ResourceAction.read: any_user,  # internal/nested reads (switch's get_meta)
+            # Needed for the *top-level* ``rm.get_meta`` in
+            # test_owner_self_covers_switch (not the nested reads — those are no
+            # longer re-checked since #402).
+            ResourceAction.read: any_user,
             ResourceAction.switch: owner_self,
             ResourceAction.permanently_delete: owner_self,
             ResourceAction.restore: owner_self,
