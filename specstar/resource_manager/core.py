@@ -636,9 +636,12 @@ def execute_with_events(
             func_inputs = dict(bound_args.arguments)
             del func_inputs["self"]
 
+            # ``stack`` always exists so the permission re-entrancy guard (#402)
+            # can be armed even for non-context_aware ops (e.g. ``get``, whose
+            # nested ``get_meta``/``get_resource_revision`` must skip re-checking).
+            stack = ExitStack()
             # ── context_aware: push explicit kwargs into ContextVar ──
             if context_aware:
-                stack = ExitStack()
                 ctx_user = func_inputs.get("user", UNSET)
                 ctx_now = func_inputs.get("now", UNSET)
                 ctx_rid = func_inputs.get("resource_id", UNSET)
@@ -648,8 +651,6 @@ def execute_with_events(
                     stack.enter_context(self.now_ctx.ctx(ctx_now))
                 if ctx_rid is not UNSET:
                     stack.enter_context(self.id_ctx.ctx(ctx_rid))
-            else:
-                stack = None
 
             # Strip context-only kwargs from func_inputs so they don't
             # leak into event contexts as raw UNSET values.  A kwarg is
@@ -664,8 +665,7 @@ def execute_with_events(
                         func_inputs.pop(name, None)
 
             try:
-                if stack is not None:
-                    stack.__enter__()
+                stack.__enter__()
 
                 # Strict mode validation (after ContextVar push)
                 if context_aware and self._strict_operation_context:
@@ -694,6 +694,16 @@ def execute_with_events(
                         else:
                             inputs_[k] = get_from_path(func_inputs, v)
                 before_ctx = contexts.before(**inputs_)
+                # Permission re-entrancy guard (#402): authorize once, at the
+                # outermost operation. The first event-emitting op in this call
+                # stack arms the flag for its whole extent; any nested op (a
+                # patch's internal get/update, a get's internal get_meta, …)
+                # observes it and skips ONLY its permission check — every other
+                # event handler still fires. ``check_permission`` is False for
+                # such nested ops.
+                check_permission = not self._perm_checked_ctx.get()
+                if check_permission:
+                    stack.enter_context(self._perm_checked_ctx.ctx(True))
                 # Read access-scope is a precondition for request-originated
                 # writes: a resource outside the caller's scope is hidden as
                 # not-found (→ 404) *before* the permission checker (→ 403) and
@@ -701,10 +711,13 @@ def execute_with_events(
                 # existence. The remainder then runs unscoped — the resource is
                 # confirmed in-scope, and the operation's own (and nested
                 # get/get_meta) reads must not re-probe.
-                if self._maybe_assert_write_scope(before_ctx) and stack is not None:
+                if self._maybe_assert_write_scope(before_ctx):
                     stack.enter_context(self.apply_scope_ctx.ctx(False))
-                self._maybe_load_current_resource(before_ctx)
-                self._handle_event(before_ctx)
+                # current_resource is loaded solely for the permission check, so
+                # skip the extra storage read when this nested op won't check.
+                if check_permission:
+                    self._maybe_load_current_resource(before_ctx)
+                self._handle_event(before_ctx, check_permission=check_permission)
                 try:
                     result = func(self, *args, **kwargs)
                     built_result = _build_result(result)
@@ -722,8 +735,7 @@ def execute_with_events(
                 finally:
                     self._handle_event(contexts.after(**inputs_))
             finally:
-                if stack is not None:
-                    stack.__exit__(None, None, None)
+                stack.__exit__(None, None, None)
 
         return wrapped
 
@@ -1054,6 +1066,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # read-route templates. Internal reads default to unscoped.
         self._access_scope = access_scope
         self.apply_scope_ctx = Ctx[bool]("apply_scope_ctx", default=False)
+        # Re-entrancy guard for permission checking (issue #402). A single
+        # request-level operation (e.g. ``patch`` → internal ``get`` + ``update``;
+        # ``get`` → internal ``get_meta`` + ``get_resource_revision``) used to run
+        # the permission checker once per nested op. Authorization is now applied
+        # once, at the outermost operation: the first event-emitting op in a call
+        # stack arms this flag for its whole extent, and any nested op observing it
+        # skips ONLY the permission check (every other event handler still fires).
+        # Mirrors ``apply_scope_ctx``'s request-boundary model.
+        self._perm_checked_ctx = Ctx[bool]("perm_checked_ctx", default=False)
         self._resource_type = resource_type
         self.storage = storage
         self.blob_store = blob_store
@@ -1748,8 +1769,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         return info
 
-    def _handle_event(self, context: EventContext) -> None:
+    def _handle_event(
+        self, context: EventContext, *, check_permission: bool = True
+    ) -> None:
+        # ``check_permission=False`` for a nested op's before-context (#402):
+        # the outermost op already authorized this request, so suppress the
+        # permission checker while keeping every other handler (audit,
+        # constraints, on_success, …) running. Non-before contexts never trigger
+        # the permission checker (it is before-phase only), so the flag is a
+        # no-op for them and defaults to True for all other callers.
         for eh in self.event_handlers:
+            if not check_permission and isinstance(eh, PermissionEventHandler):
+                continue
             if eh.is_supported(context):
                 eh.handle_event(context)
 

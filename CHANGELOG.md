@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+
+### Changed
+
+- **Behavior change:** permission is now authorized once per request, at the
+  outermost operation (request-boundary model, matching access-scope). A single
+  PATCH no longer re-runs the permission checker for the internal `get`/`update`
+  it performs, and a single GET no longer re-checks the nested
+  `get_meta`/`get_resource_revision`. Consequence: granting only `patch` is now
+  sufficient — a policy that *denied* `read`/`update` but *allowed* `patch`
+  previously blocked the patch and now lets it through. Express "can't see →
+  can't write" via `access_scope` instead of a deny-read rule. (#402)
+
+
+### Fixed
+
+- Permission checker ran 3× per HTTP PATCH (patch→get→update cascade) (#402)
+
 ## [0.11.11] — 2026-06-27
 
 
