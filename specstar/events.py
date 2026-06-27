@@ -33,6 +33,7 @@ from specstar.types import (
     ResourceMeta,
     RevisionInfo,
     RevisionStatus,
+    SearchedResource,
 )
 
 T = TypeVarExt("T", default=None)
@@ -130,6 +131,19 @@ _on_failure_context: list[_DefstructField] = [
     ("error", str),
     ("stack_trace", str | None, None),
 ]
+
+# Snapshot of the *current* (pre-write) resource, attached to write
+# before-contexts (update/modify/patch/delete) so a permission checker can make
+# data/owner-based decisions on the already-stored resource. The ResourceManager
+# populates only the slices a checker declares via
+# ``IPermissionChecker.required_resource_parts`` (see specstar.permission
+# .ResourcePart); the rest stay UNSET, and it stays UNSET entirely when no
+# checker needs it. Appended only to the ``Before*`` write structs.
+_current_resource_field: _DefstructField = (
+    "current_resource",
+    SearchedResource[T] | UnsetType,
+    UNSET,
+)
 
 # ============================================================================
 # Create Context Classes
@@ -498,6 +512,7 @@ BeforeUpdate = defstruct(
     [
         *_before_context,
         *_update_context,
+        _current_resource_field,
     ],
     kw_only=True,
     tag=True,
@@ -558,6 +573,7 @@ BeforeModify = defstruct(
     [
         *_before_context,
         *_modify_context,
+        _current_resource_field,
     ],
     kw_only=True,
     tag=True,
@@ -617,6 +633,7 @@ BeforePatch = defstruct(
     [
         *_before_context,
         *_patch_context,
+        _current_resource_field,
     ],
     kw_only=True,
     tag=True,
@@ -728,6 +745,7 @@ BeforeDelete = defstruct(
     [
         *_before_context,
         *_delete_context,
+        _current_resource_field,
     ],
     kw_only=True,
     tag=True,

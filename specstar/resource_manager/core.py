@@ -152,7 +152,7 @@ if TYPE_CHECKING:
     from specstar.permission.checker import IPermissionChecker
     from specstar.schema import Schema
 
-from specstar.permission.checker import PermissionResult
+from specstar.permission.checker import PermissionResult, ResourcePart
 from specstar.query import Query
 from specstar.resource_manager.basic import (
     Ctx,
@@ -672,7 +672,9 @@ def execute_with_events(
                             del inputs_[k]
                         else:
                             inputs_[k] = get_from_path(func_inputs, v)
-                self._handle_event(contexts.before(**inputs_))
+                before_ctx = contexts.before(**inputs_)
+                self._maybe_load_current_resource(before_ctx)
+                self._handle_event(before_ctx)
                 try:
                     result = func(self, *args, **kwargs)
                     built_result = _build_result(result)
@@ -1704,6 +1706,65 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return self.storage.get_meta(resource_id)
         except KeyError:
             raise ResourceIDNotFoundError(resource_id) from None
+
+    def _required_resource_parts(
+        self, action: ResourceAction
+    ) -> frozenset[ResourcePart]:
+        """Union of resource slices every registered permission checker needs
+        loaded into ``current_resource`` for a before-phase **write** check of
+        ``action``. Empty when no checker opts in — keeping writes free of any
+        extra read for models without resource-aware ACLs.
+        """
+        parts: frozenset[ResourcePart] = frozenset()
+        for eh in self.event_handlers:
+            if isinstance(eh, PermissionEventHandler):
+                parts |= eh.permission_checker.required_resource_parts(action)
+        return parts
+
+    def _load_current_resource(
+        self, resource_id: str, parts: frozenset[ResourcePart]
+    ) -> SearchedResource:
+        """Assemble a ``SearchedResource`` carrying only ``parts`` of the
+        current (stored) resource.
+
+        Uses NON-event reads (``_get_meta_no_check_is_deleted`` + raw storage)
+        so it never fires a nested before-event / permission check — going
+        through the event-emitting ``get`` / ``get_meta`` would recurse. A
+        missing resource raises ``ResourceIDNotFoundError`` here, i.e. before
+        the write permission verdict, which is the intended behaviour.
+        """
+        current: SearchedResource = SearchedResource()
+        meta = self._get_meta_no_check_is_deleted(resource_id)
+        if ResourcePart.META in parts:
+            current.meta = meta
+        if ResourcePart.INFO in parts:
+            current.info = self.storage.get_resource_revision_info(
+                resource_id, meta.current_revision_id, meta.schema_version
+            )
+        if ResourcePart.DATA in parts:
+            with self.storage.get_data_bytes(
+                resource_id, meta.current_revision_id, meta.schema_version
+            ) as fh:
+                current.data = self._data_serializer.decode(fh.read())
+        return current
+
+    def _maybe_load_current_resource(self, before_ctx: Any) -> None:
+        """Populate ``before_ctx.current_resource`` for a write before-context
+        when a permission checker declares it needs it.
+
+        No-op for every non-write context (only the update/modify/patch/delete
+        ``Before*`` structs carry the field — presence is the gate) and when no
+        registered checker opts in, so the overhead is paid only where an
+        actual resource-aware write ACL is wired.
+        """
+        if not hasattr(before_ctx, "current_resource"):
+            return
+        parts = self._required_resource_parts(before_ctx.action)
+        if not parts:
+            return
+        before_ctx.current_resource = self._load_current_resource(
+            before_ctx.resource_id, parts
+        )
 
     def exists(self, resource_id: str) -> bool:
         """

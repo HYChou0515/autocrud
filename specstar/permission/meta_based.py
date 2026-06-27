@@ -9,6 +9,7 @@ from specstar.permission.checker import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
+    ResourcePart,
 )
 from specstar.types import ResourceAction
 
@@ -29,6 +30,16 @@ class ResourceOwnershipChecker(IPermissionChecker):
         self.resource_manager = resource_manager
         self.allowed_actions = allowed_actions
 
+    def required_resource_parts(
+        self, action: ResourceAction
+    ) -> frozenset[ResourcePart]:
+        """Needs the ``meta`` slice for the write actions it guards, so the
+        ResourceManager preloads it into ``current_resource`` (avoiding the
+        explicit ``get_meta`` round-trip below on writes)."""
+        if action in self.allowed_actions:
+            return frozenset({ResourcePart.META})
+        return frozenset()
+
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """檢查用戶是否為資源擁有者"""
         # 只對特定 action 生效
@@ -41,8 +52,15 @@ class ResourceOwnershipChecker(IPermissionChecker):
             return PermissionResult.not_applicable
 
         try:
-            # 獲取資源元資料
-            meta = self.resource_manager.get_meta(resource_id)
+            # Prefer the pre-loaded write-phase snapshot; fall back to an
+            # explicit read for read-phase / non-write contexts that don't
+            # carry it.
+            meta = UNSET
+            current = getattr(context, "current_resource", UNSET)
+            if current is not UNSET and current is not None:
+                meta = getattr(current, "meta", UNSET)
+            if meta is UNSET or meta is None:
+                meta = self.resource_manager.get_meta(resource_id)
 
             # 檢查創建者
             if meta.created_by == context.user:
