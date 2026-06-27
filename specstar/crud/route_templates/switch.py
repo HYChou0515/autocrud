@@ -76,7 +76,9 @@ class SwitchRevisionRouteTemplate(BaseRouteTemplate):
         ):
             try:
                 normalized = _normalize_revision_id(resource_id, revision_id)
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     meta = resource_manager.switch(resource_id, normalized)
                 return MsgspecResponse(meta)
             except Exception as e:

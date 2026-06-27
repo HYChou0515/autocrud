@@ -27,12 +27,17 @@ from msgspec import Struct
 
 from specstar import QB, UNRESTRICTED, SpecStar
 from specstar.crud.route_templates.dependency_provider import DependencyProvider
+from specstar.permission.action import ActionBasedPermissionChecker
+from specstar.permission.builtins import any_user
+from specstar.permission.checker import PermissionContext, PermissionResult
 from specstar.resource_manager.core import ResourceManager, SimpleStorage
 from specstar.resource_manager.meta_store.simple import MemoryMetaStore
 from specstar.resource_manager.resource_store.simple import MemoryResourceStore
 from specstar.types import (
     IndexableField,
     OnUnindexedQuery,
+    PermissionDeniedError,
+    ResourceAction,
     ResourceIDNotFoundError,
     UnindexedQueryError,
 )
@@ -73,7 +78,11 @@ def _indexed_fields() -> list[IndexableField]:
 # --------------------------------------------------------------------------- #
 # ResourceManager-level (in-memory)
 # --------------------------------------------------------------------------- #
-def _mk_rm(access_scope=scope_for, on_unindexed_query=OnUnindexedQuery.warn):
+def _mk_rm(
+    access_scope=scope_for,
+    on_unindexed_query=OnUnindexedQuery.warn,
+    permission_checker=None,
+):
     storage = SimpleStorage(
         meta_store=MemoryMetaStore(),
         resource_store=MemoryResourceStore(Doc),  # ty:ignore[invalid-argument-type]
@@ -84,6 +93,7 @@ def _mk_rm(access_scope=scope_for, on_unindexed_query=OnUnindexedQuery.warn):
         indexed_fields=_indexed_fields(),
         access_scope=access_scope,
         on_unindexed_query=on_unindexed_query,
+        permission_checker=permission_checker,
     )
 
 
@@ -229,6 +239,114 @@ def test_contains_any_membership_in_memory():
 
 
 # --------------------------------------------------------------------------- #
+# Write access-scope gate (#398 follow-up) — a resource outside the caller's
+# scope is hidden as 404 on writes too, *before* the permission checker runs.
+# access_scope is a necessary precondition for request-originated writes; the
+# permission checker still authorizes the in-scope ones.
+# --------------------------------------------------------------------------- #
+def test_out_of_scope_update_is_404():
+    rm = _mk_rm()
+    ids = _seed(rm)
+    # bob may update his own in-scope doc
+    with rm.using("bob", NOW, apply_access_scope=True) as op:
+        op.update(ids["bob_priv"], Doc(owner="bob", visibility="private"))
+    # ...but carol's private doc is hidden as not-found on write too (not 403/200)
+    with rm.using("bob", NOW, apply_access_scope=True) as op:  # noqa: SIM117
+        with pytest.raises(ResourceIDNotFoundError):
+            op.update(ids["carol_priv"], Doc(owner="carol", visibility="private"))
+
+
+def _deny_update(context: PermissionContext) -> PermissionResult:
+    # No @requires_resource_parts marker → declares no slices, so the
+    # current_resource load does *not* incidentally trigger the scope probe.
+    return PermissionResult.deny
+
+
+def _deny_update_checker() -> ActionBasedPermissionChecker:
+    return ActionBasedPermissionChecker.from_dict(
+        {
+            ResourceAction.create: any_user,
+            ResourceAction.read: any_user,
+            ResourceAction.update: _deny_update,
+        }
+    )
+
+
+def test_out_of_scope_write_404s_before_permission_403():
+    """Scope is evaluated first: an out-of-scope write 404s (existence hidden)
+    before the permission checker can 403 — even when the checker declares no
+    resource parts, so the current_resource load wouldn't incidentally probe."""
+    rm = _mk_rm(permission_checker=_deny_update_checker())
+    ids = _seed(rm)
+    with rm.using("bob", NOW, apply_access_scope=True) as op:  # noqa: SIM117
+        # carol's doc is out of bob's scope → not-found, never the deny verdict
+        with pytest.raises(ResourceIDNotFoundError):
+            op.update(ids["carol_priv"], Doc(owner="carol", visibility="private"))
+
+
+def test_in_scope_write_still_runs_the_checker():
+    """Scope is a precondition, not authorization: an in-scope write still goes
+    through the permission checker (here: deny → 403, not a silent allow)."""
+    rm = _mk_rm(permission_checker=_deny_update_checker())
+    ids = _seed(rm)
+    with rm.using("bob", NOW, apply_access_scope=True) as op:  # noqa: SIM117
+        # bob_priv IS in bob's scope, so the checker runs and denies it
+        with pytest.raises(PermissionDeniedError):
+            op.update(ids["bob_priv"], Doc(owner="bob", visibility="private"))
+
+
+def test_internal_writes_are_never_scoped():
+    """Without ``apply_access_scope=True`` (every internal call), a write of a
+    resource the predicate would hide still succeeds — internal machinery is
+    trusted, exactly like internal reads."""
+    rm = _mk_rm()
+    ids = _seed(rm)
+    with rm.using("bob", NOW) as op:  # no apply_access_scope
+        op.update(ids["carol_priv"], Doc(owner="carol", visibility="private"))
+        op.delete(ids["carol_priv"])  # carol's doc, out of bob's read scope
+
+
+def test_write_unaffected_when_no_access_scope_configured():
+    """A model with no ``access_scope`` pays nothing and behaves exactly as
+    before, even under ``apply_access_scope=True``."""
+    rm = _mk_rm(access_scope=None)
+    ids = _seed(rm)
+    with rm.using("dave", NOW, apply_access_scope=True) as op:
+        op.update(ids["carol_priv"], Doc(owner="carol", visibility="private"))
+
+
+def test_out_of_scope_lifecycle_writes_are_404():
+    """Every request-originated write that targets an existing resource by id
+    is gated, so an out-of-scope caller cannot soft-delete / hard-delete /
+    switch / restore a resource they can't even see."""
+    rm = _mk_rm()
+    ids = _seed(rm)
+    carol = ids["carol_priv"]  # out of bob's scope
+    with rm.using("bob", NOW, apply_access_scope=True) as op:
+        with pytest.raises(ResourceIDNotFoundError):
+            op.delete(carol)
+        with pytest.raises(ResourceIDNotFoundError):
+            op.permanently_delete(carol)
+        with pytest.raises(ResourceIDNotFoundError):
+            op.switch(carol, "any-revision")
+        with pytest.raises(ResourceIDNotFoundError):
+            op.restore(carol)
+
+
+def test_in_scope_restore_after_soft_delete_passes_the_gate():
+    """A soft-deleted but in-scope resource can still be restored under the
+    write gate — the scope probe must not filter out deleted rows, or restore
+    would 404 itself."""
+    rm = _mk_rm()
+    ids = _seed(rm)
+    bob_doc = ids["bob_priv"]
+    with rm.using("bob", NOW, apply_access_scope=True) as op:
+        op.delete(bob_doc)  # soft-delete own (in scope)
+        meta = op.restore(bob_doc)  # restore own — the gate must still allow it
+    assert meta.is_deleted is False
+
+
+# --------------------------------------------------------------------------- #
 # SQLAlchemy meta store (real sqlite) — cross-backend consistency + the
 # previously-missing contains_any operator (#398 / #378).
 # --------------------------------------------------------------------------- #
@@ -367,3 +485,41 @@ def test_http_banned_user_sees_nothing(client: TestClient):
     r = client.get("/doc", headers={"X-User": "banned"})
     assert r.status_code == 200 and r.json() == []
     assert client.get(f"/doc/{pub}", headers={"X-User": "banned"}).status_code == 404
+
+
+def test_http_writes_are_scoped(client: TestClient):
+    """Every request-originated write route opts into access-scope: a caller
+    who can't see a resource gets 404 (existence hidden) on writes too, while
+    the owner can still write their own."""
+    carol_priv = _create(client, "carol", visibility="private")
+    body = {"owner": "carol", "visibility": "private", "readers": []}
+    bob = {"X-User": "bob"}
+    assert client.put(f"/doc/{carol_priv}", json=body, headers=bob).status_code == 404
+    assert client.delete(f"/doc/{carol_priv}", headers=bob).status_code == 404
+    assert (
+        client.delete(f"/doc/{carol_priv}/permanently", headers=bob).status_code == 404
+    )
+    assert client.post(f"/doc/{carol_priv}/restore", headers=bob).status_code == 404
+    # carol (owner, in scope) can update her own doc
+    assert (
+        client.put(
+            f"/doc/{carol_priv}", json=body, headers={"X-User": "carol"}
+        ).status_code
+        == 200
+    )
+
+
+def test_http_batch_delete_only_touches_in_scope_rows(client: TestClient):
+    """A batch delete is bounded by the caller's scope — it cannot reach rows
+    the caller can't even see."""
+    pub = _create(client, "alice", visibility="public")
+    carol_priv = _create(client, "carol", visibility="private")
+    # bob batch-deletes everything he can: only the public row is in scope
+    r = client.request("DELETE", "/doc", headers={"X-User": "bob"})
+    assert r.status_code == 200, r.text
+    deleted = {m["resource_id"] for m in r.json()}
+    assert deleted == {pub}
+    # carol's private row was never touched (still visible & active to carol)
+    assert (
+        client.get(f"/doc/{carol_priv}", headers={"X-User": "carol"}).status_code == 200
+    )

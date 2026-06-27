@@ -51,7 +51,8 @@ def owner_self(context: PermissionContext) -> PermissionResult:
     ``meta.created_by``.
 
     Reads the pre-write ``current_resource`` snapshot the ResourceManager
-    loads for write checks (update/modify/patch/delete) — the
+    loads for write checks (update/modify/patch/delete and the lifecycle verbs
+    switch/permanently_delete/restore) — the
     ``@requires_resource_parts(ResourcePart.META)`` marker is what makes that
     ``meta`` slice available. For actions with no current resource (e.g.
     create, or read contexts that don't carry the snapshot) no owner exists

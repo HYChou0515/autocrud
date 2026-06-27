@@ -139,9 +139,7 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                                 actual_revision_id="exists",
                             ) from exc
                         raise
-                    return MsgspecResponse(
-                        info, headers={"ETag": f'"{info.etag}"'}
-                    )
+                    return MsgspecResponse(info, headers={"ETag": f'"{info.etag}"'})
                 expected_etag, expected_rev_id = _resolve_precondition(
                     expected_revision_id, if_match
                 )
@@ -150,7 +148,9 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                 # ``msgspec.convert`` drops unknown keys.
                 data = msgspec.UNSET if body is None else body
                 if mode == "update":
-                    with resource_manager.using(current_user, current_time):
+                    with resource_manager.using(
+                        current_user, current_time, apply_access_scope=True
+                    ):
                         info = resource_manager.update(  # ty:ignore[invalid-argument-type]
                             resource_id,
                             data,
@@ -158,7 +158,9 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                             expected_etag=expected_etag,
                         )
                 else:  # mode == "modify"
-                    with resource_manager.using(current_user, current_time):
+                    with resource_manager.using(
+                        current_user, current_time, apply_access_scope=True
+                    ):
                         info = resource_manager.modify(
                             resource_id,
                             data,

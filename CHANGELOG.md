@@ -40,7 +40,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 
+### Added
+
+- **Resource-level access control (#398).** A per-model `access_scope`
+  predicate (`user -> ConditionBuilder | None | UNRESTRICTED`) for row-level
+  security. It is ANDed into every request-originated read (`list`/`search`/
+  `count` and all single-resource GET variants) **and** enforced as a
+  precondition for every request-originated write (`update`/`modify`/`patch`/
+  `delete`/`permanently_delete`/`switch`/`restore`, plus the batch
+  delete/restore endpoints). A resource outside the caller's scope is hidden as
+  **404** on both reads and writes — evaluated *before* the permission checker,
+  so existence never leaks via a 403. `None` denies all (fail-closed),
+  `UNRESTRICTED` bypasses, and a predicate over an unindexed field raises rather
+  than silently widening visibility. Internal `ResourceManager` calls stay
+  unscoped; only routes entered with `apply_access_scope=True` are gated. See the
+  [access-scope how-to](docs/en/howto/access-scope.md). (#399, #400)
+- Write-phase permission checks can read the current stored resource via
+  `PermissionContext.current_resource`, gated per action by
+  `IPermissionChecker.required_resource_parts` / `@requires_resource_parts` so a
+  checker pays only for the slices it declares. Available across the full write
+  lifecycle — `update`/`modify`/`patch`/`delete` **and** `switch`/
+  `permanently_delete`/`restore` — so `owner_self` and embedded-field write ACLs
+  work end-to-end. (#398)
+
+
 ### Fixed
+
+- `owner_self` no longer always-denies write actions: it read a `context.meta`
+  that never existed on before-contexts (deny-all). It now reads
+  `current_resource.meta.created_by` and works on the whole write lifecycle.
+  ⚠️ behavior change: a setup that mapped `owner_self` to a write/lifecycle
+  action was effectively deny-all and will now correctly allow the owner. (#398)
 
 - `partition_key` / `idempotency_key` are now honored by **every** message
   queue backend, not just `SimpleMessageQueue` (#384). RabbitMQ and Celery

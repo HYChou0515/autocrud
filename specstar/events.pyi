@@ -536,6 +536,7 @@ class BeforePermanentlyDelete(Struct, kw_only=True, tag=True, tag_field="context
         ResourceAction.permanently_delete
     )
     resource_id: str
+    current_resource: SearchedResource[T] | UnsetType = UNSET
 
 class AfterPermanentlyDelete(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -624,6 +625,7 @@ class BeforeRestore(Struct, kw_only=True, tag=True, tag_field="context_type"):
     resource_name: str
     action: Literal[ResourceAction.restore] = ResourceAction.restore
     resource_id: str
+    current_resource: SearchedResource[T] | UnsetType = UNSET
 
 class AfterRestore(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -699,6 +701,7 @@ class BeforeSwitch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     action: Literal[ResourceAction.switch] = ResourceAction.switch
     resource_id: str
     revision_id: str
+    current_resource: SearchedResource[T] | UnsetType = UNSET
 
 class AfterSwitch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"

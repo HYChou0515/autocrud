@@ -184,6 +184,7 @@ plugins:
                 - howto/api-conventions.md
                 - howto/routes.md
                 - howto/permissions.md
+                - howto/access-scope.md
                 - howto/audit-user.md
                 - howto/event-handlers.md
                 - howto/query-builder.md
