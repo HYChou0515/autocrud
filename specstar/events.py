@@ -690,6 +690,7 @@ BeforeSwitch = defstruct(
     [
         *_before_context,
         *_switch_context,
+        _current_resource_field,
     ],
     kw_only=True,
     tag=True,
@@ -805,6 +806,7 @@ BeforePermanentlyDelete = defstruct(
     [
         *_before_context,
         *_permanently_delete_context,
+        _current_resource_field,
     ],
     kw_only=True,
     tag=True,
@@ -917,6 +919,7 @@ BeforeRestore = defstruct(
     [
         *_before_context,
         *_restore_context,
+        _current_resource_field,
     ],
     kw_only=True,
     tag=True,

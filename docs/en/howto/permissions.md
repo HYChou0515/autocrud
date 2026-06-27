@@ -149,7 +149,8 @@ Use this when you want a convenient starting point and plan to build out the rul
 
 ## Resource-aware write authorization
 
-For write actions (`update`, `modify`, `patch`, `delete`) a checker can read the
+For write actions (`update`, `modify`, `patch`, `delete`, and the lifecycle
+verbs `switch`, `permanently_delete`, `restore`) a checker can read the
 **current, already-stored** resource — its `meta`, `data`, and revision `info` —
 to make data- or owner-based decisions. SpecStar loads that snapshot into
 `context.current_resource` *before* running the before-phase check.
@@ -200,8 +201,11 @@ Notes:
   "this field is immutable" rules.
 - If the resource doesn't exist, the write fails with the usual not-found
   (404) **before** the permission verdict is reached.
-- Reads/lists are out of scope here — filter those with a read access-scope
-  predicate instead.
+- Reads/lists are filtered by an [access-scope predicate](access-scope.md), not
+  this checker. That same predicate is also a **precondition for writes**: a
+  request targeting a resource outside the caller's scope 404s (existence
+  hidden) *before* this checker runs, so `access_scope` (visibility / 404) and
+  the permission checker (authorization / 403) compose.
 
 ---
 

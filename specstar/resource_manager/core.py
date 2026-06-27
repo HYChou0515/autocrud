@@ -587,6 +587,25 @@ def coerce_data_to_resource_type(func):
     return wrapper
 
 
+# Write verbs that target an existing resource by id and are subject to the
+# read access-scope as a *precondition*: a request-originated write of a
+# resource outside the caller's scope is hidden as 404 before the permission
+# checker runs (#398 follow-up). ``create`` is excluded (no existing resource);
+# maintenance verbs (migrate/prune/dump/load) run under a privileged/unscoped
+# context and are intentionally not gated here.
+_SCOPED_WRITE_ACTIONS = frozenset(
+    {
+        ResourceAction.update,
+        ResourceAction.modify,
+        ResourceAction.patch,
+        ResourceAction.delete,
+        ResourceAction.permanently_delete,
+        ResourceAction.switch,
+        ResourceAction.restore,
+    }
+)
+
+
 def execute_with_events(
     contexts: "_Contexts | tuple[Any, Any, Any, Any]",
     result: str | Callable[[Any], dict[str, Any]],
@@ -675,6 +694,15 @@ def execute_with_events(
                         else:
                             inputs_[k] = get_from_path(func_inputs, v)
                 before_ctx = contexts.before(**inputs_)
+                # Read access-scope is a precondition for request-originated
+                # writes: a resource outside the caller's scope is hidden as
+                # not-found (→ 404) *before* the permission checker (→ 403) and
+                # before any current_resource load, so writes never leak
+                # existence. The remainder then runs unscoped — the resource is
+                # confirmed in-scope, and the operation's own (and nested
+                # get/get_meta) reads must not re-probe.
+                if self._maybe_assert_write_scope(before_ctx) and stack is not None:
+                    stack.enter_context(self.apply_scope_ctx.ctx(False))
                 self._maybe_load_current_resource(before_ctx)
                 self._handle_event(before_ctx)
                 try:
@@ -1799,6 +1827,30 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         before_ctx.current_resource = self._load_current_resource(
             before_ctx.resource_id, parts
         )
+
+    def _maybe_assert_write_scope(self, before_ctx: Any) -> bool:
+        """Enforce the read access-scope as a precondition for a
+        request-originated write: a resource outside the caller's scope raises
+        not-found (→ 404) *before* the permission checker runs, so writes never
+        leak existence (uniformly with reads).
+
+        Returns ``True`` when this is a scoped write that was probed — the
+        caller then runs the remainder of the operation unscoped (the resource
+        is confirmed in-scope; its own and nested reads must not re-probe).
+        Returns ``False`` (a no-op) for internal/unscoped writes — every
+        ``ResourceManager`` write that isn't entered via
+        ``using(..., apply_access_scope=True)`` keeps its full pre-#398
+        behaviour, paying nothing.
+        """
+        if not self.apply_scope_ctx.get():
+            return False
+        if getattr(before_ctx, "action", None) not in _SCOPED_WRITE_ACTIONS:
+            return False
+        rid = getattr(before_ctx, "resource_id", UNSET)
+        if rid is UNSET or rid is None:
+            return False
+        self._assert_in_scope(rid)
+        return True
 
     def exists(self, resource_id: str) -> bool:
         """

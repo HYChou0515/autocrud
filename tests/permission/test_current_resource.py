@@ -293,3 +293,55 @@ def test_action_based_aggregates_markers_per_action() -> None:
         {ResourcePart.META}
     )
     assert chk.required_resource_parts(ResourceAction.delete) == frozenset()
+
+
+# ---------------------------------------------------------------------------
+# current_resource reaches the whole lifecycle, not just soft delete. The
+# ``owner`` grouped action (= read | patch | update | modify | lifecycle)
+# advertises switch / permanently_delete / restore as owner-protectable, so a
+# resource-aware checker (owner_self) must get the snapshot there too —
+# otherwise it silently denies even the owner (#398 follow-up).
+# ---------------------------------------------------------------------------
+
+
+def _owner_lifecycle_checker() -> ActionBasedPermissionChecker:
+    return ActionBasedPermissionChecker.from_dict(
+        {
+            ResourceAction.create: any_user,
+            ResourceAction.read: any_user,  # internal/nested reads (switch's get_meta)
+            ResourceAction.switch: owner_self,
+            ResourceAction.permanently_delete: owner_self,
+            ResourceAction.restore: owner_self,
+        }
+    )
+
+
+def test_owner_self_covers_permanently_delete() -> None:
+    rm = make_rm(_owner_lifecycle_checker())
+    rid = _seed(rm, "alice")
+    with pytest.raises(PermissionDeniedError):
+        with rm.using("bob", NOW):
+            rm.permanently_delete(rid)
+    with rm.using("alice", NOW):  # owner is allowed (current_resource.meta available)
+        rm.permanently_delete(rid)
+
+
+def test_owner_self_covers_restore() -> None:
+    rm = make_rm(_owner_lifecycle_checker())
+    rid = _seed(rm, "alice")
+    with pytest.raises(PermissionDeniedError):
+        with rm.using("bob", NOW):
+            rm.restore(rid)
+    with rm.using("alice", NOW):  # owner is allowed
+        rm.restore(rid)
+
+
+def test_owner_self_covers_switch() -> None:
+    rm = make_rm(_owner_lifecycle_checker())
+    rid = _seed(rm, "alice")
+    current = rm.get_meta(rid).current_revision_id  # internal read, unscoped
+    with pytest.raises(PermissionDeniedError):
+        with rm.using("bob", NOW):
+            rm.switch(rid, current)
+    with rm.using("alice", NOW):  # owner is allowed
+        rm.switch(rid, current)

@@ -216,16 +216,16 @@ class PatchRouteTemplate(BaseRouteTemplate):
                     "expected_revision_id": expected_rev_id,
                     "expected_etag": expected_etag,
                 }
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     if flavor == "merge":
                         _guard_merge_patch_body(
                             body, content_type, _struct_owns_resource_id
                         )
                         merge = MergePatch(body)
                         if mode == "update":
-                            info = resource_manager.patch(
-                                resource_id, merge, **cas_kw
-                            )
+                            info = resource_manager.patch(resource_id, merge, **cas_kw)
                         else:  # mode == "modify"
                             info = resource_manager.modify(
                                 resource_id,
@@ -242,9 +242,7 @@ class PatchRouteTemplate(BaseRouteTemplate):
                             reject_resource_id_in_patch(body)
                         patch = JsonPatch(body)
                         if mode == "update":
-                            info = resource_manager.patch(
-                                resource_id, patch, **cas_kw
-                            )
+                            info = resource_manager.patch(resource_id, patch, **cas_kw)
                         else:  # mode == "modify"
                             info = resource_manager.modify(
                                 resource_id,
