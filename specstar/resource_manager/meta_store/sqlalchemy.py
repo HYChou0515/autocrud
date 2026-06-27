@@ -22,6 +22,7 @@ from sqlalchemy import (
     cast,
     create_engine,
     delete,
+    false,
     func,
     literal,
     literal_column,
@@ -1110,6 +1111,18 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                     f"%{value}%"
                 )
             return jsonb_text.contains(str(value))
+        if operator == DataSearchOperator.contains_any:
+            # List set-overlap: the field shares at least one element with the
+            # candidate set. Reuse the per-dialect element-membership predicate
+            # (the same one ``contains`` uses) OR'd across candidates so it
+            # agrees with the in-process backends' ``set(field) & set(value)``
+            # (basic.py) and the raw sqlite3/psycopg meta stores. Previously
+            # unhandled — the condition was silently dropped, a correctness and
+            # access-scope security hole. See #378, #398.
+            vals = list(value) if isinstance(value, (list, tuple, set)) else [value]
+            if not vals:
+                return false()  # empty candidate set matches nothing
+            return or_(*[self._list_contains(field_path, v) for v in vals])
         if operator == DataSearchOperator.starts_with:
             return jsonb_text.startswith(str(value))
         if operator == DataSearchOperator.ends_with:

@@ -64,6 +64,7 @@ from specstar.crud.route_templates.switch import SwitchRevisionRouteTemplate
 from specstar.crud.route_templates.update import UpdateRouteTemplate
 from specstar.descriptor import Descriptor
 from specstar.events import IEventHandler
+from specstar.permission.access_scope import AccessScope
 from specstar.permission.checker import IPermissionChecker
 from specstar.permission.rbac import RBACPermissionChecker
 from specstar.permission.simple import AllowAll
@@ -1244,6 +1245,7 @@ class SpecStar:
         indexed_fields: list[str | tuple[str, type] | IndexableField] | None = None,
         event_handlers: Sequence[IEventHandler] | None = None,
         permission_checker: IPermissionChecker | None = None,
+        access_scope: "AccessScope | None" = None,
         encoding: Encoding | None = None,
         default_status: RevisionStatus | UnsetType = UNSET,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
@@ -1298,6 +1300,16 @@ class SpecStar:
             permission_checker:
                 Per-model permission checker. If `self.permission_checker` is configured globally, it
                 takes precedence; otherwise this checker is used.
+            access_scope:
+                Per-model read access-scope predicate (issue #398). A callable
+                ``user -> ConditionBuilder | None | UNRESTRICTED`` that specstar
+                ANDs into every request-originated read (list/search/count and
+                every single-resource GET variant); out-of-scope resources
+                become ``404`` and list/search rows are filtered at the storage
+                layer. Return ``None`` to deny all reads (fail-closed) or
+                ``UNRESTRICTED`` to skip scoping (e.g. admins). Internal
+                ``ResourceManager`` reads are never scoped. Fields referenced by
+                the predicate must be indexed (`indexed_fields`).
             encoding:
                 Encoding for stored payloads. If `None`, uses `self.default_encoding`.
             default_status:
@@ -1590,6 +1602,7 @@ class SpecStar:
             event_handlers=self.event_handlers
             or _flatten_event_handlers(event_handlers),
             permission_checker=self.permission_checker or permission_checker,
+            access_scope=access_scope,
             encoding=encoding,
             name=model_name,
             validator=cast(

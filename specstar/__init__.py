@@ -18,6 +18,7 @@ from specstar.backend import (
 )
 from specstar.crud.core import LoadStats, SpecStar
 from specstar.env import env
+from specstar.permission.access_scope import UNRESTRICTED
 from specstar.query import QB
 from specstar.refs import string_ref
 from specstar.resource_manager.pydantic_converter import (
@@ -92,6 +93,7 @@ __all__ = [
     "SearchedResource",
     "SetIndex",
     "SpecStar",
+    "UNRESTRICTED",
     "TaskStatus",
     "UndecodableData",
     "Unique",

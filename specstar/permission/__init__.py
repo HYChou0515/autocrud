@@ -1,5 +1,6 @@
 """Public permission API for end-user composition."""
 
+from specstar.permission.access_scope import UNRESTRICTED, AccessScope
 from specstar.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from specstar.permission.action import ActionBasedPermissionChecker
 from specstar.permission.builtins import (
@@ -31,8 +32,10 @@ from specstar.types import ResourceAction
 __all__ = [
     "ACLPermission",
     "ACLPermissionChecker",
+    "AccessScope",
     "ActionBasedPermissionChecker",
     "AllowAll",
+    "UNRESTRICTED",
     "CompositePermissionChecker",
     "ConditionalPermissionChecker",
     "FieldLevelPermissionChecker",

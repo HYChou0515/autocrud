@@ -78,7 +78,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     if raw:
                         fields = raw
 
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     meta = resource_manager.get_meta(
                         resource_id, include_deleted=include_deleted
                     )
@@ -165,7 +167,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     if raw:
                         fields = raw
 
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     info = resource_manager.get_revision_info(
                         resource_id,
                         revision_id or UNSET,
@@ -237,30 +241,35 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                                 "Use only-data, only-meta, or only-revision_info."
                             ),
                         )
-                    meta = resource_manager.get_meta(
-                        resource_id, include_deleted=include_deleted
-                    )
-                    target_revision_id = revision_id or meta.current_revision_id
-                    if section == "data":
-                        bare = resource_manager.get_resource_revision(
-                            resource_id,
-                            target_revision_id,
-                            schema_version=meta.schema_version,
-                        ).data
-                    elif section == "meta":
-                        bare = meta
-                    else:  # revision_info
-                        bare = resource_manager.get_revision_info(
-                            resource_id,
-                            target_revision_id,
-                            schema_version=meta.schema_version,
+                    with resource_manager.using(
+                        current_user, current_time, apply_access_scope=True
+                    ):
+                        meta = resource_manager.get_meta(
+                            resource_id, include_deleted=include_deleted
                         )
-                    return MsgspecResponse(bare)
+                        target_revision_id = revision_id or meta.current_revision_id
+                        if section == "data":
+                            bare = resource_manager.get_resource_revision(
+                                resource_id,
+                                target_revision_id,
+                                schema_version=meta.schema_version,
+                            ).data
+                        elif section == "meta":
+                            bare = meta
+                        else:  # revision_info
+                            bare = resource_manager.get_revision_info(
+                                resource_id,
+                                target_revision_id,
+                                schema_version=meta.schema_version,
+                            )
+                        return MsgspecResponse(bare)
 
                 # Classify partial fields by prefix
                 spec = classify_partial_fields(fields, default_category="data")
 
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     meta = resource_manager.get_meta(
                         resource_id, include_deleted=include_deleted
                     )
@@ -483,7 +492,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 # Classify: unprefixed fields default to info
                 spec = classify_partial_fields(fields, default_category="info")
 
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     meta = resource_manager.get_meta(
                         resource_id, include_deleted=include_deleted
                     )
@@ -669,7 +680,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
         ):
             # 獲取資源和元數據
             try:
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     fields = partial or partial_brackets
                     if fields is None:
                         raw = [
@@ -724,7 +737,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
         ):
             try:
                 # Permission check through get()
-                with resource_manager.using(user=user):
+                with resource_manager.using(user=user, apply_access_scope=True):
                     resource_manager.get(resource_id)
             except Exception as e:
                 raise to_http_exception(e)
