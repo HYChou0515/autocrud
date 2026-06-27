@@ -20,6 +20,7 @@ from specstar.types import ResourceAction as ResourceAction
 from specstar.types import ResourceMeta as ResourceMeta
 from specstar.types import RevisionInfo as RevisionInfo
 from specstar.types import RevisionStatus as RevisionStatus
+from specstar.types import SearchedResource as SearchedResource
 
 T = TypeVarExt("T", default=None)
 
@@ -109,6 +110,7 @@ class BeforeDelete(Struct, kw_only=True, tag=True, tag_field="context_type"):
     resource_name: str
     action: Literal[ResourceAction.delete] = ResourceAction.delete
     resource_id: str
+    current_resource: SearchedResource[T] | UnsetType = UNSET
 
 class AfterDelete(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -432,6 +434,7 @@ class BeforeModify(
     status: RevisionStatus | UnsetType = UNSET
     expected_revision_id: str | UnsetType = UNSET
     expected_etag: str | UnsetType = UNSET
+    current_resource: SearchedResource[T] | UnsetType = UNSET
 
 class AfterModify(Struct, Generic[T], kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -486,6 +489,7 @@ class BeforePatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     patch_data: JsonPatch
     expected_revision_id: str | UnsetType = UNSET
     expected_etag: str | UnsetType = UNSET
+    current_resource: SearchedResource[T] | UnsetType = UNSET
 
 class AfterPatch(Struct, kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"
@@ -739,6 +743,7 @@ class BeforeUpdate(
     status: RevisionStatus | UnsetType = UNSET
     expected_revision_id: str | UnsetType = UNSET
     expected_etag: str | UnsetType = UNSET
+    current_resource: SearchedResource[T] | UnsetType = UNSET
 
 class AfterUpdate(Struct, Generic[T], kw_only=True, tag=True, tag_field="context_type"):
     phase: Literal["after"] = "after"

@@ -14,6 +14,7 @@ from specstar.permission.checker import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
+    ResourcePart,
 )
 from specstar.types import ResourceAction
 
@@ -54,6 +55,19 @@ class ActionBasedPermissionChecker(IPermissionChecker):
                 return result
 
         return PermissionResult.not_applicable
+
+    def required_resource_parts(
+        self, action: ResourceAction
+    ) -> frozenset[ResourcePart]:
+        """Union of the ``@requires_resource_parts`` markers of every CheckFunc
+        registered for ``action``. This is how an action→CheckFunc map declares,
+        per action, which slices of the current resource its checks read."""
+        parts: frozenset[ResourcePart] = frozenset()
+        for a, handlers in self._action_handlers.items():
+            if action in a:  # ty:ignore[unsupported-operator]
+                for h in handlers:
+                    parts |= getattr(h, "_required_resource_parts", frozenset())
+        return parts
 
     @classmethod
     def from_dict(

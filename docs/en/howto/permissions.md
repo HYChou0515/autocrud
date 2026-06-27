@@ -147,6 +147,64 @@ Use this when you want a convenient starting point and plan to build out the rul
 
 ---
 
+## Resource-aware write authorization
+
+For write actions (`update`, `modify`, `patch`, `delete`) a checker can read the
+**current, already-stored** resource — its `meta`, `data`, and revision `info` —
+to make data- or owner-based decisions. SpecStar loads that snapshot into
+`context.current_resource` *before* running the before-phase check.
+
+A checker only pays for what it declares. Use `required_resource_parts(action)`
+(or the `@requires_resource_parts(...)` marker on a `CheckFunc`) to opt in to the
+slices you actually read — an owner check stays a cheap `meta` read and never
+loads the data blob:
+
+```python
+from specstar.permission import (
+    ActionBasedPermissionChecker,
+    ResourcePart,
+    any_authenticated,
+    owner_self,
+    requires_resource_parts,
+)
+from specstar.types import ResourceAction
+
+
+# Built-in: owner_self reads current_resource.meta.created_by.
+# Custom: read an embedded field on the stored data.
+@requires_resource_parts(ResourcePart.DATA)
+def only_if_public(context):
+    current = context.current_resource
+    return (
+        PermissionResult.allow
+        if current.data.visibility == "public"
+        else PermissionResult.deny
+    )
+
+
+checker = ActionBasedPermissionChecker.from_dict(
+    {
+        ResourceAction.read: any_authenticated,  # internal reads writes perform
+        ResourceAction.update: owner_self,       # needs meta → loaded for you
+        ResourceAction.delete: owner_self,
+    }
+)
+```
+
+Notes:
+
+- The snapshot carries only the declared slices; the rest stay `UNSET`. Models
+  with no resource-aware checker pay **no** extra read.
+- On a write, `context.data` is the *incoming* (new) value while
+  `context.current_resource.data` is the *stored* (old) value — handy for
+  "this field is immutable" rules.
+- If the resource doesn't exist, the write fails with the usual not-found
+  (404) **before** the permission verdict is reached.
+- Reads/lists are out of scope here — filter those with a read access-scope
+  predicate instead.
+
+---
+
 ## What actions can be protected
 
 Permission checks are tied to `ResourceAction` values such as:

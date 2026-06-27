@@ -229,6 +229,7 @@ def main() -> None:
     out.append("from specstar.types import ResourceMeta as ResourceMeta")
     out.append("from specstar.types import RevisionInfo as RevisionInfo")
     out.append("from specstar.types import RevisionStatus as RevisionStatus")
+    out.append("from specstar.types import SearchedResource as SearchedResource")
     out.append("")
     out.append('T = TypeVarExt("T", default=None)')
     out.append("")
