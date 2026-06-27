@@ -132,7 +132,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                 query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
 
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     results = resource_manager.list_resources(
                         query,
                         returns=["data"],
@@ -238,7 +240,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                         else:
                             meta_partial.append(f)
 
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     results = resource_manager.list_resources(
                         query,
                         returns=["meta"],
@@ -335,7 +339,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                         else:
                             info_partial.append(f)
 
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     results = resource_manager.list_resources(
                         query,
                         returns=["info"],
@@ -362,7 +368,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                 # Fetch one extra row than requested so we can report whether
                 # more results exist beyond this page without a count query.
                 probe = msgspec.structs.replace(query, limit=query.limit + 1)
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     results = resource_manager.list_resources(
                         probe,
                         returns=returns,
@@ -393,7 +401,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                     count_query = msgspec.structs.replace(
                         query, limit=2**63 - 1, offset=0
                     )
-                    with resource_manager.using(current_user, current_time):
+                    with resource_manager.using(
+                        current_user, current_time, apply_access_scope=True
+                    ):
                         headers["X-Total-Count"] = str(
                             resource_manager.count_resources(count_query)
                         )
@@ -483,7 +493,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                 query = build_query(query_params, request)
                 # count 不應受 limit/offset 影響，移除分頁限制以回傳真實總數
                 query = msgspec.structs.replace(query, limit=2**63 - 1, offset=0)
-                with resource_manager.using(current_user, current_time):
+                with resource_manager.using(
+                    current_user, current_time, apply_access_scope=True
+                ):
                     count = resource_manager.count_resources(query)
                 return count
             except Exception as e:

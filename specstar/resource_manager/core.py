@@ -149,11 +149,13 @@ from specstar.types import (
 )
 
 if TYPE_CHECKING:
+    from specstar.permission.access_scope import AccessScope
     from specstar.permission.checker import IPermissionChecker
     from specstar.schema import Schema
 
+from specstar.permission.access_scope import UNRESTRICTED, _Unrestricted
 from specstar.permission.checker import PermissionResult, ResourcePart
-from specstar.query import Query
+from specstar.query import QB, ConditionBuilder, Query
 from specstar.resource_manager.basic import (
     Ctx,
     Encoding,
@@ -724,7 +726,14 @@ class ResourceOps(Generic[T]):
         forbidden and raises :class:`RuntimeError`.
     """
 
-    __slots__ = ("_mgr", "_user", "_now", "_resource_id", "_active")
+    __slots__ = (
+        "_mgr",
+        "_user",
+        "_now",
+        "_resource_id",
+        "_apply_access_scope",
+        "_active",
+    )
 
     def __init__(
         self,
@@ -732,11 +741,13 @@ class ResourceOps(Generic[T]):
         user: "str | UnsetType",
         now: "dt.datetime | UnsetType",
         resource_id: "str | UnsetType",
+        apply_access_scope: bool = False,
     ) -> None:
         object.__setattr__(self, "_mgr", mgr)
         object.__setattr__(self, "_user", user)
         object.__setattr__(self, "_now", now)
         object.__setattr__(self, "_resource_id", resource_id)
+        object.__setattr__(self, "_apply_access_scope", apply_access_scope)
         object.__setattr__(self, "_active", True)
 
     def _deactivate(self) -> None:
@@ -756,7 +767,10 @@ class ResourceOps(Generic[T]):
                 if not self._active:
                     raise RuntimeError("ResourceOps is no longer active")
                 with self._mgr._apply_context(
-                    self._user, self._now, resource_id=self._resource_id
+                    self._user,
+                    self._now,
+                    resource_id=self._resource_id,
+                    apply_access_scope=self._apply_access_scope,
                 ):
                     return attr(*args, **kwargs)
 
@@ -901,6 +915,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         migration: "IMigration[T] | Schema[T] | None" = None,
         indexed_fields: list[IndexableField] | None = None,
         permission_checker: "IPermissionChecker | None" = None,
+        access_scope: "AccessScope | None" = None,
         name: str | NamingFormat = NamingFormat.SNAKE,
         event_handlers: Sequence[IEventHandler] | None = None,
         encoding: Encoding = Encoding.json,
@@ -1005,6 +1020,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 default_factory=lambda: dt.datetime.now(dt.timezone.utc),
             )
         self.id_ctx = Ctx[str | UnsetType]("id_ctx", default=UNSET)
+        # Per-model read access-scope predicate (issue #398). Only consulted
+        # when ``apply_scope_ctx`` is True — i.e. for request-originated reads
+        # entered via ``using(..., apply_access_scope=True)`` from the generated
+        # read-route templates. Internal reads default to unscoped.
+        self._access_scope = access_scope
+        self.apply_scope_ctx = Ctx[bool]("apply_scope_ctx", default=False)
         self._resource_type = resource_type
         self.storage = storage
         self.blob_store = blob_store
@@ -1449,6 +1470,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         now: dt.datetime | UnsetType = UNSET,
         *,
         resource_id: str | UnsetType = UNSET,
+        apply_access_scope: bool = False,
     ) -> Generator[ResourceOps[T], None, None]:
         """Context manager to provide operation context for write operations.
 
@@ -1487,8 +1509,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 op1.create(data1)  # created_by = "u1"
                 op2.create(data2)  # created_by = "u2"
         """
-        ops = ResourceOps(self, user, now, resource_id)
-        with self._apply_context(user=user, now=now, resource_id=resource_id):
+        ops = ResourceOps(self, user, now, resource_id, apply_access_scope)
+        with self._apply_context(
+            user=user,
+            now=now,
+            resource_id=resource_id,
+            apply_access_scope=apply_access_scope,
+        ):
             try:
                 yield ops
             finally:
@@ -1528,12 +1555,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         now: dt.datetime | UnsetType = UNSET,
         *,
         resource_id: str | UnsetType = UNSET,
+        apply_access_scope: bool = False,
     ):
         """Internal context manager — same as using() but without yielding self."""
         with (
             self.user_ctx.ctx(user) if user is not UNSET else suppress(),
             self.now_ctx.ctx(now) if now is not UNSET else suppress(),
             self.id_ctx.ctx(resource_id) if resource_id is not UNSET else suppress(),
+            self.apply_scope_ctx.ctx(True) if apply_access_scope else suppress(),
         ):
             yield
 
@@ -1697,6 +1726,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 eh.handle_event(context)
 
     def _get_meta_no_check_is_deleted(self, resource_id: str) -> ResourceMeta:
+        # Read access-scope gate: a request-scoped read of a resource outside
+        # the caller's scope is hidden as a 404. No-op for internal reads.
+        # This is the single choke point every single-resource read route leads
+        # with (get_meta, or get()->get_meta), so all GET variants inherit it.
+        self._assert_in_scope(resource_id)
         # Read straight from the store and treat a missing key as not-found.
         # Going through get_meta (rather than an exists()-then-read pair) closes
         # the TOCTOU window where a concurrent purge / interrupted create can
@@ -2051,6 +2085,88 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return msgspec.structs.replace(query, is_deleted=self._default_is_deleted)
         return query
 
+    # ── Read access-scope (issue #398, part A) ───────────────────────────
+    def _resolve_active_scope(
+        self,
+    ) -> "ConditionBuilder | None | _Unrestricted | UnsetType":
+        """Resolve the read access-scope decision for the *current* read.
+
+        Returns ``UNSET`` when scoping is inactive — either no ``access_scope``
+        is registered, or this read did not opt in. Only the generated
+        read-route templates enter ``using(..., apply_access_scope=True)``;
+        every internal ``ResourceManager`` read stays unscoped. Otherwise
+        returns the predicate's result: a :class:`ConditionBuilder` (restrict),
+        ``None`` (deny all, fail-closed), or :data:`UNRESTRICTED` (no limit)."""
+        if self._access_scope is None or not self.apply_scope_ctx.get():
+            return UNSET
+        return self._access_scope(self.user)
+
+    def _validate_scope_fields(self, scope_query: ResourceMetaSearchQuery) -> None:
+        """Strictly reject an access-scope predicate that filters on a field
+        which is neither a ``ResourceMeta`` attribute nor a configured indexed
+        field. Unlike ``_validate_query_fields`` (whose leniency is governed by
+        ``on_unindexed_query``), a scope predicate must **never** silently
+        degrade — a dropped/unmatched condition would widen visibility, a
+        security hole. Always raises on an unknown field."""
+        refs = self._collect_condition_fields(scope_query)
+        if not refs:
+            return
+        valid = self._queryable_field_names()
+        missing = [f for f in dict.fromkeys(refs) if f not in valid]
+        if missing:
+            indexed = sorted(f.index_key or f.field_path for f in self._indexed_fields)
+            raise UnindexedQueryError(missing, indexed)
+
+    def _and_scope_into(
+        self, query: ResourceMetaSearchQuery, scope: "ConditionBuilder"
+    ) -> ResourceMetaSearchQuery:
+        """AND a scope predicate into ``query.conditions`` (list entries are
+        ANDed), after strictly validating the scope's fields."""
+        scope_query = scope.build()
+        if scope_query.conditions is UNSET or not scope_query.conditions:
+            return query  # an empty predicate carries no restriction
+        self._validate_scope_fields(scope_query)
+        existing = list(query.conditions) if query.conditions is not UNSET else []
+        return msgspec.structs.replace(
+            query, conditions=existing + list(scope_query.conditions)
+        )
+
+    @contextmanager
+    def _scoped_read(self, query: ResourceMetaSearchQuery):
+        """For a request-scoped list/count, yield ``(query, deny)`` and clear
+        the scope flag for the duration so nested/downstream reads (events,
+        per-row fetches) run unscoped — scope is applied exactly once, at the
+        outermost read. ``deny`` True → caller returns the empty result without
+        touching storage (the ``None`` deny-all, fail-closed case)."""
+        scope = self._resolve_active_scope()
+        if scope is UNSET or scope is UNRESTRICTED:
+            yield query, False
+            return
+        with self.apply_scope_ctx.ctx(False):
+            if scope is None:
+                yield query, True
+            else:
+                yield self._and_scope_into(query, scope), False
+
+    def _assert_in_scope(self, resource_id: str) -> None:
+        """Enforce the read access-scope for a single-resource read: a resource
+        outside the caller's scope is treated as non-existent
+        (``ResourceIDNotFoundError`` → HTTP 404), hiding its existence
+        uniformly with list/search. No-op for unscoped (internal) reads."""
+        scope = self._resolve_active_scope()
+        if scope is UNSET or scope is UNRESTRICTED:
+            return
+        with self.apply_scope_ctx.ctx(False):
+            if scope is None:
+                raise ResourceIDNotFoundError(resource_id)
+            probe = self._and_scope_into(
+                ResourceMetaSearchQuery(),
+                scope & QB["resource_id"].eq(resource_id),
+            )
+            probe = msgspec.structs.replace(probe, limit=1)
+            if self.storage.count(probe) == 0:
+                raise ResourceIDNotFoundError(resource_id)
+
     def count_resources(
         self, query: "ResourceMetaSearchQuery | Query | None" = None
     ) -> int:
@@ -2069,10 +2185,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             query = ResourceMetaSearchQuery()
         elif isinstance(query, Query):
             query = query.build()
-        query = self._apply_default_is_deleted(query)
-        self._validate_query_fields(query)
-        query = self._resolve_str_query_vectors(query)
-        return self.storage.count(query)
+        with self._scoped_read(query) as (query, deny):
+            if deny:
+                return 0
+            query = self._apply_default_is_deleted(query)
+            self._validate_query_fields(query)
+            query = self._resolve_str_query_vectors(query)
+            return self.storage.count(query)
 
     def _resolve_str_query_vectors(
         self, query: ResourceMetaSearchQuery
@@ -2186,7 +2305,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # (matching how list_resources / iter_all already work).
         if query is None:
             query = ResourceMetaSearchQuery()
-        return self._search_resources(query)
+        elif isinstance(query, Query):
+            query = query.build()
+        with self._scoped_read(query) as (query, deny):
+            if deny:
+                return []
+            return self._search_resources(query)
 
     @execute_with_events(
         (
@@ -2396,24 +2520,33 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         results: list[SearchedResource[T]] = []
         skipped_ids: list[str] = []
 
-        if worker_num <= 1:
-            for meta in metas:
-                item = _fetch_one(meta)
-                if item is not None:
-                    results.append(item)
-                else:
-                    skipped_ids.append(meta.resource_id)
-        else:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=worker_num,
-            ) as executor:
-                futures = {executor.submit(_fetch_one, meta): meta for meta in metas}
-                for future in futures:
-                    item = future.result()
+        # The page rows were already scoped by ``search_resources`` above, so
+        # the per-row data/info fetches must NOT re-apply the access scope —
+        # clear the flag for the fetch phase to keep it from re-probing each row
+        # (a single-resource re-check per row = N+1). The parallel branch runs
+        # in worker threads where ContextVars don't propagate anyway; this makes
+        # the single-threaded branch consistent with it.
+        with self.apply_scope_ctx.ctx(False):
+            if worker_num <= 1:
+                for meta in metas:
+                    item = _fetch_one(meta)
                     if item is not None:
                         results.append(item)
                     else:
-                        skipped_ids.append(futures[future].resource_id)
+                        skipped_ids.append(meta.resource_id)
+            else:
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=worker_num,
+                ) as executor:
+                    futures = {
+                        executor.submit(_fetch_one, meta): meta for meta in metas
+                    }
+                    for future in futures:
+                        item = future.result()
+                        if item is not None:
+                            results.append(item)
+                        else:
+                            skipped_ids.append(futures[future].resource_id)
 
         # A matched resource whose data can't be fetched/decoded is skipped here
         # (defensive — one bad row shouldn't 500 the whole page), but ``count``
@@ -2889,15 +3022,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Returns:
             info (RevisionInfo): The metadata of the revision.
         """
-        if revision_id is UNSET:
-            meta = self.get_meta(resource_id)
-            revision_id = meta.current_revision_id
-            if schema_version is UNSET:
-                schema_version = meta.schema_version
+        # Access-scope gate: this is the one single-resource read route that can
+        # reach storage with an explicit ``revision_id`` *without* leading with
+        # get_meta (``GET /{id}/revision-info?revision_id=...``), so enforce
+        # scope here too. Clear the flag for the rest so the UNSET-branch
+        # get_meta below doesn't re-probe (the resource is already authorized).
+        self._assert_in_scope(resource_id)
+        with self.apply_scope_ctx.ctx(False):
+            if revision_id is UNSET:
+                meta = self.get_meta(resource_id)
+                revision_id = meta.current_revision_id
+                if schema_version is UNSET:
+                    schema_version = meta.schema_version
 
-        return self.storage.get_resource_revision_info(
-            resource_id, revision_id, schema_version=schema_version
-        )
+            return self.storage.get_resource_revision_info(
+                resource_id, revision_id, schema_version=schema_version
+            )
 
     @execute_with_events(
         (
