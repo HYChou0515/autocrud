@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.11] — 2026-06-27
+
+
+### Added
+
+- Prune old revisions to reclaim storage (#377)
+- Per-model read access-scope predicate (#398 part A)
+- Resource-aware write authorization via current_resource (#398)
+- Gate writes by access_scope + lifecycle resource-aware checks (#398)
+
+
+### Documentation
+
+- Document prune_revisions revision pruning (#396)
+
 ## [0.11.10] — 2026-06-26
 
 
