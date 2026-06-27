@@ -14,6 +14,8 @@ from specstar.permission.checker import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
+    ResourcePart,
+    requires_resource_parts,
 )
 from specstar.permission.composite import (
     CompositePermissionChecker,
@@ -47,6 +49,7 @@ __all__ = [
     "RBACPermissionEntry",
     "ResourceAction",
     "ResourceOwnershipChecker",
+    "ResourcePart",
     "RoleMembership",
     "RootOnly",
     "admin_only",
@@ -54,4 +57,5 @@ __all__ = [
     "any_user",
     "deny_all",
     "owner_self",
+    "requires_resource_parts",
 ]

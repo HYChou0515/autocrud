@@ -9,10 +9,14 @@ which the codegen turns into ``specstar.string_ref(...)``.
 
 from __future__ import annotations
 
+from msgspec import UNSET
+
 from specstar.permission.checker import (
     DEFAULT_ROOT_USER,
     PermissionContext,
     PermissionResult,
+    ResourcePart,
+    requires_resource_parts,
 )
 
 
@@ -41,14 +45,23 @@ def deny_all(context: PermissionContext) -> PermissionResult:
     return PermissionResult.deny
 
 
+@requires_resource_parts(ResourcePart.META)
 def owner_self(context: PermissionContext) -> PermissionResult:
-    """Allow when ``context.user`` matches the resource's ``meta.created_by``.
+    """Allow when ``context.user`` matches the current resource's
+    ``meta.created_by``.
 
-    For actions on resources that don't have a meta yet (e.g. create),
-    no owner exists → deny.
+    Reads the pre-write ``current_resource`` snapshot the ResourceManager
+    loads for write checks (update/modify/patch/delete) — the
+    ``@requires_resource_parts(ResourcePart.META)`` marker is what makes that
+    ``meta`` slice available. For actions with no current resource (e.g.
+    create, or read contexts that don't carry the snapshot) no owner exists
+    → deny.
     """
-    meta = getattr(context, "meta", None)
-    if meta is None:
+    current = getattr(context, "current_resource", UNSET)
+    if current is UNSET or current is None:
+        return PermissionResult.deny
+    meta = getattr(current, "meta", UNSET)
+    if meta is UNSET or meta is None:
         return PermissionResult.deny
     created_by = getattr(meta, "created_by", None)
     if created_by is None:

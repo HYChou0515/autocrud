@@ -13,7 +13,9 @@ from specstar.permission.checker import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
+    ResourcePart,
 )
+from specstar.types import ResourceAction
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,16 @@ class CompositePermissionChecker(IPermissionChecker):
         # 所有檢查器都不適用，預設拒絕
         return PermissionResult.not_applicable
 
+    def required_resource_parts(
+        self, action: ResourceAction
+    ) -> frozenset[ResourcePart]:
+        """Union of every child checker's needs — any child that reads the
+        current resource forces it to be loaded for the composite check."""
+        parts: frozenset[ResourcePart] = frozenset()
+        for checker in self.checkers:
+            parts |= checker.required_resource_parts(action)
+        return parts
+
 
 class ConditionalPermissionChecker(IPermissionChecker):
     """條件式權限檢查器 - 基於資源內容的動態權限檢查"""
@@ -69,3 +81,14 @@ class ConditionalPermissionChecker(IPermissionChecker):
                 return result
 
         return PermissionResult.not_applicable
+
+    def required_resource_parts(
+        self, action: ResourceAction
+    ) -> frozenset[ResourcePart]:
+        """Union of the ``@requires_resource_parts`` markers across all
+        conditions (conditions aren't keyed by action, so this is
+        action-independent)."""
+        parts: frozenset[ResourcePart] = frozenset()
+        for condition in self._conditions:
+            parts |= getattr(condition, "_required_resource_parts", frozenset())
+        return parts

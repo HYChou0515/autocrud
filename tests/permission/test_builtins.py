@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
+from msgspec import UNSET
+
 from specstar.permission.builtins import (
     admin_only,
     any_authenticated,
@@ -16,7 +18,11 @@ from specstar.permission.builtins import (
     deny_all,
     owner_self,
 )
-from specstar.permission.checker import DEFAULT_ROOT_USER, PermissionResult
+from specstar.permission.checker import (
+    DEFAULT_ROOT_USER,
+    PermissionResult,
+    ResourcePart,
+)
 
 
 def test_any_authenticated_allows_non_empty_user() -> None:
@@ -57,13 +63,32 @@ def test_deny_all_rejects_everyone() -> None:
     assert deny_all(ctx) is PermissionResult.deny
 
 
+def test_owner_self_declares_meta_requirement() -> None:
+    # The marker is what makes the ResourceManager preload the ``meta`` slice
+    # into ``current_resource`` for write checks.
+    assert owner_self._required_resource_parts == frozenset({ResourcePart.META})
+
+
 def test_owner_self_allows_when_user_matches_created_by() -> None:
-    # owner_self matches against the canonical ``meta.created_by``
-    # field that ResourceManager writes on create.
-    ctx = Mock(user="alice", meta=Mock(created_by="alice"))
+    # owner_self matches against the pre-write ``current_resource.meta
+    # .created_by`` snapshot the ResourceManager loads for write checks.
+    ctx = Mock(user="alice", current_resource=Mock(meta=Mock(created_by="alice")))
     assert owner_self(ctx) is PermissionResult.allow
 
 
 def test_owner_self_denies_when_user_differs() -> None:
-    ctx = Mock(user="bob", meta=Mock(created_by="alice"))
+    ctx = Mock(user="bob", current_resource=Mock(meta=Mock(created_by="alice")))
+    assert owner_self(ctx) is PermissionResult.deny
+
+
+def test_owner_self_denies_without_current_resource() -> None:
+    # No snapshot loaded (e.g. create, or a checker that didn't opt in) → no
+    # owner can be established → deny.
+    ctx = Mock(user="alice", current_resource=UNSET)
+    assert owner_self(ctx) is PermissionResult.deny
+
+
+def test_owner_self_denies_when_meta_slice_absent() -> None:
+    # current_resource present but ``meta`` slice not loaded → deny.
+    ctx = Mock(user="alice", current_resource=Mock(meta=UNSET))
     assert owner_self(ctx) is PermissionResult.deny
