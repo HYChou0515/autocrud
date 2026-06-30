@@ -560,6 +560,9 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                         return
 
                     job.status = TaskStatus.PROCESSING
+                    # Claiming the job is its first proof of life (#404) — the
+                    # HeartbeatThread's first tick is one interval away.
+                    job.last_heartbeat_at = self._initial_heartbeat()
                     with self._rm_using(resource.info.created_by):
                         self.rm.create_or_update(
                             resource_id,

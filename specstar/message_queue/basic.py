@@ -157,6 +157,19 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         """Deprecated: use ``_rm_using`` instead."""
         return self._rm_using(user)
 
+    @staticmethod
+    def _initial_heartbeat() -> dt.datetime:
+        """Proof-of-life stamped on a job at claim time (#404).
+
+        Claiming a job *is* its first heartbeat: a job just moved to PROCESSING
+        has, by definition, just shown life. Without this, ``last_heartbeat_at``
+        stays ``None`` until the HeartbeatThread's first tick — one
+        ``_heartbeat_interval`` away — and :meth:`recover_stale_jobs` treats that
+        ``None`` window as a dead worker, falsely recovering a live,
+        freshly-claimed job. Wall-clock UTC, consistent with HeartbeatThread.
+        """
+        return dt.datetime.now(dt.timezone.utc)
+
     # ------------------------------------------------------------------
     # Enqueue + partition serialization (#384)
     # ------------------------------------------------------------------
