@@ -357,6 +357,36 @@ class TestRecoverStaleJobsWithHeartbeat:
         recovered2 = queue.recover_stale_jobs(heartbeat_timeout_seconds=30)
         assert len(recovered2) == 0
 
+    def test_freshly_claimed_job_not_recovered(self, rm_and_queue):
+        """A job just claimed via pop() — PROCESSING but whose first heartbeat
+        is still one interval away — must NOT be recovered.
+
+        Regression for #404: claiming a job is its first proof of life, so
+        pop() stamps an initial ``last_heartbeat_at``. Without it the
+        ``[0, interval)`` window leaves ``last_heartbeat_at`` None and
+        ``recover_stale_jobs`` mistakes the live, freshly-claimed worker for a
+        dead one and marks it FAILED.
+        """
+        rm, queue = rm_and_queue
+
+        with rm.meta_provide(user="u", now=dt.datetime.now(dt.timezone.utc)):
+            rm.create(Job(payload=Payload(task_name="fresh_claim")))
+
+        # Claim it (sets PROCESSING). The HeartbeatThread has NOT been started,
+        # so this mirrors the real window between claim and the first tick.
+        job_resource = queue.pop()
+        assert job_resource is not None
+        assert job_resource.data.status == TaskStatus.PROCESSING
+        # The claim itself must record a heartbeat — the invariant that fixes #404.
+        assert job_resource.data.last_heartbeat_at is not None
+
+        recovered = queue.recover_stale_jobs(heartbeat_timeout_seconds=30)
+        assert job_resource.info.resource_id not in recovered
+
+        with rm.meta_provide(user="u", now=dt.datetime.now(dt.timezone.utc)):
+            res = rm.get(job_resource.info.resource_id)
+            assert res.data.status == TaskStatus.PROCESSING
+
 
 class TestProcessingAsDraft:
     """Tests that PROCESSING jobs use draft revision for heartbeat compatibility."""

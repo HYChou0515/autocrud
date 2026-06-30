@@ -175,6 +175,9 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 resource = queue.rm.get(resource_id)
                 job = resource.data
                 job.status = TaskStatus.PROCESSING
+                # Claiming the job is its first proof of life (#404) — the
+                # HeartbeatThread's first tick is one interval away.
+                job.last_heartbeat_at = queue._initial_heartbeat()
                 with queue._rm_using(resource.info.created_by):
                     queue.rm.create_or_update(
                         resource_id,

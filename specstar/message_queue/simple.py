@@ -147,6 +147,9 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 # Update status to processing
                 updated_job = resource.data
                 updated_job.status = TaskStatus.PROCESSING
+                # Claiming the job is its first proof of life (#404) — the
+                # HeartbeatThread's first tick is one interval away.
+                updated_job.last_heartbeat_at = self._initial_heartbeat()
 
                 # Update revision as draft so heartbeat can use modify()
                 with self._rm_using(meta.created_by):
