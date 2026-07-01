@@ -2924,6 +2924,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             )
         return out
 
+    #: ResourceMeta datetime attributes eligible for Min/Max push-down. They are
+    #: stored as absolute instants (SQLite REAL epoch / Postgres TIMESTAMP read
+    #: as UTC), so a pushed Min/Max round-trips exactly to the Python-path value.
+    _META_TIME_COLUMNS = frozenset(
+        {"created_time", "updated_time", "rev_created_time", "rev_updated_time"}
+    )
+
     def _declared_data_field_type(self, name: str) -> "type | None":
         """The declared Python type of a data-source indexed field (matched by
         ``index_key or field_path``), or ``None`` when the field is unindexed
@@ -2966,13 +2973,40 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 lambda st, _n=result_name: int(st[_n]),
             )
 
-        # Value reducers + Avg need a data-source field with a declared numeric
-        # type; anything else keeps the Python path.
         op = {Sum: "sum", Min: "min", Max: "max"}.get(type(agg))
         is_avg = isinstance(agg, Avg)
         if op is None and not is_avg:
             return None
         field = agg.field
+
+        # Min/Max over a meta time column (created_time / updated_time / rev_*):
+        # push it as an absolute Unix epoch and rebuild the tz-aware UTC datetime
+        # in Python — SQLite stores those columns as REAL epochs; Postgres
+        # EXTRACTs the epoch (see the store _agg_expr). The float epoch
+        # round-trips to the microsecond, so it equals the Python-path datetime.
+        if (
+            op in ("min", "max")
+            and field.source == "meta"
+            and (field.name in self._META_TIME_COLUMNS)
+        ):
+            return (
+                [
+                    AggSpec(
+                        result_name=result_name,
+                        op=op,
+                        field=AggKeyRef(source="meta", name=field.name),
+                        value_type="datetime",
+                    )
+                ],
+                lambda st, _n=result_name: (
+                    None
+                    if st[_n] is None
+                    else dt.datetime.fromtimestamp(float(st[_n]), dt.timezone.utc)
+                ),
+            )
+
+        # Numeric value reducers + Avg need a data-source field with a declared
+        # numeric type; anything else keeps the Python path.
         ftype = self._declared_data_field_type(field.name)
         if field.source != "data" or ftype not in (int, float):
             return None

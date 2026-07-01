@@ -114,3 +114,21 @@ def test_avg_push_down_returns_float_via_sum_over_count():
     assert result == {"a": 7.5, "b": 2.0}
     assert all(type(v) is float for v in result.values())
     assert spy.walked is False, "Avg did not push down — walked iter_all"
+
+
+def test_datetime_max_over_meta_column_pushes_down_as_aware_utc():
+    mgr = _sqlite_mgr()
+    created = []
+    for bucket, size in [("a", 1), ("a", 2), ("b", 3)]:
+        rev = mgr.create(Item(bucket=bucket, size=size, score=0.0))
+        created.append((bucket, rev.resource_id))
+    expected: dict[str, object] = {}
+    for bucket, rid in created:
+        ut = mgr.get_meta(rid).updated_time
+        expected[bucket] = ut if bucket not in expected else max(expected[bucket], ut)
+    with _IterSpy(mgr) as spy:
+        rows = mgr.exp_aggregate_by(QB["bucket"], {"latest": Max(QB.updated_time())})
+    got = {r.key: r.latest for r in rows}
+    assert got == expected
+    assert all(v.tzinfo is not None for v in got.values()), "must be tz-aware UTC"
+    assert spy.walked is False, "Max(updated_time) did not push down — walked iter_all"

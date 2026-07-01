@@ -222,6 +222,25 @@ class TestAggregateByReducerParity:
         got = {r.key: (r.n, r.total, r.mean) for r in rows}
         assert got == {"a": (2, 16, 8.0), "b": (1, 2, 2.0)}
 
+    def test_datetime_max_over_meta_column_parity(self):
+        from specstar.aggregates import Max
+
+        mgr = self._mgr()
+        created = []
+        for bucket, size in [("a", 1), ("a", 2), ("b", 3)]:
+            rev = mgr.create(Rec(bucket=bucket, size=size, score=0.0))
+            created.append((bucket, rev.resource_id))
+        expected: dict[str, object] = {}
+        for bucket, rid in created:
+            ut = mgr.get_meta(rid).updated_time
+            expected[bucket] = (
+                ut if bucket not in expected else max(expected[bucket], ut)
+            )
+        rows = mgr.exp_aggregate_by(QB["bucket"], {"latest": Max(QB.updated_time())})
+        got = {r.key: r.latest for r in rows}
+        assert got == expected
+        assert all(v.tzinfo is not None for v in got.values()), "tz-aware UTC"
+
 
 @pytest.mark.parametrize("meta_store_type", ["sql3-mem", "postgres"])
 def test_count_groupby_is_pushed_down_not_iterated(meta_store_type):

@@ -861,6 +861,14 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
                 else f"(indexed_data->>'{ref.name}')"
             )
             return f"COUNT({base})"
+        if a.value_type == "datetime":
+            # Reduce a TIMESTAMP meta column and return an absolute Unix epoch:
+            # interpret the naive column AS UTC (writes go through a UTC session —
+            # see _pg_pool) so the ResourceManager rebuilds the same tz-aware UTC
+            # datetime the Python path holds.
+            return (
+                f"EXTRACT(EPOCH FROM {a.op.upper()}(\"{ref.name}\") AT TIME ZONE 'UTC')"
+            )
         if ref.source == "meta":
             base = f'"{ref.name}"'
         else:
