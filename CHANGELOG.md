@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.13] — 2026-07-01
+
+
+### Added
+
+- Push Sum down to IMetaWithAgg stores (Phase 1)
+- Push Min/Max down for numeric fields (Phase 2)
+- Push Avg down via Sum + non-null Count (Phase 3)
+- Push Min/Max over meta datetime columns (Phase 4)
+
 ## [0.11.12] — 2026-06-30
 
 
