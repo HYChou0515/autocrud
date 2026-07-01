@@ -280,6 +280,56 @@ def test_count_groupby_is_pushed_down_not_iterated(meta_store_type):
     )
 
 
+@pytest.mark.parametrize("meta_store_type", ["sql3-mem", "postgres"])
+def test_reducers_are_pushed_down_not_iterated(meta_store_type):
+    """#406 — Sum, Avg (Sum+Count) and datetime Max(updated_time) reach
+    ``aggregate_by`` on a push-down backend rather than walking ``iter_all``
+    (proves Postgres/SQLite take the fast path, not a correct-but-slow
+    fallback)."""
+    from specstar.aggregates import Avg, Max, Sum
+
+    meta_store = get_meta_store(meta_store_type)
+    storage = SimpleStorage(
+        meta_store=meta_store,
+        resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+    )
+    mgr = ResourceManager(
+        Rec,
+        storage=storage,
+        name="rec",
+        default_user="t",
+        indexed_fields=[
+            IndexableField(field_path="bucket", field_type=str),
+            IndexableField(field_path="size", field_type=int),
+        ],
+    )
+    for bucket, size in [("a", 1), ("a", 3), ("b", 5)]:
+        mgr.create(Rec(bucket=bucket, size=size, score=0.0))
+
+    called = False
+    orig_iter_all = mgr.iter_all
+
+    def spy(*a, **k):
+        nonlocal called
+        called = True
+        return orig_iter_all(*a, **k)
+
+    mgr.iter_all = spy
+    rows = mgr.exp_aggregate_by(
+        QB["bucket"],
+        {
+            "total": Sum(QB["size"]),
+            "mean": Avg(QB["size"]),
+            "latest": Max(QB.updated_time()),
+        },
+    )
+
+    assert {r.key: (r.total, r.mean) for r in rows} == {"a": (4, 2.0), "b": (5, 5.0)}
+    assert called is False, (
+        f"exp_aggregate_by walked iter_all on {meta_store_type} — reducers not pushed"
+    )
+
+
 @pytest.fixture
 def my_tmpdir():
     import tempfile
