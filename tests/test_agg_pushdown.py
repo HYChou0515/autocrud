@@ -13,7 +13,7 @@ Python path instead of pushing an incorrect result.
 
 import msgspec
 
-from specstar.aggregates import Sum
+from specstar.aggregates import Max, Min, Sum
 from specstar.query import QB
 from specstar.resource_manager.core import ResourceManager, SimpleStorage
 from specstar.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore
@@ -88,3 +88,18 @@ def test_sum_pushes_down_and_keeps_int_type():
     # Python reduction path.
     assert all(type(v) is int for v in result.values())
     assert spy.walked is False, "Sum did not push down — walked iter_all"
+
+
+def test_min_max_push_down_numeric_and_keep_type():
+    mgr = _sqlite_mgr()
+    _seed(mgr, [("a", 10, 2.5), ("a", 5, 9.0), ("b", 2, 4.0)])
+    with _IterSpy(mgr) as spy:
+        rows = mgr.exp_aggregate_by(
+            QB["bucket"],
+            {"lo": Min(QB["size"]), "hi": Max(QB["score"])},
+        )
+    by_key = {r.key: (r.lo, r.hi) for r in rows}
+    assert by_key == {"a": (5, 9.0), "b": (2, 4.0)}
+    # Min over int stays int, Max over float stays float.
+    assert type(by_key["a"][0]) is int and type(by_key["a"][1]) is float
+    assert spy.walked is False, "Min/Max did not push down — walked iter_all"

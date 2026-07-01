@@ -2943,23 +2943,25 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self-aggregate down to an ``IMetaWithAgg`` store, or ``None`` when it
         must fall back to the Python reduction.
 
-        v1 (#406): ``Count`` (any group), and ``Sum`` over a **data-source**
-        field with a declared numeric (``int``/``float``) type. Everything else
-        — ``Avg`` (decomposed elsewhere), ``str``/undeclared fields, meta
-        columns — returns ``None`` so the caller keeps the Python path."""
-        from specstar.aggregates import Count, Sum
+        v1 (#406): ``Count`` (any group), and ``Sum``/``Min``/``Max`` over a
+        **data-source** field with a declared numeric (``int``/``float``) type.
+        Everything else — ``Avg`` (decomposed elsewhere), ``str``/undeclared
+        fields, meta columns — returns ``None`` so the caller keeps the Python
+        path."""
+        from specstar.aggregates import Count, Max, Min, Sum
         from specstar.query_types import AggKeyRef, AggSpec
 
         if isinstance(agg, Count):
             return AggSpec(result_name=result_name, op="count")
-        if isinstance(agg, Sum):
+        op = {Sum: "sum", Min: "min", Max: "max"}.get(type(agg))
+        if op is not None:
             field = agg.field
             if field.source == "data" and self._declared_data_field_type(
                 field.name
             ) in (int, float):
                 return AggSpec(
                     result_name=result_name,
-                    op="sum",
+                    op=op,  # ty: ignore[invalid-argument-type]
                     field=AggKeyRef(source="data", name=field.name),
                     value_type="numeric",
                 )
@@ -2970,13 +2972,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         reduction would have produced — e.g. a SQL ``SUM`` over an ``int``
         column can come back as ``Decimal`` on Postgres; a numeric field
         declared ``int`` must stay ``int``."""
-        from specstar.aggregates import Count, Sum
+        from specstar.aggregates import Count, Max, Min, Sum
 
         if isinstance(agg, Count):
             return int(value)  # type: ignore[arg-type]
         if value is None:
             return None
-        if isinstance(agg, Sum):
+        if isinstance(agg, (Sum, Min, Max)):
             ftype = self._declared_data_field_type(agg.field.name)
             if ftype is int:
                 return int(value)  # type: ignore[arg-type]
