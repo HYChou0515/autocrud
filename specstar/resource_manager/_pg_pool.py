@@ -38,7 +38,9 @@ _pools: dict[Any, Any] = {}
 _configs: dict[Any, tuple[int, int]] = {}
 
 
-def get_pool(dsn: str, *, minconn: int = DEFAULT_MINCONN, maxconn: int = DEFAULT_MAXCONN):
+def get_pool(
+    dsn: str, *, minconn: int = DEFAULT_MINCONN, maxconn: int = DEFAULT_MAXCONN
+):
     """Return the shared pool for *dsn*, creating it on first use.
 
     The pool is keyed by a normalized DSN so equivalent connection strings
@@ -58,7 +60,14 @@ def get_pool(dsn: str, *, minconn: int = DEFAULT_MINCONN, maxconn: int = DEFAULT
                     f"{(minconn, maxconn)}; use one consistent pool size per DSN"
                 )
             return existing
-        pool = psycopg2.pool.ThreadedConnectionPool(minconn, maxconn, dsn=dsn)
+        # Force every connection's session TimeZone to UTC. SpecStar normalises
+        # all datetimes to tz-aware UTC (see ResourceManager), and the SQL
+        # metastore's naive TIMESTAMP columns then store/read a UTC wall-clock
+        # regardless of the server's default timezone — which keeps time filters
+        # and the datetime Min/Max push-down (#406) coordinate-free.
+        pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn, maxconn, dsn=dsn, options="-c timezone=UTC"
+        )
         _pools[key] = pool
         _configs[key] = (minconn, maxconn)
         return pool

@@ -257,13 +257,23 @@ class AggSpec(Struct, frozen=True):
     """Storage-facing description of one aggregate in a group-by pushdown.
 
     ``op`` is the reducer and ``result_name`` is the caller's label (echoed
-    back per group). v1 ships ``"count"`` only; ``field`` is unused for count
-    and reserved for ``sum``/``min``/``max``/``avg`` when they push down.
+    back per group). ``field`` is unused for ``count`` and required for the
+    value reducers (``sum``/``min``/``max``) — ``avg`` never reaches a store,
+    the ResourceManager decomposes it into pushed ``sum`` + ``count`` and
+    divides in Python (byte-parity with the reference path).
+
+    ``value_type`` tells the store how to shape the SQL for a value reducer:
+    ``"numeric"`` reduces the field as a number (``SUM((… )::numeric)`` /
+    ``SUM(json_extract(…))``); ``"datetime"`` reduces a datetime column /
+    field and returns a Unix-epoch ``float`` (``EXTRACT(EPOCH FROM … AT TIME
+    ZONE 'UTC')`` / the SQLite ``REAL`` epoch), which the ResourceManager
+    turns back into a tz-aware UTC ``datetime``. ``None`` for ``count``.
     """
 
     result_name: str
-    op: Literal["count"]
+    op: Literal["count", "sum", "min", "max"]
     field: AggKeyRef | None = None
+    value_type: Literal["numeric", "datetime"] | None = None
 
 
 __all__ = [
