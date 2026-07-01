@@ -103,7 +103,7 @@ from specstar.events import (
     OnSuccessSwitch,
     OnSuccessUpdate,
 )
-from specstar.query_types import ResourceMetaSearchQuery
+from specstar.query_types import AggSpec, ResourceMetaSearchQuery
 from specstar.resource_manager.partial import (
     classify_partial_fields,
     create_partial_type,
@@ -2844,7 +2844,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 and by.source in ("meta", "data")
                 and isinstance(ms, IMetaWithAgg)
             )
-            store_specs: list[object] = []
+            store_specs: list[AggSpec] = []
             to_state: dict[str, "Callable[[dict[str, object]], object]"] = {}
             if pushable:
                 for n, a in self_aggs.items():
@@ -2856,6 +2856,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     store_specs.extend(specs)
                     to_state[n] = make_state
             if pushable:
+                # ``pushable`` already required ``isinstance(ms, IMetaWithAgg)``;
+                # re-assert so the type checker narrows ``ms`` for aggregate_by.
+                assert isinstance(ms, IMetaWithAgg)
                 from specstar.query_types import AggKeyRef
                 from specstar.query_types import ResourceMetaSearchQuery as _RMSQ
 
@@ -2977,7 +2980,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         is_avg = isinstance(agg, Avg)
         if op is None and not is_avg:
             return None
-        field = agg.field
+        # op is not None or is_avg ⇒ a _FieldAggregate carrying ``.field``.
+        field = agg.field  # ty: ignore[unresolved-attribute]
 
         # Min/Max over a meta time column (created_time / updated_time / rev_*):
         # push it as an absolute Unix epoch and rebuild the tz-aware UTC datetime
@@ -2993,7 +2997,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 [
                     AggSpec(
                         result_name=result_name,
-                        op=op,
+                        op=op,  # ty: ignore[invalid-argument-type]
                         field=AggKeyRef(source="meta", name=field.name),
                         value_type="datetime",
                     )
@@ -3017,7 +3021,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return (
                 [
                     AggSpec(
-                        result_name=result_name, op=op, field=ref, value_type="numeric"
+                        result_name=result_name,
+                        op=op,  # ty: ignore[invalid-argument-type]
+                        field=ref,
+                        value_type="numeric",
                     )
                 ],
                 lambda st, _n=result_name, _c=coerce: (
