@@ -67,9 +67,7 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         # Share one process-global pool per DSN (#380). The pool is owned by
         # the registry for the process lifetime; this store never closes it.
         self._pg_dsn = pg_dsn
-        self._conn_pool = _pg_pool.get_pool(
-            pg_dsn, minconn=minconn, maxconn=maxconn
-        )
+        self._conn_pool = _pg_pool.get_pool(pg_dsn, minconn=minconn, maxconn=maxconn)
         self.table_name = table_name
         # field_path → (indexed_dim, distance) for pgvector columns
         self._vec_columns: dict[str, tuple[int, str]] = {}
@@ -817,17 +815,21 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         :meth:`iter_search`, and NO ``LIMIT``/``OFFSET`` is applied — an
         aggregate spans the whole filtered set.
         """
-        # v1 supports Count only; the ResourceManager's dispatch predicate
-        # guarantees this, so the assert is a defensive guard, not control flow.
-        assert all(a.op == "count" for a in aggregates), (
-            "PostgresMetaStore.aggregate_by v1 supports Count only"
+        # Push-down ops: Count + numeric Sum/Min/Max (Avg is decomposed by the
+        # ResourceManager into Sum+Count and never reaches a store). The RM's
+        # dispatch predicate only sends eligible specs, so the assert is a
+        # defensive guard, not control flow.
+        assert all(a.op in ("count", "sum", "min", "max") for a in aggregates), (
+            "PostgresMetaStore.aggregate_by supports count/sum/min/max"
         )
         if by.source == "meta":
             key_expr = by.name  # a real column
         else:
             key_expr = f"indexed_data->>'{by.name}'"
         where_clause, params = self._build_where(query)
-        select_aggs = ", ".join(f"COUNT(*) AS a{i}" for i in range(len(aggregates)))
+        select_aggs = ", ".join(
+            f"{self._agg_expr(a)} AS a{i}" for i, a in enumerate(aggregates)
+        )
         sql = (
             f"SELECT {key_expr} AS k, {select_aggs} "
             f'FROM "{self.table_name}" {where_clause} GROUP BY {key_expr}'
@@ -838,6 +840,23 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
                 (row[0], {a.result_name: row[i + 1] for i, a in enumerate(aggregates)})
                 for row in cur
             ]
+
+    def _agg_expr(self, a: AggSpec) -> str:
+        """SQL for one aggregate's value (not the GROUP BY key). ``Count``
+        ignores the field; a numeric value reducer reads a ``resource_meta``
+        column (``source="meta"``) or casts the JSONB text
+        ``(indexed_data->>'f')::numeric`` (``source="data"``) so ``SUM``/``MIN``/
+        ``MAX`` reduce as numbers (the ResourceManager coerces the result back to
+        the field's declared ``int``/``float``)."""
+        if a.op == "count":
+            return "COUNT(*)"
+        ref = a.field
+        assert ref is not None, "value reducer requires a field"
+        if ref.source == "meta":
+            base = f'"{ref.name}"'
+        else:
+            base = f"(indexed_data->>'{ref.name}')::numeric"
+        return f"{a.op.upper()}({base})"
 
     def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 PostgreSQL 查詢條件 (支援 Meta 欄位與 JSONB 欄位)"""

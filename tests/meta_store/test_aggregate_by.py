@@ -126,6 +126,69 @@ class TestAggregateByCountParity:
         assert [(r.key, r.count) for r in rows] == [(None, 3)]
 
 
+class Rec(msgspec.Struct):
+    bucket: str
+    size: int
+    score: float
+
+
+@pytest.mark.parametrize("meta_store_type", ALL_META_STORE_TYPES)
+class TestAggregateByReducerParity:
+    """#406 — Sum/Min/Max/Avg (+ datetime Min/Max) must return IDENTICAL
+    results and Python types on every backend, whether the reducer pushes down
+    (SQLite / Postgres) or falls back to the core Python reduction."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, meta_store_type, my_tmpdir):
+        self._meta_store_type = meta_store_type
+        self._tmpdir = my_tmpdir
+        yield
+
+    def _mgr(self):
+        from specstar.types import IndexableField
+
+        meta_store = get_meta_store(self._meta_store_type, tmpdir=self._tmpdir)
+        storage = SimpleStorage(
+            meta_store=meta_store,
+            resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+        )
+        return ResourceManager(
+            Rec,
+            storage=storage,
+            name="rec",
+            default_user="t",
+            indexed_fields=[
+                IndexableField(field_path="bucket", field_type=str),
+                IndexableField(field_path="size", field_type=int),
+                IndexableField(field_path="score", field_type=float),
+            ],
+        )
+
+    def _seed(self, mgr, rows):
+        for bucket, size, score in rows:
+            mgr.create(Rec(bucket=bucket, size=size, score=score))
+
+    def test_sum_int_field_parity_and_type(self):
+        from specstar.aggregates import Sum
+
+        mgr = self._mgr()
+        self._seed(mgr, [("a", 10, 1.5), ("a", 5, 2.5), ("b", 2, 4.0)])
+        rows = mgr.exp_aggregate_by(QB["bucket"], {"total": Sum(QB["size"])})
+        result = {r.key: r.total for r in rows}
+        assert result == {"a": 15, "b": 2}
+        assert all(type(v) is int for v in result.values())
+
+    def test_sum_float_field_parity_and_type(self):
+        from specstar.aggregates import Sum
+
+        mgr = self._mgr()
+        self._seed(mgr, [("a", 10, 1.5), ("a", 5, 2.5), ("b", 2, 4.0)])
+        rows = mgr.exp_aggregate_by(QB["bucket"], {"total": Sum(QB["score"])})
+        result = {r.key: r.total for r in rows}
+        assert result == {"a": 4.0, "b": 4.0}
+        assert all(type(v) is float for v in result.values())
+
+
 @pytest.mark.parametrize("meta_store_type", ["sql3-mem", "postgres"])
 def test_count_groupby_is_pushed_down_not_iterated(meta_store_type):
     """On a push-down backend (``IMetaWithAgg``) the Count group-by must reach

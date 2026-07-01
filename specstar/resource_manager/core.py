@@ -2835,14 +2835,26 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             # Python path below; a pushed result MUST equal it (enforced
             # cross-backend by tests/meta_store/test_aggregate_by.py).
             ms = self.storage.meta_store
+            pushed_specs: list[object] | None = None
             if (
                 self_aggs
                 and not foreign_aggs
                 and by.source in ("meta", "data")
-                and all(isinstance(a, Count) for a in self_aggs.values())
                 and isinstance(ms, IMetaWithAgg)
             ):
-                from specstar.query_types import AggKeyRef, AggSpec
+                specs: list[object] | None = []
+                for n, a in self_aggs.items():
+                    spec = self._agg_pushdown_spec(n, a)
+                    if spec is None:
+                        # An ineligible aggregate (Avg / str / undeclared field)
+                        # drops the WHOLE call to the Python path — never push a
+                        # partial or type-mismatched result.
+                        specs = None
+                        break
+                    specs.append(spec)
+                pushed_specs = specs
+            if pushed_specs is not None:
+                from specstar.query_types import AggKeyRef
                 from specstar.query_types import ResourceMetaSearchQuery as _RMSQ
 
                 if query is None:
@@ -2858,9 +2870,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     AggKeyRef(
                         source=cast(Literal["meta", "data"], by.source), name=by.name
                     ),
-                    [AggSpec(result_name=n, op="count") for n in self_aggs],
+                    pushed_specs,
                 )
-                groups = {key: dict(state) for key, state in rows}
+                groups = {
+                    key: {
+                        n: self._coerce_pushed_value(self_aggs[n], state[n])
+                        for n in self_aggs
+                    }
+                    for key, state in rows
+                }
             else:
                 for meta in self.iter_all(query):
                     key = self._read_field(meta, by)
@@ -2906,6 +2924,65 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 GroupRow(key=key, resource=resource_by_key.get(key), **row_kwargs)
             )
         return out
+
+    def _declared_data_field_type(self, name: str) -> "type | None":
+        """The declared Python type of a data-source indexed field (matched by
+        ``index_key or field_path``), or ``None`` when the field is unindexed
+        or was registered without a concrete ``field_type`` (``field_type`` may
+        be ``UNSET`` or a ``SpecialIndex``). Used to decide push-down
+        eligibility for value reducers and to coerce a pushed result back to the
+        exact type the Python reduction produces."""
+        for f in self._indexed_fields:
+            if (f.index_key or f.field_path) == name:
+                ft = f.field_type
+                return ft if isinstance(ft, type) else None
+        return None
+
+    def _agg_pushdown_spec(self, result_name: str, agg: "object") -> "object | None":
+        """The :class:`~specstar.query_types.AggSpec` to push this
+        self-aggregate down to an ``IMetaWithAgg`` store, or ``None`` when it
+        must fall back to the Python reduction.
+
+        v1 (#406): ``Count`` (any group), and ``Sum`` over a **data-source**
+        field with a declared numeric (``int``/``float``) type. Everything else
+        — ``Avg`` (decomposed elsewhere), ``str``/undeclared fields, meta
+        columns — returns ``None`` so the caller keeps the Python path."""
+        from specstar.aggregates import Count, Sum
+        from specstar.query_types import AggKeyRef, AggSpec
+
+        if isinstance(agg, Count):
+            return AggSpec(result_name=result_name, op="count")
+        if isinstance(agg, Sum):
+            field = agg.field
+            if field.source == "data" and self._declared_data_field_type(
+                field.name
+            ) in (int, float):
+                return AggSpec(
+                    result_name=result_name,
+                    op="sum",
+                    field=AggKeyRef(source="data", name=field.name),
+                    value_type="numeric",
+                )
+        return None
+
+    def _coerce_pushed_value(self, agg: "object", value: "object") -> "object":
+        """Coerce a store-returned aggregate value to the type the Python
+        reduction would have produced — e.g. a SQL ``SUM`` over an ``int``
+        column can come back as ``Decimal`` on Postgres; a numeric field
+        declared ``int`` must stay ``int``."""
+        from specstar.aggregates import Count, Sum
+
+        if isinstance(agg, Count):
+            return int(value)  # type: ignore[arg-type]
+        if value is None:
+            return None
+        if isinstance(agg, Sum):
+            ftype = self._declared_data_field_type(agg.field.name)
+            if ftype is int:
+                return int(value)  # type: ignore[arg-type]
+            if ftype is float:
+                return float(value)  # type: ignore[arg-type]
+        return value
 
     def _read_field(self, meta: ResourceMeta, field: "object") -> object:
         """Read a ``Field``'s value from a meta, honouring ``Field.source``.

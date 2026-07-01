@@ -415,17 +415,21 @@ class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
         :meth:`iter_search`, and NO ``LIMIT``/``OFFSET`` is applied — an
         aggregate spans the whole filtered set.
         """
-        # v1 supports Count only; the ResourceManager's dispatch predicate
-        # guarantees this, so the assert is a defensive guard, not control flow.
-        assert all(a.op == "count" for a in aggregates), (
-            "SqliteMetaStore.aggregate_by v1 supports Count only"
+        # Push-down ops: Count + numeric Sum/Min/Max (Avg is decomposed by the
+        # ResourceManager into Sum+Count and never reaches a store). The RM's
+        # dispatch predicate only sends eligible specs, so the assert is a
+        # defensive guard, not control flow.
+        assert all(a.op in ("count", "sum", "min", "max") for a in aggregates), (
+            "SqliteMetaStore.aggregate_by supports count/sum/min/max"
         )
         if by.source == "meta":
             key_expr = by.name  # a real resource_meta column
         else:
             key_expr = f"json_extract(indexed_data, '$.\"{by.name}\"')"
         where_clause, params = self._build_where(query)
-        select_aggs = ", ".join(f"COUNT(*) AS a{i}" for i in range(len(aggregates)))
+        select_aggs = ", ".join(
+            f"{self._agg_expr(a)} AS a{i}" for i, a in enumerate(aggregates)
+        )
         sql = (
             f"SELECT {key_expr} AS k, {select_aggs} "
             f"FROM resource_meta {where_clause} GROUP BY {key_expr}"
@@ -435,6 +439,24 @@ class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
             (row[0], {a.result_name: row[i + 1] for i, a in enumerate(aggregates)})
             for row in cursor
         ]
+
+    def _agg_expr(self, a: AggSpec) -> str:
+        """SQL for one aggregate's value (not the GROUP BY key). ``Count``
+        ignores the field; a value reducer reads a ``resource_meta`` column
+        (``source="meta"``) or ``json_extract(indexed_data, …)``
+        (``source="data"``). The time columns are stored as ``REAL`` Unix
+        epochs, so ``MIN``/``MAX`` over a ``value_type="datetime"`` meta column
+        already yield an epoch the ResourceManager turns back into a UTC
+        datetime — no special expression needed on SQLite."""
+        if a.op == "count":
+            return "COUNT(*)"
+        ref = a.field
+        assert ref is not None, "value reducer requires a field"
+        if ref.source == "meta":
+            val = ref.name
+        else:
+            val = f"json_extract(indexed_data, '$.\"{ref.name}\"')"
+        return f"{a.op.upper()}({val})"
 
     def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 SQLite 查詢條件 (支援 Meta 欄位與 JSON 欄位)"""

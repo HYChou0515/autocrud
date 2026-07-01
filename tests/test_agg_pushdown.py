@@ -1,0 +1,90 @@
+"""Push-down of Sum/Min/Max/Avg (and datetime Min/Max) to an ``IMetaWithAgg``
+metastore — the #406 continuation of the Count-only push-down (#361).
+
+Service-free: uses an in-memory SQLite metastore (``MemorySqliteMetaStore``),
+which implements ``IMetaWithAgg``, so these run in the fast CI job (the
+``tests/meta_store/`` folder is integration-only and excluded there). The
+cross-backend parity contract — including real Postgres — lives in
+``tests/meta_store/test_aggregate_by.py``; here we assert (a) the reducer
+push-down is actually TAKEN (spying on ``iter_all``), (b) results + Python
+types match the reference path, and (c) ineligible aggregates fall BACK to the
+Python path instead of pushing an incorrect result.
+"""
+
+import msgspec
+
+from specstar.aggregates import Sum
+from specstar.query import QB
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import IndexableField
+
+
+class Item(msgspec.Struct):
+    bucket: str
+    size: int
+    score: float
+
+
+def _mgr(meta_store, *, indexed):
+    storage = SimpleStorage(
+        meta_store=meta_store,
+        resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+    )
+    return ResourceManager(
+        Item,
+        storage=storage,
+        name="item",
+        default_user="t",
+        indexed_fields=indexed,
+    )
+
+
+def _sqlite_mgr(*, indexed=None):
+    if indexed is None:
+        indexed = [
+            IndexableField(field_path="bucket", field_type=str),
+            IndexableField(field_path="size", field_type=int),
+            IndexableField(field_path="score", field_type=float),
+        ]
+    return _mgr(MemorySqliteMetaStore(encoding="msgpack"), indexed=indexed)
+
+
+def _seed(mgr, rows):
+    for bucket, size, score in rows:
+        mgr.create(Item(bucket=bucket, size=size, score=score))
+
+
+class _IterSpy:
+    """Wrap a manager's ``iter_all`` to record whether the Python reduction
+    path was walked (i.e. the push-down was NOT taken)."""
+
+    def __init__(self, mgr):
+        self.mgr = mgr
+        self.walked = False
+        self._orig = mgr.iter_all
+
+    def __enter__(self):
+        def spy(*a, **k):
+            self.walked = True
+            return self._orig(*a, **k)
+
+        self.mgr.iter_all = spy
+        return self
+
+    def __exit__(self, *exc):
+        self.mgr.iter_all = self._orig
+
+
+def test_sum_pushes_down_and_keeps_int_type():
+    mgr = _sqlite_mgr()
+    _seed(mgr, [("a", 10, 1.0), ("a", 5, 1.0), ("b", 2, 1.0)])
+    with _IterSpy(mgr) as spy:
+        rows = mgr.exp_aggregate_by(QB["bucket"], {"total": Sum(QB["size"])})
+    result = {r.key: r.total for r in rows}
+    assert result == {"a": 15, "b": 2}
+    # Sum over an int field stays int (not Decimal/float) — parity with the
+    # Python reduction path.
+    assert all(type(v) is int for v in result.values())
+    assert spy.walked is False, "Sum did not push down — walked iter_all"
