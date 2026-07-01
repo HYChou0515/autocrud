@@ -2829,31 +2829,33 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     )
                     state[n] = _update(a, state[n], val)
         else:
-            # Push a pure-``Count`` group-by down to the metastore engine when
-            # it advertises the capability (typed ``isinstance``, not
-            # ``hasattr``). Sum/Min/Max/Avg and ForeignAggregate stay on the
-            # Python path below; a pushed result MUST equal it (enforced
+            # Push the group-by down to the metastore engine when it advertises
+            # the capability (typed ``isinstance``, not ``hasattr``) AND every
+            # self-aggregate is push-eligible. Each aggregate contributes a
+            # push-down *plan* (store AggSpecs + a finalizer); an ineligible one
+            # (str/undeclared field, …) drops the WHOLE call to the Python path
+            # below so a partial/type-mismatched result is never pushed. A
+            # pushed result MUST equal the Python reduction (enforced
             # cross-backend by tests/meta_store/test_aggregate_by.py).
             ms = self.storage.meta_store
-            pushed_specs: list[object] | None = None
-            if (
+            pushable = bool(
                 self_aggs
                 and not foreign_aggs
                 and by.source in ("meta", "data")
                 and isinstance(ms, IMetaWithAgg)
-            ):
-                specs: list[object] | None = []
+            )
+            store_specs: list[object] = []
+            to_state: dict[str, "Callable[[dict[str, object]], object]"] = {}
+            if pushable:
                 for n, a in self_aggs.items():
-                    spec = self._agg_pushdown_spec(n, a)
-                    if spec is None:
-                        # An ineligible aggregate (Avg / str / undeclared field)
-                        # drops the WHOLE call to the Python path — never push a
-                        # partial or type-mismatched result.
-                        specs = None
+                    plan = self._agg_pushdown_plan(n, a)
+                    if plan is None:
+                        pushable = False
                         break
-                    specs.append(spec)
-                pushed_specs = specs
-            if pushed_specs is not None:
+                    specs, make_state = plan
+                    store_specs.extend(specs)
+                    to_state[n] = make_state
+            if pushable:
                 from specstar.query_types import AggKeyRef
                 from specstar.query_types import ResourceMetaSearchQuery as _RMSQ
 
@@ -2870,13 +2872,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     AggKeyRef(
                         source=cast(Literal["meta", "data"], by.source), name=by.name
                     ),
-                    pushed_specs,
+                    store_specs,
                 )
                 groups = {
-                    key: {
-                        n: self._coerce_pushed_value(self_aggs[n], state[n])
-                        for n in self_aggs
-                    }
+                    key: {n: to_state[n](state) for n in self_aggs}
                     for key, state in rows
                 }
             else:
@@ -2938,53 +2937,75 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 return ft if isinstance(ft, type) else None
         return None
 
-    def _agg_pushdown_spec(self, result_name: str, agg: "object") -> "object | None":
-        """The :class:`~specstar.query_types.AggSpec` to push this
-        self-aggregate down to an ``IMetaWithAgg`` store, or ``None`` when it
-        must fall back to the Python reduction.
+    def _agg_pushdown_plan(self, result_name: str, agg: "object"):
+        """A push-down *plan* for one self-aggregate, or ``None`` to keep the
+        Python reduction.
 
-        v1 (#406): ``Count`` (any group), and ``Sum``/``Min``/``Max`` over a
+        Returns ``(store_specs, to_state)``: ``store_specs`` are the
+        :class:`~specstar.query_types.AggSpec`\\ s to send to the store, and
+        ``to_state(store_dict)`` maps the store's per-group dict (keyed by those
+        specs' ``result_name``) to the SAME per-group *state* the Python
+        reduction accumulates — which step 5's ``_finalize`` then turns into the
+        final value. For ``Count``/``Sum``/``Min``/``Max`` the state IS the
+        (declared-type-coerced) value and ``_finalize`` is identity; ``Avg`` is
+        decomposed into a pushed ``Sum`` + a pushed non-null ``Count`` and
+        returns the ``[running_sum, n]`` state so ``_finalize`` divides it —
+        byte-parity with the reference path and no backend ``AVG`` float
+        divergence.
+
+        v1 (#406): ``Count`` (any group); ``Sum``/``Min``/``Max``/``Avg`` over a
         **data-source** field with a declared numeric (``int``/``float``) type.
-        Everything else — ``Avg`` (decomposed elsewhere), ``str``/undeclared
-        fields, meta columns — returns ``None`` so the caller keeps the Python
-        path."""
-        from specstar.aggregates import Count, Max, Min, Sum
+        Everything else — ``str``/undeclared fields, meta columns — returns
+        ``None``."""
+        from specstar.aggregates import Avg, Count, Max, Min, Sum
         from specstar.query_types import AggKeyRef, AggSpec
 
         if isinstance(agg, Count):
-            return AggSpec(result_name=result_name, op="count")
+            return (
+                [AggSpec(result_name=result_name, op="count")],
+                lambda st, _n=result_name: int(st[_n]),
+            )
+
+        # Value reducers + Avg need a data-source field with a declared numeric
+        # type; anything else keeps the Python path.
         op = {Sum: "sum", Min: "min", Max: "max"}.get(type(agg))
-        if op is not None:
-            field = agg.field
-            if field.source == "data" and self._declared_data_field_type(
-                field.name
-            ) in (int, float):
-                return AggSpec(
-                    result_name=result_name,
-                    op=op,  # ty: ignore[invalid-argument-type]
-                    field=AggKeyRef(source="data", name=field.name),
-                    value_type="numeric",
-                )
-        return None
-
-    def _coerce_pushed_value(self, agg: "object", value: "object") -> "object":
-        """Coerce a store-returned aggregate value to the type the Python
-        reduction would have produced — e.g. a SQL ``SUM`` over an ``int``
-        column can come back as ``Decimal`` on Postgres; a numeric field
-        declared ``int`` must stay ``int``."""
-        from specstar.aggregates import Count, Max, Min, Sum
-
-        if isinstance(agg, Count):
-            return int(value)  # type: ignore[arg-type]
-        if value is None:
+        is_avg = isinstance(agg, Avg)
+        if op is None and not is_avg:
             return None
-        if isinstance(agg, (Sum, Min, Max)):
-            ftype = self._declared_data_field_type(agg.field.name)
-            if ftype is int:
-                return int(value)  # type: ignore[arg-type]
-            if ftype is float:
-                return float(value)  # type: ignore[arg-type]
-        return value
+        field = agg.field
+        ftype = self._declared_data_field_type(field.name)
+        if field.source != "data" or ftype not in (int, float):
+            return None
+        ref = AggKeyRef(source="data", name=field.name)
+
+        if op is not None:
+            coerce = int if ftype is int else float
+            return (
+                [
+                    AggSpec(
+                        result_name=result_name, op=op, field=ref, value_type="numeric"
+                    )
+                ],
+                lambda st, _n=result_name, _c=coerce: (
+                    None if st[_n] is None else _c(st[_n])
+                ),
+            )
+
+        # Avg → pushed Sum + non-null Count, returned as the reference
+        # ``[running_sum, n]`` state for ``_finalize`` to divide. Postgres SUM is
+        # Decimal → float() so the divided result is a float; a group with no
+        # non-null values has ``n == 0`` (and NULL sum) ⇒ ``_finalize`` → None.
+        s_key, c_key = f"{result_name}__sum", f"{result_name}__count"
+        return (
+            [
+                AggSpec(result_name=s_key, op="sum", field=ref, value_type="numeric"),
+                AggSpec(result_name=c_key, op="count", field=ref),
+            ],
+            lambda st, _s=s_key, _c=c_key: [
+                0.0 if st[_s] is None else float(st[_s]),
+                st[_c],
+            ],
+        )
 
     def _read_field(self, meta: ResourceMeta, field: "object") -> object:
         """Read a ``Field``'s value from a meta, honouring ``Field.source``.

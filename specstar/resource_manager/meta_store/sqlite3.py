@@ -447,8 +447,10 @@ class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
         (``source="data"``). The time columns are stored as ``REAL`` Unix
         epochs, so ``MIN``/``MAX`` over a ``value_type="datetime"`` meta column
         already yield an epoch the ResourceManager turns back into a UTC
-        datetime — no special expression needed on SQLite."""
-        if a.op == "count":
+        datetime — no special expression needed on SQLite. A field-less
+        ``count`` is ``COUNT(*)``; a ``count`` WITH a field counts that field's
+        non-null values (the denominator for a decomposed ``Avg``)."""
+        if a.op == "count" and a.field is None:
             return "COUNT(*)"
         ref = a.field
         assert ref is not None, "value reducer requires a field"

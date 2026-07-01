@@ -13,7 +13,7 @@ Python path instead of pushing an incorrect result.
 
 import msgspec
 
-from specstar.aggregates import Max, Min, Sum
+from specstar.aggregates import Avg, Max, Min, Sum
 from specstar.query import QB
 from specstar.resource_manager.core import ResourceManager, SimpleStorage
 from specstar.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore
@@ -103,3 +103,14 @@ def test_min_max_push_down_numeric_and_keep_type():
     # Min over int stays int, Max over float stays float.
     assert type(by_key["a"][0]) is int and type(by_key["a"][1]) is float
     assert spy.walked is False, "Min/Max did not push down — walked iter_all"
+
+
+def test_avg_push_down_returns_float_via_sum_over_count():
+    mgr = _sqlite_mgr()
+    _seed(mgr, [("a", 10, 1.0), ("a", 5, 1.0), ("b", 2, 1.0)])
+    with _IterSpy(mgr) as spy:
+        rows = mgr.exp_aggregate_by(QB["bucket"], {"mean": Avg(QB["size"])})
+    result = {r.key: r.mean for r in rows}
+    assert result == {"a": 7.5, "b": 2.0}
+    assert all(type(v) is float for v in result.values())
+    assert spy.walked is False, "Avg did not push down — walked iter_all"

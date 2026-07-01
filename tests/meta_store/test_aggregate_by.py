@@ -200,6 +200,28 @@ class TestAggregateByReducerParity:
         assert got == {"a": (5, 9.0), "b": (2, 4.0)}
         assert type(got["a"][0]) is int and type(got["a"][1]) is float
 
+    def test_avg_parity_is_float(self):
+        from specstar.aggregates import Avg
+
+        mgr = self._mgr()
+        self._seed(mgr, [("a", 10, 1.0), ("a", 5, 1.0), ("b", 2, 1.0)])
+        rows = mgr.exp_aggregate_by(QB["bucket"], {"mean": Avg(QB["size"])})
+        result = {r.key: r.mean for r in rows}
+        assert result == {"a": 7.5, "b": 2.0}
+        assert all(type(v) is float for v in result.values())
+
+    def test_mixed_count_sum_avg_in_one_call(self):
+        from specstar.aggregates import Avg, Count, Sum
+
+        mgr = self._mgr()
+        self._seed(mgr, [("a", 10, 1.0), ("a", 6, 1.0), ("b", 2, 1.0)])
+        rows = mgr.exp_aggregate_by(
+            QB["bucket"],
+            {"n": Count(), "total": Sum(QB["size"]), "mean": Avg(QB["size"])},
+        )
+        got = {r.key: (r.n, r.total, r.mean) for r in rows}
+        assert got == {"a": (2, 16, 8.0), "b": (1, 2, 2.0)}
+
 
 @pytest.mark.parametrize("meta_store_type", ["sql3-mem", "postgres"])
 def test_count_groupby_is_pushed_down_not_iterated(meta_store_type):

@@ -842,16 +842,25 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             ]
 
     def _agg_expr(self, a: AggSpec) -> str:
-        """SQL for one aggregate's value (not the GROUP BY key). ``Count``
-        ignores the field; a numeric value reducer reads a ``resource_meta``
-        column (``source="meta"``) or casts the JSONB text
+        """SQL for one aggregate's value (not the GROUP BY key). A field-less
+        ``count`` is ``COUNT(*)``; a ``count`` WITH a field counts that field's
+        non-null values (the denominator for a decomposed ``Avg``) — the raw
+        JSONB text, no numeric cast. A numeric value reducer reads a
+        ``resource_meta`` column (``source="meta"``) or casts the JSONB text
         ``(indexed_data->>'f')::numeric`` (``source="data"``) so ``SUM``/``MIN``/
         ``MAX`` reduce as numbers (the ResourceManager coerces the result back to
         the field's declared ``int``/``float``)."""
-        if a.op == "count":
+        if a.op == "count" and a.field is None:
             return "COUNT(*)"
         ref = a.field
         assert ref is not None, "value reducer requires a field"
+        if a.op == "count":
+            base = (
+                f'"{ref.name}"'
+                if ref.source == "meta"
+                else f"(indexed_data->>'{ref.name}')"
+            )
+            return f"COUNT({base})"
         if ref.source == "meta":
             base = f'"{ref.name}"'
         else:
