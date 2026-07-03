@@ -275,9 +275,11 @@ class TestRecoverStaleJobsWithHeartbeat:
         recovered = queue.recover_stale_jobs(heartbeat_timeout_seconds=30)
         assert resource_id in recovered
 
+        # #409: still within the retry budget → requeued (PENDING), not FAILED.
         with rm.meta_provide(user=user, now=now):
             res = rm.get(resource_id)
-            assert res.data.status == TaskStatus.FAILED
+            assert res.data.status == TaskStatus.PENDING
+            assert res.data.retries == 1
 
     def test_skip_job_with_recent_heartbeat(self, rm_and_queue):
         """Jobs with recent heartbeat should NOT be recovered (still alive)."""
@@ -466,11 +468,13 @@ class TestPeriodicRecovery:
         queue.stop_consuming()
         consumer_thread.join(timeout=2.0)
 
-        # The stale job should have been recovered
+        # The stale job should have been recovered (unstuck from PROCESSING).
+        # #409: recovery requeues it (PENDING) rather than terminally failing;
+        # the live consumer then pops and runs it (no-op handler → COMPLETED).
         with rm.meta_provide(user=user, now=now):
             res = rm.get(resource_id)
-            assert res.data.status == TaskStatus.FAILED, (
-                f"Expected FAILED but got {res.data.status}. "
+            assert res.data.status != TaskStatus.PROCESSING, (
+                f"Expected recovered (not PROCESSING) but got {res.data.status}. "
                 "Periodic recovery should have cleaned this stale job."
             )
 

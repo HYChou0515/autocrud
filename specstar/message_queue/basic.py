@@ -68,6 +68,10 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         self._handler_wants_ctx = self._check_handler_wants_context(do)
         self._heartbeat_interval: float = 5.0
         self._recovery_interval: float = 60.0
+        # Queue-level default retry budget. Subclasses override this in their
+        # own ``__init__`` (after ``super().__init__``); it lives on the base
+        # so ``recover_stale_jobs`` can consult it uniformly (#409).
+        self.max_retries: int = 3
         self._recovery_stop_event: threading.Event = threading.Event()
         self._recovery_thread: threading.Thread | None = None
         # When a job is held back because a same-``partition_key`` peer is
@@ -388,6 +392,24 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         resource.data = job
         return resource
 
+    def _effective_max_retries(self, job: Job[T]) -> int:
+        """The retry budget for *job*: its per-job ``max_retries`` if set,
+        otherwise this queue's default. Shared by the stale sweep and the
+        broker re-delivery guard (#409)."""
+        return job.max_retries if job.max_retries is not None else self.max_retries
+
+    def _stale_retry_status(self) -> TaskStatus:
+        """Status a stale-but-still-retryable job is set to on recovery.
+
+        Store-backed queues (Simple) re-run a job by moving it back to
+        ``PENDING`` so ``pop()`` re-selects it. Broker-backed queues override
+        this to ``FAILED`` — their broker re-delivers the unacked message and
+        the consume-time guard (:meth:`_redelivery_decision`) treats ``FAILED``
+        as an already-counted re-attempt, so a stale sweep must NOT hand the
+        guard a ``PENDING`` (which would read as a fresh, uncounted delivery).
+        """
+        return TaskStatus.PENDING
+
     def recover_stale_jobs(self, heartbeat_timeout_seconds: float) -> list[str]:
         """Recover jobs stuck in PROCESSING status.
 
@@ -431,11 +453,26 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
                         if elapsed < heartbeat_timeout_seconds:
                             continue  # Still alive
 
-                job.status = TaskStatus.FAILED
-                job.errmsg = (
-                    "Recovered stale job: worker was likely killed "
-                    "while processing this job."
-                )
+                # #409: a stale job is a failed attempt — spend its retry
+                # budget instead of terminally failing it. Under budget it is
+                # requeued (``_stale_retry_status`` — PENDING for store-backed
+                # queues, FAILED for broker-backed ones whose broker re-delivers
+                # the message); exhausted, it is FAILED for good.
+                job.retries += 1
+                max_retries = self._effective_max_retries(job)
+                if job.retries <= max_retries:
+                    job.status = self._stale_retry_status()
+                    job.errmsg = (
+                        f"Recovered stale job (retry {job.retries}/{max_retries}): "
+                        "worker was likely killed while processing this job."
+                    )
+                else:
+                    job.status = TaskStatus.FAILED
+                    job.errmsg = (
+                        "Recovered stale job: worker was likely killed while "
+                        "processing this job; retries exhausted "
+                        f"({job.retries - 1}/{max_retries})."
+                    )
                 with self._rm_using(resource.info.created_by):
                     self.rm.create_or_update(meta.resource_id, job)
                 recovered.append(meta.resource_id)
