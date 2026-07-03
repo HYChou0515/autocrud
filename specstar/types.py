@@ -2581,8 +2581,13 @@ class IMessageQueue(ABC, Generic[T]):
     def recover_stale_jobs(self, heartbeat_timeout_seconds: float) -> list[str]:
         """Recover jobs stuck in PROCESSING status.
 
-        This is used to handle cases where a worker was killed (e.g. OOM)
-        and left jobs in PROCESSING status. These jobs will be marked as FAILED.
+        This handles cases where a worker was killed (e.g. OOM) and left jobs
+        in PROCESSING status. A recovered job spends one unit of its retry
+        budget (``retries`` is incremented): while budget remains it is
+        requeued for another attempt, and only once the budget is exhausted is
+        it marked FAILED (#409). Store-backed queues requeue by moving the job
+        back to PENDING; broker-backed queues instead leave it FAILED and rely
+        on the broker to re-deliver the message.
 
         Args:
             heartbeat_timeout_seconds: Only recover jobs whose
