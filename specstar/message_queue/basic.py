@@ -1,4 +1,5 @@
 import datetime as dt
+import enum
 import inspect
 import threading
 import warnings
@@ -54,6 +55,18 @@ class DelayRetry(Exception):
         super().__init__(f"Job will be retried after {delay_seconds} seconds")
 
 
+class RedeliveryAction(enum.Enum):
+    """What a broker backend should do with a (re)delivered message, decided
+    from the job's persisted status by :meth:`BasicMessageQueue._redelivery_decision` (#409)."""
+
+    RUN = "run"
+    """(Re)process this delivery."""
+    DEAD_LETTER = "dead_letter"
+    """Retry budget exhausted — mark FAILED and route to the dead-letter queue."""
+    DROP = "drop"
+    """Already completed (lost ack) — ack the duplicate without re-running."""
+
+
 class BasicMessageQueue(IMessageQueue[T], Generic[T]):
     """
     A dedicated message queue that manages jobs as resources via ResourceManager.
@@ -68,6 +81,10 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         self._handler_wants_ctx = self._check_handler_wants_context(do)
         self._heartbeat_interval: float = 5.0
         self._recovery_interval: float = 60.0
+        # Queue-level default retry budget. Subclasses override this in their
+        # own ``__init__`` (after ``super().__init__``); it lives on the base
+        # so ``recover_stale_jobs`` can consult it uniformly (#409).
+        self.max_retries: int = 3
         self._recovery_stop_event: threading.Event = threading.Event()
         self._recovery_thread: threading.Thread | None = None
         # When a job is held back because a same-``partition_key`` peer is
@@ -388,6 +405,57 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         resource.data = job
         return resource
 
+    def _effective_max_retries(self, job: Job[T]) -> int:
+        """The retry budget for *job*: its per-job ``max_retries`` if set,
+        otherwise this queue's default. Shared by the stale sweep and the
+        broker re-delivery guard (#409)."""
+        return job.max_retries if job.max_retries is not None else self.max_retries
+
+    def _stale_retry_status(self) -> TaskStatus:
+        """Status a stale-but-still-retryable job is set to on recovery.
+
+        Store-backed queues (Simple) re-run a job by moving it back to
+        ``PENDING`` so ``pop()`` re-selects it. Broker-backed queues override
+        this to ``FAILED`` — their broker re-delivers the unacked message and
+        the consume-time guard (:meth:`_redelivery_decision`) treats ``FAILED``
+        as an already-counted re-attempt, so a stale sweep must NOT hand the
+        guard a ``PENDING`` (which would read as a fresh, uncounted delivery).
+        """
+        return TaskStatus.PENDING
+
+    def _redelivery_decision(self, job: Job[T]) -> tuple[RedeliveryAction, int]:
+        """Classify a (re)delivered job by its persisted status (#409).
+
+        A broker (RabbitMQ) re-delivers a message without knowing whether the
+        prior attempt finished; the persisted status disambiguates:
+
+        - ``PENDING`` — first, fresh delivery → run.
+        - ``PROCESSING`` — the prior worker was killed mid-flight and never
+          reached a terminal state, so this re-delivery is an *uncounted*
+          retry. Count it; run while budget remains, else dead-letter.
+        - ``FAILED`` — an *already-counted* re-attempt (the retry queue and the
+          stale sweep both bump ``retries`` when they write ``FAILED``). Do not
+          count again; run while budget remains, else dead-letter.
+        - ``COMPLETED`` — finished but the ack was lost → drop, never re-run.
+
+        Returns ``(action, retries_to_persist)``.
+        """
+        status = job.status
+        if status == TaskStatus.COMPLETED:
+            return RedeliveryAction.DROP, job.retries
+        max_retries = self._effective_max_retries(job)
+        if status == TaskStatus.PROCESSING:
+            retries = job.retries + 1
+            if retries > max_retries:
+                return RedeliveryAction.DEAD_LETTER, retries
+            return RedeliveryAction.RUN, retries
+        if status == TaskStatus.FAILED:
+            if job.retries > max_retries:
+                return RedeliveryAction.DEAD_LETTER, job.retries
+            return RedeliveryAction.RUN, job.retries
+        # PENDING (or any unexpected status) → fresh run.
+        return RedeliveryAction.RUN, job.retries
+
     def recover_stale_jobs(self, heartbeat_timeout_seconds: float) -> list[str]:
         """Recover jobs stuck in PROCESSING status.
 
@@ -431,11 +499,26 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
                         if elapsed < heartbeat_timeout_seconds:
                             continue  # Still alive
 
-                job.status = TaskStatus.FAILED
-                job.errmsg = (
-                    "Recovered stale job: worker was likely killed "
-                    "while processing this job."
-                )
+                # #409: a stale job is a failed attempt — spend its retry
+                # budget instead of terminally failing it. Under budget it is
+                # requeued (``_stale_retry_status`` — PENDING for store-backed
+                # queues, FAILED for broker-backed ones whose broker re-delivers
+                # the message); exhausted, it is FAILED for good.
+                job.retries += 1
+                max_retries = self._effective_max_retries(job)
+                if job.retries <= max_retries:
+                    job.status = self._stale_retry_status()
+                    job.errmsg = (
+                        f"Recovered stale job (retry {job.retries}/{max_retries}): "
+                        "worker was likely killed while processing this job."
+                    )
+                else:
+                    job.status = TaskStatus.FAILED
+                    job.errmsg = (
+                        "Recovered stale job: worker was likely killed while "
+                        "processing this job; retries exhausted "
+                        f"({job.retries - 1}/{max_retries})."
+                    )
                 with self._rm_using(resource.info.created_by):
                     self.rm.create_or_update(meta.resource_id, job)
                 recovered.append(meta.resource_id)

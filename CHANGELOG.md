@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.14] — 2026-07-03
+
+
+### Fixed
+
+- Stale/killed jobs now go through the retry budget instead of failing
+  outright. `recover_stale_jobs` spends one retry — requeuing the job while
+  budget remains and marking it FAILED only once exhausted — rather than
+  terminally failing a stuck PROCESSING job with zero retries. On RabbitMQ a
+  new consume-time guard classifies each (re)delivery by the job's persisted
+  status, so a job that outlives `consumer_timeout` is counted and eventually
+  dead-lettered instead of re-running forever, and a duplicate delivery of a
+  COMPLETED job (lost ack) is dropped instead of re-run. (#409)
+
 ## [0.11.13] — 2026-07-01
 
 

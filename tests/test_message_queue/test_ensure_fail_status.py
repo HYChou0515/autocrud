@@ -244,8 +244,9 @@ class TestEnsureFailStatusOnJobFail:
 class TestRecoverStaleJobs:
     """Tests for recovering jobs stuck in PROCESSING after worker crash (e.g. OOM kill)."""
 
-    def test_recover_stale_jobs_marks_processing_as_failed(self, rm_and_queue):
-        """Jobs stuck in PROCESSING should be marked as FAILED by recover_stale_jobs."""
+    def test_recover_stale_jobs_requeues_processing(self, rm_and_queue):
+        """#409: a stale PROCESSING job under budget is requeued (PENDING) with
+        its retry count bumped, not terminally FAILED."""
         rm, queue = rm_and_queue
         user = "test_user"
         now = dt.datetime.now(dt.timezone.utc)
@@ -270,10 +271,11 @@ class TestRecoverStaleJobs:
         assert len(recovered) == 1
         assert recovered[0] == resource_id
 
-        # Job should now be FAILED
+        # Job should now be requeued (PENDING) with its retry count bumped.
         with rm.meta_provide(user=user, now=now):
             res = rm.get(resource_id)
-            assert res.data.status == TaskStatus.FAILED
+            assert res.data.status == TaskStatus.PENDING
+            assert res.data.retries == 1
             assert res.data.errmsg is not None
             assert (
                 "stale" in res.data.errmsg.lower()
@@ -333,7 +335,8 @@ class TestRecoverStaleJobs:
         for rid in resource_ids:
             with rm.meta_provide(user=user, now=now):
                 res = rm.get(rid)
-                assert res.data.status == TaskStatus.FAILED
+                assert res.data.status == TaskStatus.PENDING
+                assert res.data.retries == 1
 
     def test_start_consume_calls_recover_stale_jobs(self, rm_and_queue):
         """start_consume should automatically recover stale jobs before processing new ones."""
@@ -357,11 +360,13 @@ class TestRecoverStaleJobs:
         queue.stop_consuming()
         consumer_thread.join(timeout=2.0)
 
-        # The stuck job should have been recovered to FAILED
+        # The stuck job should have been recovered (unstuck from PROCESSING).
+        # #409: recovery requeues it (PENDING); the running consumer then pops
+        # and runs it (no-op handler → COMPLETED).
         with rm.meta_provide(user=user, now=now):
             res = rm.get(resource_id)
-            assert res.data.status == TaskStatus.FAILED, (
-                f"Expected FAILED but got {res.data.status}. "
+            assert res.data.status != TaskStatus.PROCESSING, (
+                f"Expected recovered (not PROCESSING) but got {res.data.status}. "
                 "start_consume should recover stale PROCESSING jobs."
             )
 
@@ -381,11 +386,13 @@ class TestRecoverStaleJobs:
         recovered1 = queue.recover_stale_jobs(heartbeat_timeout_seconds=0)
         assert len(recovered1) == 1
 
-        # Second recovery - no more stale jobs
+        # Second recovery - no more stale jobs (the first requeued it to
+        # PENDING, so it is no longer PROCESSING).
         recovered2 = queue.recover_stale_jobs(heartbeat_timeout_seconds=0)
         assert len(recovered2) == 0
 
-        # Status should still be FAILED
+        # Status is PENDING (requeued once) with a single retry counted.
         with rm.meta_provide(user=user, now=now):
             res = rm.get(info.resource_id)
-            assert res.data.status == TaskStatus.FAILED
+            assert res.data.status == TaskStatus.PENDING
+            assert res.data.retries == 1

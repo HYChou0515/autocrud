@@ -29,6 +29,7 @@ from specstar.types import (
     Resource,
     RevisionInfo,
     RevisionStatus,
+    TaskStatus,
 )
 
 
@@ -397,3 +398,89 @@ class TestFactoryForwardsHeartbeatSeconds:
         builder = factory.build(lambda j: None)
         queue = builder(rm)
         assert queue.amqp_heartbeat_seconds == 120
+
+
+def _register_callback(queue):
+    """Drive ``start_consume`` just far enough (stale sweep neutered, since the
+    MagicMock rm can't be swept) to register the consumer callback on the mock
+    channel, then return once the thread has finished registering."""
+    queue.recover_stale_jobs = lambda **kw: []  # ty:ignore[invalid-assignment]
+    queue._start_periodic_recovery = lambda: None  # ty:ignore[invalid-assignment]
+    t = threading.Thread(target=queue.start_consume, daemon=True)
+    t.start()
+    t.join(timeout=2.0)
+
+
+class TestRedeliveryGuard:
+    """#409: the consume-time guard bounds the broker's uncounted redelivery
+    loop by classifying each (re)delivery from the job's persisted status."""
+
+    def test_stale_retry_status_is_failed(self, make_queue):
+        """Broker-backed queue parks a stale-but-retryable job in FAILED (not
+        PENDING) so the guard reads the redelivery as already-counted."""
+        queue, _ch, _rm = make_queue()
+        assert queue._stale_retry_status() == TaskStatus.FAILED
+
+    def test_completed_redelivery_is_dropped(self, make_queue):
+        """A COMPLETED job redelivered (lost ack) is acked without re-running."""
+        ran: list[int] = []
+        queue, ch, rm = make_queue(lambda r: ran.append(1))
+        rm.get.return_value = Resource(
+            info=_make_revision_info("rid-done"),
+            data=Job(payload=Payload(task_name="done"), status=TaskStatus.COMPLETED),
+        )
+        _register_callback(queue)
+        ch.simulate_message(b"rid-done")
+
+        ch.basic_ack.assert_called_once()
+        ch.basic_publish.assert_not_called()  # not dead-lettered
+        rm.create_or_update.assert_not_called()  # not re-persisted
+        assert ran == []  # handler never ran
+
+    def test_processing_over_budget_is_dead_lettered(self, make_queue):
+        """A killed in-flight job (PROCESSING) redelivered past its budget is
+        marked FAILED, routed to the dead-letter queue, and acked."""
+        queue, ch, rm = make_queue(lambda r: None)
+        rm.get.return_value = Resource(
+            info=_make_revision_info("rid-dead"),
+            data=Job(
+                payload=Payload(task_name="x"),
+                status=TaskStatus.PROCESSING,
+                retries=3,  # +1 = 4 > queue max_retries (3) → exhausted
+            ),
+        )
+        _register_callback(queue)
+        ch.simulate_message(b"rid-dead")
+
+        saved = rm.create_or_update.call_args.args[1]
+        assert saved.status == TaskStatus.FAILED
+        assert saved.retries == 4
+        assert ch.basic_publish.call_args.kwargs["routing_key"] == queue.dead_queue_name
+        ch.basic_ack.assert_called_once()
+
+    def test_processing_under_budget_runs_with_bumped_retries(self, make_queue):
+        """A killed in-flight job redelivered under budget runs again with its
+        retry count incremented — the redelivery is finally counted."""
+        seen: dict = {}
+        done = threading.Event()
+
+        def handler(resource):
+            seen["retries"] = resource.data.retries
+            seen["status"] = resource.data.status
+            done.set()
+
+        queue, ch, rm = make_queue(handler)
+        rm.get.return_value = Resource(
+            info=_make_revision_info("rid-run"),
+            data=Job(
+                payload=Payload(task_name="x"),
+                status=TaskStatus.PROCESSING,
+                retries=0,
+            ),
+        )
+        _register_callback(queue)
+        queue._consuming_connection = MockConnection(ch)  # fresh open conn
+        ch.simulate_message(b"rid-run")
+
+        assert done.wait(timeout=3.0)
+        assert seen == {"retries": 1, "status": TaskStatus.PROCESSING}
