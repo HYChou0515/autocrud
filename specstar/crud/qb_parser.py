@@ -98,6 +98,11 @@ class SafeQBParser:
         "last_n_days",
         # 字段轉換
         "length",
+        # 向量距離 (vec search)：query_vector 可為 list[float] 或字串
+        # （字串會在 search 時由 encoder 解析為向量）
+        "cosine",
+        "l2",
+        "ip",
         # 排序方向
         "asc",
         "desc",
