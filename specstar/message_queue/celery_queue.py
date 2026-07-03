@@ -114,6 +114,14 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
         # Register the task with Celery
         self._register_task()
 
+    def _stale_retry_status(self) -> TaskStatus:
+        """#409: broker-backed like RabbitMQ — a stale-but-retryable job is set
+        to ``FAILED`` (not ``PENDING``), since Celery re-delivers the task
+        itself. A consume-time re-delivery guard is a follow-up; this override
+        only keeps the shared stale sweep from parking the job in an inert
+        ``PENDING`` on a broker backend."""
+        return TaskStatus.FAILED
+
     def _register_task(self):
         """Register the job processing task with Celery."""
 

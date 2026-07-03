@@ -1,4 +1,5 @@
 import datetime as dt
+import enum
 import inspect
 import threading
 import warnings
@@ -52,6 +53,18 @@ class DelayRetry(Exception):
     def __init__(self, delay_seconds: int):
         self.delay_seconds = delay_seconds
         super().__init__(f"Job will be retried after {delay_seconds} seconds")
+
+
+class RedeliveryAction(enum.Enum):
+    """What a broker backend should do with a (re)delivered message, decided
+    from the job's persisted status by :meth:`BasicMessageQueue._redelivery_decision` (#409)."""
+
+    RUN = "run"
+    """(Re)process this delivery."""
+    DEAD_LETTER = "dead_letter"
+    """Retry budget exhausted — mark FAILED and route to the dead-letter queue."""
+    DROP = "drop"
+    """Already completed (lost ack) — ack the duplicate without re-running."""
 
 
 class BasicMessageQueue(IMessageQueue[T], Generic[T]):
@@ -409,6 +422,39 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         guard a ``PENDING`` (which would read as a fresh, uncounted delivery).
         """
         return TaskStatus.PENDING
+
+    def _redelivery_decision(self, job: Job[T]) -> tuple[RedeliveryAction, int]:
+        """Classify a (re)delivered job by its persisted status (#409).
+
+        A broker (RabbitMQ) re-delivers a message without knowing whether the
+        prior attempt finished; the persisted status disambiguates:
+
+        - ``PENDING`` — first, fresh delivery → run.
+        - ``PROCESSING`` — the prior worker was killed mid-flight and never
+          reached a terminal state, so this re-delivery is an *uncounted*
+          retry. Count it; run while budget remains, else dead-letter.
+        - ``FAILED`` — an *already-counted* re-attempt (the retry queue and the
+          stale sweep both bump ``retries`` when they write ``FAILED``). Do not
+          count again; run while budget remains, else dead-letter.
+        - ``COMPLETED`` — finished but the ack was lost → drop, never re-run.
+
+        Returns ``(action, retries_to_persist)``.
+        """
+        status = job.status
+        if status == TaskStatus.COMPLETED:
+            return RedeliveryAction.DROP, job.retries
+        max_retries = self._effective_max_retries(job)
+        if status == TaskStatus.PROCESSING:
+            retries = job.retries + 1
+            if retries > max_retries:
+                return RedeliveryAction.DEAD_LETTER, retries
+            return RedeliveryAction.RUN, retries
+        if status == TaskStatus.FAILED:
+            if job.retries > max_retries:
+                return RedeliveryAction.DEAD_LETTER, job.retries
+            return RedeliveryAction.RUN, job.retries
+        # PENDING (or any unexpected status) → fresh run.
+        return RedeliveryAction.RUN, job.retries
 
     def recover_stale_jobs(self, heartbeat_timeout_seconds: float) -> list[str]:
         """Recover jobs stuck in PROCESSING status.

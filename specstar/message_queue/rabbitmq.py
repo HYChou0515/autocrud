@@ -4,7 +4,12 @@ import threading
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
-from specstar.message_queue.basic import DelayableMessageQueue, DelayRetry, NoRetry
+from specstar.message_queue.basic import (
+    DelayableMessageQueue,
+    DelayRetry,
+    NoRetry,
+    RedeliveryAction,
+)
 from specstar.types import (
     Job,
     Resource,
@@ -255,6 +260,31 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 headers={
                     "x-retry-count": new_retry_count,
                     "x-last-error": error_msg[:500],  # Limit error message length
+                },
+            ),
+        )
+
+    def _stale_retry_status(self) -> TaskStatus:
+        """#409: broker-backed, so a stale-but-retryable job is set to
+        ``FAILED`` rather than ``PENDING``. RabbitMQ re-delivers the unacked
+        message on its own; the consume-time guard treats ``FAILED`` as an
+        already-counted re-attempt. A ``PENDING`` here would instead read as a
+        fresh, uncounted delivery and re-open the infinite-redelivery loop."""
+        return TaskStatus.FAILED
+
+    def _send_to_dead(
+        self, ch: BlockingChannel, resource_id: str, retry_count: int, error_msg: str
+    ) -> None:
+        """Publish a message straight to the dead-letter queue (#409 exhaustion)."""
+        ch.basic_publish(
+            exchange="",
+            routing_key=self.dead_queue_name,
+            body=resource_id.encode("utf-8"),
+            properties=pika.BasicProperties(
+                delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
+                headers={
+                    "x-retry-count": retry_count,
+                    "x-last-error": error_msg[:500],
                 },
             ),
         )
@@ -559,6 +589,39 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                         ch.basic_ack(delivery_tag=method.delivery_tag)  # ty:ignore[invalid-argument-type]
                         return
 
+                    # #409: classify this (re)delivery by the job's persisted
+                    # status. The broker re-delivers a message without knowing
+                    # whether the prior attempt finished; a killed/hung
+                    # in-flight job is still PROCESSING, so count it against the
+                    # retry budget (dead-letter when exhausted) instead of
+                    # looping forever, and drop a duplicate delivery of a job
+                    # that already COMPLETED (lost ack).
+                    action, new_retries = self._redelivery_decision(job)
+                    if action == RedeliveryAction.DROP:
+                        ch.basic_ack(delivery_tag=method.delivery_tag)  # ty:ignore[invalid-argument-type]
+                        return
+                    if action == RedeliveryAction.DEAD_LETTER:
+                        job.retries = new_retries
+                        job.status = TaskStatus.FAILED
+                        job.errmsg = (
+                            "Stale/killed job exceeded its retry budget "
+                            f"({new_retries}/{self._effective_max_retries(job)}); "
+                            "dead-lettered."
+                        )
+                        with self._rm_using(resource.info.created_by):
+                            self.rm.create_or_update(resource_id, job)
+                        self._send_to_dead(ch, resource_id, new_retries, job.errmsg)
+                        ch.basic_ack(delivery_tag=method.delivery_tag)  # ty:ignore[invalid-argument-type]
+                        return
+
+                    # action == RUN: persist the (possibly bumped) retry count.
+                    # Downstream retry accounting uses the larger of the broker
+                    # header (set by _send_to_retry_or_dead on a retry-queue
+                    # republish) and what the guard counted (the header is stale
+                    # on a broker requeue of an in-flight job), so neither the
+                    # in-handler failure path nor the guard under-counts.
+                    job.retries = new_retries
+                    retry_count = max(retry_count, new_retries)
                     job.status = TaskStatus.PROCESSING
                     # Claiming the job is its first proof of life (#404) — the
                     # HeartbeatThread's first tick is one interval away.

@@ -13,6 +13,7 @@ import datetime as dt
 import pytest
 from msgspec import Struct
 
+from specstar.message_queue.basic import RedeliveryAction
 from specstar.message_queue.simple import SimpleMessageQueueFactory
 from specstar.resource_manager.core import ResourceManager, SimpleStorage
 from specstar.resource_manager.meta_store.simple import MemoryMetaStore
@@ -100,3 +101,41 @@ def test_stale_recovery_respects_per_job_max_retries(rm_and_queue):
     job = _get(rm, rid)
     assert job.status == TaskStatus.FAILED
     assert job.retries == 1
+
+
+# --- broker re-delivery guard (_redelivery_decision) -----------------------
+
+
+def _job(status: TaskStatus, retries: int = 0, max_retries=None) -> Job:
+    job = Job(payload=Payload(task_name="x"), max_retries=max_retries)
+    job.status = status
+    job.retries = retries
+    return job
+
+
+@pytest.mark.parametrize(
+    "status, retries, max_retries, expected_action, expected_retries",
+    [
+        # fresh first delivery → just run, nothing counted
+        (TaskStatus.PENDING, 0, None, RedeliveryAction.RUN, 0),
+        # uncounted in-flight re-delivery (broker requeue) → count it, run
+        (TaskStatus.PROCESSING, 0, None, RedeliveryAction.RUN, 1),
+        (TaskStatus.PROCESSING, 2, None, RedeliveryAction.RUN, 3),
+        # in-flight re-delivery that exhausts the budget → dead-letter
+        (TaskStatus.PROCESSING, 3, None, RedeliveryAction.DEAD_LETTER, 4),
+        (TaskStatus.PROCESSING, 0, 0, RedeliveryAction.DEAD_LETTER, 1),
+        # already-counted re-delivery (retry queue / stale sweep) → run, no bump
+        (TaskStatus.FAILED, 1, None, RedeliveryAction.RUN, 1),
+        # already-counted but over budget → dead-letter, no bump
+        (TaskStatus.FAILED, 4, None, RedeliveryAction.DEAD_LETTER, 4),
+        # completed but re-delivered (lost ack) → drop, never re-run
+        (TaskStatus.COMPLETED, 0, None, RedeliveryAction.DROP, 0),
+    ],
+)
+def test_redelivery_decision(
+    rm_and_queue, status, retries, max_retries, expected_action, expected_retries
+):
+    _, queue = rm_and_queue  # queue default max_retries=3
+    action, new_retries = queue._redelivery_decision(_job(status, retries, max_retries))
+    assert action == expected_action
+    assert new_retries == expected_retries
