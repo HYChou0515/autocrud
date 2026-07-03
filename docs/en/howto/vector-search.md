@@ -214,20 +214,20 @@ Vector conditions compose with scalar conditions via `&` / `|` / `~`:
 
 ### REST
 
-Use the standard `GET /{model}` endpoint with JSON-encoded conditions.
-Vector and scalar conditions live in the same `conditions` list and sorts
-share the same `sorts` list:
+Use the query-builder (`qb`) param on the search route — the same `QB[...]`
+expression you'd write in Python, URL-encoded. `cosine`, `l2` and `ip` are
+supported:
 
 ```http
-GET /docs?conditions=[
-  {"type":"DataSearchCondition","field_path":"doctype","operator":"eq","value":"abc"},
-  {"type":"VectorDistanceCondition","field_path":"embedding",
-   "query_vector":"how to use vectors","operator":"lt","threshold":0.3,
-   "distance":"cosine"}
-]&sorts=[
-  {"type":"VectorDistanceSort","field_path":"embedding",
-   "query_vector":"how to use vectors","direction":"+"}
-]&limit=10
+GET /docs/data?qb=QB['embedding'].cosine('how to use vectors') < 0.3
+```
+
+Add a vector ranking with `.sort(...)`. A scalar/threshold filter must lead so
+the expression is a full query rather than a bare distance (use a loose
+threshold like `< 2.0` — cosine distance maxes at 2.0 — if you only want ranking):
+
+```http
+GET /docs/data?qb=(QB['embedding'].cosine('how to use vectors') < 2.0).sort(QB['embedding'].cosine('how to use vectors')).limit(10)
 ```
 
 `query_vector` can be either:
@@ -236,6 +236,12 @@ GET /docs?conditions=[
 
 The string form keeps URLs short and lets you debug from `curl`. Pass a
 raw 1536-dim vector via the URL only if you accept the URL-length tradeoff.
+Combine clauses with `&`/`|` as usual, but URL-encode them (`%26`/`%7C`) so
+they aren't parsed as query-string separators.
+
+> **Not yet supported:** the raw `conditions=[...]` / `sorts=[...]` JSON params
+> do not accept `VectorDistanceCondition` / `VectorDistanceSort` — use the `qb`
+> form above for vector search over REST.
 
 ---
 
