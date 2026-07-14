@@ -337,11 +337,12 @@ def test_reducers_are_pushed_down_not_iterated(meta_store_type):
     )
 
 
-@pytest.mark.parametrize("meta_store_type", ["sql3-mem"])
+@pytest.mark.parametrize("meta_store_type", ["sql3-mem", "postgres"])
 def test_order_and_page_pushed_to_store_not_sliced_in_python(meta_store_type):
-    """#412 Phase 2 — on a group-paging backend the engine does the group-level
-    ``ORDER BY … LIMIT … OFFSET``: the store's ``aggregate_by`` returns ONLY the
-    requested page, not every group for the ResourceManager to slice in Python.
+    """#412 — on a group-paging backend (SQLite + Postgres) the engine does the
+    group-level ``ORDER BY … LIMIT … OFFSET``: the store's ``aggregate_by``
+    returns ONLY the requested page, not every group for the ResourceManager to
+    slice in Python.
     Spying on the store proves the page (not the full group set) crossed the
     boundary — the same fast-path proof as ``*_is_pushed_down_not_iterated``,
     one level down."""

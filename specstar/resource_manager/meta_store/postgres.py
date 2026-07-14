@@ -799,6 +799,9 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             for row in cur:
                 yield self._serializer.decode(row["data"])
 
+    #: Postgres pushes the #412 group-level ORDER BY / LIMIT / OFFSET (below).
+    supports_group_paging = True
+
     def aggregate_by(
         self,
         query: ResourceMetaSearchQuery,
@@ -816,20 +819,15 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         ``indexed_data->>'field'`` (JSONB text) for ``source="data"`` (a missing
         field yields SQL ``NULL`` → ``None``, matching the Python path). The
         ``WHERE`` is built by the SAME :meth:`_build_where` as
-        :meth:`iter_search`, and NO ``LIMIT``/``OFFSET`` is applied — an
-        aggregate spans the whole filtered set.
+        :meth:`iter_search`, and NO row-level ``LIMIT``/``OFFSET`` is applied —
+        an aggregate spans the whole filtered set.
 
-        ``order_by`` / ``limit`` / ``offset`` (#412 group paging) are accepted
-        for interface parity but NOT yet honoured here — :attr:`supports_group_paging`
-        stays ``False`` on Postgres, so the ResourceManager leaves them at their
-        defaults and orders / pages the groups with its in-process reference.
-        Phase 3 pushes them into the engine and flips the flag.
+        When ``order_by`` is given (#412), the engine also orders and pages the
+        GROUPS: NULL order-values LAST (direction-free), then the group key
+        ascending (NULLs last) as the stable tiebreak, then ``LIMIT``/``OFFSET``
+        over those ordered groups — byte-for-byte the ResourceManager's
+        ``_order_and_page_groups`` reference (and identical to SQLite's push).
         """
-        assert order_by is None and limit is None and offset == 0, (
-            "PostgresMetaStore.aggregate_by does not yet push group paging "
-            "(supports_group_paging is False); the ResourceManager must not "
-            "pass order_by/limit/offset until Phase 3 implements them."
-        )
         # Push-down ops: Count + numeric Sum/Min/Max (Avg is decomposed by the
         # ResourceManager into Sum+Count and never reaches a store). The RM's
         # dispatch predicate only sends eligible specs, so the assert is a
@@ -849,12 +847,43 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             f"SELECT {key_expr} AS k, {select_aggs} "
             f'FROM "{self.table_name}" {where_clause} GROUP BY {key_expr}'
         )
+        if order_by is not None:
+            sql += self._group_order_clause(order_by, key_expr, aggregates)
+            if limit is not None or offset:
+                # Postgres: ``LIMIT NULL`` = no limit (offset still applies).
+                sql += " LIMIT %s OFFSET %s"
+                params = [*params, limit, offset]
         with self.stream_cursor() as cur:
             cur.execute(sql, params)
             return [
                 (row[0], {a.result_name: row[i + 1] for i, a in enumerate(aggregates)})
                 for row in cur
             ]
+
+    def _group_order_clause(
+        self, order_by: str, key_expr: str, aggregates: list[AggSpec]
+    ) -> str:
+        """The ``ORDER BY`` for #412 group paging — the Postgres twin of
+        :meth:`SqliteMetaStore._group_order_clause`. ``order_by`` is a store
+        ``result_name`` or ``"key"`` with the ``+``/``-`` direction convention.
+        NULLS-LAST is spelled with the version-agnostic ``(expr IS NULL) ASC``
+        prefix (not native ``NULLS LAST``) so the ordering is byte-for-byte the
+        SQLite push and the in-process reference; the group key is always the
+        ascending secondary sort so pages are stable and never straddle a tie."""
+        name, descending = order_by, False
+        if name[:1] in ("+", "-"):
+            descending = name[0] == "-"
+            name = name[1:]
+        if name == "key":
+            order_expr = key_expr
+        else:
+            spec = next(a for a in aggregates if a.result_name == name)
+            order_expr = self._agg_expr(spec)
+        direction = "DESC" if descending else "ASC"
+        return (
+            f" ORDER BY (({order_expr}) IS NULL) ASC, ({order_expr}) {direction}, "
+            f"(({key_expr}) IS NULL) ASC, ({key_expr}) ASC"
+        )
 
     def _agg_expr(self, a: AggSpec) -> str:
         """SQL for one aggregate's value (not the GROUP BY key). A field-less
