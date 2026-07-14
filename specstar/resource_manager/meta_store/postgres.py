@@ -848,7 +848,12 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             f'FROM "{self.table_name}" {where_clause} GROUP BY {key_expr}'
         )
         if order_by is not None:
-            sql += self._group_order_clause(order_by, key_expr, aggregates)
+            # Shared NULLS-LAST + key-tiebreak ORDER BY (IMetaWithAgg) — the same
+            # builder SQLite uses, fed this store's key + per-aggregate SQL, so
+            # the two backends order byte-for-byte identically.
+            sql += self._group_order_clause(
+                order_by, key_expr, aggregates, self._agg_expr
+            )
             if limit is not None or offset:
                 # Postgres: ``LIMIT NULL`` = no limit (offset still applies).
                 sql += " LIMIT %s OFFSET %s"
@@ -859,31 +864,6 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
                 (row[0], {a.result_name: row[i + 1] for i, a in enumerate(aggregates)})
                 for row in cur
             ]
-
-    def _group_order_clause(
-        self, order_by: str, key_expr: str, aggregates: list[AggSpec]
-    ) -> str:
-        """The ``ORDER BY`` for #412 group paging — the Postgres twin of
-        :meth:`SqliteMetaStore._group_order_clause`. ``order_by`` is a store
-        ``result_name`` or ``"key"`` with the ``+``/``-`` direction convention.
-        NULLS-LAST is spelled with the version-agnostic ``(expr IS NULL) ASC``
-        prefix (not native ``NULLS LAST``) so the ordering is byte-for-byte the
-        SQLite push and the in-process reference; the group key is always the
-        ascending secondary sort so pages are stable and never straddle a tie."""
-        name, descending = order_by, False
-        if name[:1] in ("+", "-"):
-            descending = name[0] == "-"
-            name = name[1:]
-        if name == "key":
-            order_expr = key_expr
-        else:
-            spec = next(a for a in aggregates if a.result_name == name)
-            order_expr = self._agg_expr(spec)
-        direction = "DESC" if descending else "ASC"
-        return (
-            f" ORDER BY (({order_expr}) IS NULL) ASC, ({order_expr}) {direction}, "
-            f"(({key_expr}) IS NULL) ASC, ({key_expr}) ASC"
-        )
 
     def _agg_expr(self, a: AggSpec) -> str:
         """SQL for one aggregate's value (not the GROUP BY key). A field-less

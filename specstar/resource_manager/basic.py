@@ -820,6 +820,37 @@ class IMetaWithAgg(IMetaStore, ABC):
         """
         ...
 
+    @staticmethod
+    def _group_order_clause(
+        order_by: str,
+        key_expr: str,
+        aggregates: "list[AggSpec]",
+        agg_expr: "Callable[[AggSpec], str]",
+    ) -> str:
+        """The #412 group-level ``ORDER BY`` shared by every push-down store.
+
+        ``order_by`` is a store ``AggSpec.result_name`` or the ``"key"`` sentinel
+        with the ``+``/``-`` direction convention. NULLS-LAST is spelled with the
+        version-agnostic ``(expr IS NULL) ASC`` prefix (not native ``NULLS
+        LAST``) so SQLite, Postgres, and the in-process reference agree
+        byte-for-byte; the group key is always the ascending secondary sort so
+        pages are stable and never straddle a tie. ``key_expr`` and ``agg_expr``
+        are the engine-specific SQL a concrete store supplies (its group-key
+        expression and its per-aggregate value expression)."""
+        name, descending = order_by, False
+        if name[:1] in ("+", "-"):
+            descending = name[0] == "-"
+            name = name[1:]
+        if name == "key":
+            order_expr = key_expr
+        else:
+            order_expr = agg_expr(next(a for a in aggregates if a.result_name == name))
+        direction = "DESC" if descending else "ASC"
+        return (
+            f" ORDER BY (({order_expr}) IS NULL) ASC, ({order_expr}) {direction}, "
+            f"(({key_expr}) IS NULL) ASC, ({key_expr}) ASC"
+        )
+
 
 class IBlobStore(ABC):
     """Interface for storing and retrieving binary blobs.

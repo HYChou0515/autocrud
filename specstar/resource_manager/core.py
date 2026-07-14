@@ -2735,10 +2735,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 f"got {type(by).__name__}."
             )
 
-        # 0b) Validate + parse the #412 group-level order/paging up front, so a
-        #     bad order_by target or negative limit/offset raises identically on
-        #     every backend — including the pushed path (which skips the
-        #     in-process _order_and_page_groups that also validates).
+        # 0b) Parse the #412 group order + guard the page bounds up front. The
+        #     negative-bound check MUST be here: on the pushed path a negative
+        #     ``limit`` would otherwise reach the store, where e.g. SQLite reads
+        #     ``LIMIT -1`` as "no limit" instead of raising. An invalid
+        #     ``order_by`` TARGET needs no up-front check — it is never pushable,
+        #     so it always falls through to ``_order_and_page_groups`` below,
+        #     which raises (the single source of that error, covered on every
+        #     backend).
         if offset < 0 or (limit is not None and limit < 0):
             raise ValueError("exp_aggregate_by: offset/limit must be non-negative")
         order_target: "str | None" = None
@@ -2748,11 +2752,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             if order_target[:1] in ("+", "-"):
                 order_descending = order_target[0] == "-"
                 order_target = order_target[1:]
-            if order_target != "key" and order_target not in aggregates:
-                raise ValueError(
-                    f"exp_aggregate_by: order_by target {order_target!r} is not "
-                    "an aggregate result-name or 'key'"
-                )
 
         # 1) Split self-aggregates from foreign-aggregates; validate.
         self_aggs: dict[str, Aggregate] = {}
@@ -3003,19 +3002,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def _order_and_page_groups(
         self,
-        out: "list[object]",
+        out: "list[Any]",
         aggregates: "dict[str, object]",
         order_by: "str | None",
         limit: "int | None",
         offset: int,
-    ) -> "list[object]":
+    ) -> "list[Any]":
         """#412 in-process reference for group-level ``order_by`` + ``limit`` /
         ``offset``: sort the materialized ``GroupRow``\\ s and slice. Every backend's
         pushed ``ORDER BY … LIMIT … OFFSET`` MUST return the SAME result. NULL
         order-values AND NULL keys sort LAST regardless of direction; the group key
-        is the deterministic secondary sort so pages never straddle on ties."""
-        if offset < 0 or (limit is not None and limit < 0):
-            raise ValueError("exp_aggregate_by: offset/limit must be non-negative")
+        is the deterministic secondary sort so pages never straddle on ties.
+
+        ``offset`` / ``limit`` are already guaranteed non-negative by the caller
+        (``exp_aggregate_by`` validates the page bounds up front, for the pushed
+        path too), so this reference only orders + slices."""
         if order_by is not None:
             name, descending = order_by, False
             if name[:1] in ("+", "-"):
