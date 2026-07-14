@@ -26,6 +26,7 @@ Use it when you already know what you want to do in SpecStar and need the shorte
 ### Querying and access control
 
 - [Query builder](/specstar/howto/query-builder)
+- [Aggregation and grouping](/specstar/howto/aggregation) — `GROUP BY` with counts / sums / min·max / averages, plus group-level ordering and pagination
 - [Permissions](/specstar/howto/permissions)
 - [Event handlers](/specstar/howto/event-handlers)
 
