@@ -188,6 +188,7 @@ plugins:
                 - howto/audit-user.md
                 - howto/event-handlers.md
                 - howto/query-builder.md
+                - howto/aggregation.md
                 - howto/graphql.md
                 - howto/binary-data.md
                 - howto/vector-search.md

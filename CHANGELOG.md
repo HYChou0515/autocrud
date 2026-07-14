@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+
+### Added
+
+- Group-level pagination for `exp_aggregate_by`: keyword-only `order_by` (an
+  aggregate result-name or the `"key"` sentinel, with the `+`/`-` direction
+  convention), `limit`, and `offset` page the distinct GROUPS — NULL
+  order-values and NULL keys sort last regardless of direction, and the group
+  key is the stable ascending tiebreak so pages never straddle a tie. Adds
+  `exp_count_groups(by, query=)` for the pager total. The
+  `ORDER BY … LIMIT … OFFSET` pushes down to the SQLite and Postgres engines
+  when the order target is engine-orderable (the group key, or a single-column
+  Count/Sum/Min/Max including datetime Min/Max); an Avg / ForeignAggregate
+  target falls back to the in-process reference, which every backend still
+  matches byte-for-byte. (#412)
+
 ## [0.11.14] — 2026-07-03
 
 

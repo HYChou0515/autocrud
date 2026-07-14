@@ -799,11 +799,18 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             for row in cur:
                 yield self._serializer.decode(row["data"])
 
+    #: Postgres pushes the #412 group-level ORDER BY / LIMIT / OFFSET (below).
+    supports_group_paging = True
+
     def aggregate_by(
         self,
         query: ResourceMetaSearchQuery,
         by: AggKeyRef,
         aggregates: list[AggSpec],
+        *,
+        order_by: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[tuple[object, dict[str, object]]]:
         """Push a ``Count`` group-by down to PostgreSQL — ``GROUP BY`` over the
         filtered set, never materialising one row per match.
@@ -812,8 +819,14 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         ``indexed_data->>'field'`` (JSONB text) for ``source="data"`` (a missing
         field yields SQL ``NULL`` → ``None``, matching the Python path). The
         ``WHERE`` is built by the SAME :meth:`_build_where` as
-        :meth:`iter_search`, and NO ``LIMIT``/``OFFSET`` is applied — an
-        aggregate spans the whole filtered set.
+        :meth:`iter_search`, and NO row-level ``LIMIT``/``OFFSET`` is applied —
+        an aggregate spans the whole filtered set.
+
+        When ``order_by`` is given (#412), the engine also orders and pages the
+        GROUPS: NULL order-values LAST (direction-free), then the group key
+        ascending (NULLs last) as the stable tiebreak, then ``LIMIT``/``OFFSET``
+        over those ordered groups — byte-for-byte the ResourceManager's
+        ``_order_and_page_groups`` reference (and identical to SQLite's push).
         """
         # Push-down ops: Count + numeric Sum/Min/Max (Avg is decomposed by the
         # ResourceManager into Sum+Count and never reaches a store). The RM's
@@ -834,6 +847,17 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             f"SELECT {key_expr} AS k, {select_aggs} "
             f'FROM "{self.table_name}" {where_clause} GROUP BY {key_expr}'
         )
+        if order_by is not None:
+            # Shared NULLS-LAST + key-tiebreak ORDER BY (IMetaWithAgg) — the same
+            # builder SQLite uses, fed this store's key + per-aggregate SQL, so
+            # the two backends order byte-for-byte identically.
+            sql += self._group_order_clause(
+                order_by, key_expr, aggregates, self._agg_expr
+            )
+            if limit is not None or offset:
+                # Postgres: ``LIMIT NULL`` = no limit (offset still applies).
+                sql += " LIMIT %s OFFSET %s"
+                params = [*params, limit, offset]
         with self.stream_cursor() as cur:
             cur.execute(sql, params)
             return [

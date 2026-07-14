@@ -12,10 +12,12 @@ Python path instead of pushing an incorrect result.
 """
 
 import msgspec
+import pytest
 
 from specstar.aggregates import Avg, Count, ForeignAggregate, Max, Min, Sum
 from specstar.query import QB
 from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
 from specstar.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore
 from specstar.resource_manager.resource_store.simple import MemoryResourceStore
 from specstar.types import IndexableField
@@ -263,3 +265,204 @@ def test_foreign_aggregate_parent_with_no_children_gets_zero_and_none():
     )
     got = {r.key: (r.n, r.size_total) for r in rows}
     assert got == {empty: (0, None)}
+
+
+# --- #412: group-level order_by + limit/offset + exp_count_groups -----------
+#
+# The cross-backend parity contract (incl. real Postgres) lives in
+# tests/meta_store/test_aggregate_by.py, which is integration-only and excluded
+# from the fast CI job. These service-free copies (in-process MemoryMetaStore +
+# in-memory MemorySqliteMetaStore) keep the ordering/pagination logic — both the
+# in-process reference and the SQLite ORDER BY / LIMIT / OFFSET push-down —
+# covered in the fast job.
+
+
+def _grp_mgr(kind, *, struct=Item, indexed=None):
+    """A manager over ``memory`` (no IMetaWithAgg → in-process order/page) or
+    ``sqlite`` (IMetaWithAgg → engine ORDER BY/LIMIT/OFFSET). Returns
+    ``(manager, meta_store)`` so a test can spy the store."""
+    meta_store = (
+        MemoryMetaStore(encoding="msgpack")
+        if kind == "memory"
+        else MemorySqliteMetaStore(encoding="msgpack")
+    )
+    if indexed is None:
+        indexed = [
+            IndexableField(field_path="bucket", field_type=str),
+            IndexableField(field_path="size", field_type=int),
+            IndexableField(field_path="score", field_type=float),
+        ]
+    storage = SimpleStorage(
+        meta_store=meta_store,
+        resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+    )
+    mgr = ResourceManager(
+        struct, storage=storage, name="item", default_user="t", indexed_fields=indexed
+    )
+    return mgr, meta_store
+
+
+@pytest.mark.parametrize("kind", ["memory", "sqlite"])
+class TestGroupOrderAndPaginate:
+    def test_order_by_aggregate_desc_with_limit(self, kind):
+        mgr, _ = _grp_mgr(kind)
+        # counts a=3, b=1, c=2 → desc-by-count is a, c, b
+        _seed(
+            mgr,
+            [("a", 1, 0.0)] * 3 + [("b", 1, 0.0)] + [("c", 1, 0.0)] * 2,
+        )
+        rows = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="-n", limit=2
+        )
+        assert [(r.key, r.n) for r in rows] == [("a", 3), ("c", 2)]
+
+    def test_order_by_group_key_ascending_and_descending(self, kind):
+        mgr, _ = _grp_mgr(kind)
+        _seed(mgr, [("b", 1, 0.0), ("a", 1, 0.0), ("c", 1, 0.0)])
+        asc = mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, order_by="key")
+        desc = mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, order_by="-key")
+        assert [r.key for r in asc] == ["a", "b", "c"]
+        assert [r.key for r in desc] == ["c", "b", "a"]
+
+    def test_order_by_a_value_reducer(self, kind):
+        mgr, _ = _grp_mgr(kind)
+        # per-bucket max size a=9, b=2, c=5 → desc a, c, b
+        _seed(mgr, [("a", 1, 0.0), ("a", 9, 0.0), ("b", 2, 0.0), ("c", 5, 0.0)])
+        rows = mgr.exp_aggregate_by(
+            QB["bucket"], {"hi": Max(QB["size"])}, order_by="-hi"
+        )
+        assert [(r.key, r.hi) for r in rows] == [("a", 9), ("c", 5), ("b", 2)]
+
+    def test_offset_pages_past_the_first_groups(self, kind):
+        mgr, _ = _grp_mgr(kind)
+        _seed(mgr, [(b, 1, 0.0) for b in ("a", "b", "c", "d")])
+        page = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="key", offset=1, limit=2
+        )
+        assert [r.key for r in page] == ["b", "c"]
+
+    def test_offset_without_limit_returns_the_rest(self, kind):
+        mgr, _ = _grp_mgr(kind)
+        _seed(mgr, [(b, 1, 0.0) for b in ("a", "b", "c", "d")])
+        rest = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="key", offset=2
+        )
+        assert [r.key for r in rest] == ["c", "d"]
+
+    def test_ties_break_by_group_key_so_pages_are_stable(self, kind):
+        mgr, _ = _grp_mgr(kind)
+        _seed(mgr, [(b, 1, 0.0) for b in ("c", "a", "b", "d")])
+        p1 = mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, order_by="-n", limit=2)
+        p2 = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="-n", offset=2, limit=2
+        )
+        assert [r.key for r in p1] == ["a", "b"]
+        assert [r.key for r in p2] == ["c", "d"]
+
+    def test_null_group_key_sorts_last_in_both_directions(self, kind):
+        mgr, _ = _grp_mgr(
+            kind,
+            struct=_OptItem,
+            indexed=[IndexableField(field_path="val", field_type=str)],
+        )
+        for v in ("a", "a", "b", None, None):
+            mgr.create(_OptItem(val=v))
+        asc = mgr.exp_aggregate_by(QB["val"], {"n": Count()}, order_by="key")
+        desc = mgr.exp_aggregate_by(QB["val"], {"n": Count()}, order_by="-key")
+        assert [r.key for r in asc] == ["a", "b", None]
+        assert [r.key for r in desc] == ["b", "a", None]
+
+    def test_exp_count_groups_independent_of_limit_offset(self, kind):
+        mgr, _ = _grp_mgr(kind)
+        _seed(mgr, [(b, 1, 0.0) for b in ("a", "b", "c")])
+        page = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="key", limit=1
+        )
+        assert len(page) == 1
+        assert mgr.exp_count_groups(QB["bucket"]) == 3
+
+    def test_bad_order_by_target_raises(self, kind):
+        mgr, _ = _grp_mgr(kind)
+        _seed(mgr, [("a", 1, 0.0)])
+        with pytest.raises(ValueError, match="order_by target"):
+            mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, order_by="nope")
+
+    def test_negative_offset_or_limit_raises(self, kind):
+        mgr, _ = _grp_mgr(kind)
+        _seed(mgr, [("a", 1, 0.0)])
+        with pytest.raises(ValueError, match="non-negative"):
+            mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, offset=-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, limit=-1)
+
+
+class _OptItem(msgspec.Struct):
+    val: str | None = None
+
+
+class _TwoField(msgspec.Struct):
+    grp: str | None = None
+    num: int | None = None
+
+
+def test_in_process_tiebreak_falls_to_key_when_primary_values_are_all_none():
+    # Memory backend → the in-process _order_and_page_groups reference. Every
+    # group's order-value is None (Max over an all-None field), so the primary
+    # sort ties and falls to the group-key tiebreak — which orders the real keys
+    # ascending and still puts the None key last.
+    mgr, _ = _grp_mgr(
+        "memory",
+        struct=_TwoField,
+        indexed=[
+            IndexableField(field_path="grp", field_type=str),
+            IndexableField(field_path="num", field_type=int),
+        ],
+    )
+    for grp in ("y", "x", None):
+        mgr.create(_TwoField(grp=grp, num=None))
+    rows = mgr.exp_aggregate_by(QB["grp"], {"hi": Max(QB["num"])}, order_by="-hi")
+    assert [r.key for r in rows] == ["x", "y", None]
+    assert all(r.hi is None for r in rows)
+
+
+def _spy_store_rows(meta_store, sink):
+    orig = meta_store.aggregate_by
+
+    def spy(*a, **k):
+        rows = orig(*a, **k)
+        sink["n"] = len(rows)
+        return rows
+
+    meta_store.aggregate_by = spy
+
+
+def test_order_and_page_pushed_to_sqlite_engine_returns_only_the_page():
+    # The SQLite engine does ORDER BY / LIMIT / OFFSET: aggregate_by returns
+    # ONLY the page, not every group for the RM to slice in Python.
+    mgr, ms = _grp_mgr("sqlite")
+    _seed(mgr, [(b, 1, 0.0) for b in ("a", "b", "c", "d", "e")])
+    seen = {}
+    _spy_store_rows(ms, seen)
+    page = mgr.exp_aggregate_by(
+        QB["bucket"], {"n": Count()}, order_by="key", offset=1, limit=2
+    )
+    assert [r.key for r in page] == ["b", "c"]
+    assert seen.get("n") == 2, f"store returned {seen.get('n')} groups, not the page"
+
+
+def test_avg_order_target_falls_back_to_in_process_even_on_sqlite():
+    # Avg decomposes into Sum+Count (two columns), so it is NOT an engine ORDER
+    # BY target: the value still pushes down (iter_all not walked), but the
+    # store returns ALL groups and the RM orders them in-process.
+    mgr, ms = _grp_mgr("sqlite")
+    # per-bucket avg size a=2.0, b=5.0, c=8.0 → desc c, b, a
+    _seed(mgr, [("a", 1, 0.0), ("a", 3, 0.0), ("b", 5, 0.0), ("c", 8, 0.0)])
+    seen = {}
+    with _IterSpy(mgr) as spy:
+        _spy_store_rows(ms, seen)
+        rows = mgr.exp_aggregate_by(
+            QB["bucket"], {"mean": Avg(QB["size"])}, order_by="-mean", limit=2
+        )
+    assert [r.key for r in rows] == ["c", "b"]  # ordered in-process, then sliced
+    assert spy.walked is False, "Avg value did not push down — walked iter_all"
+    assert seen.get("n") == 3, "store paged an Avg order — must return all groups"

@@ -10,7 +10,7 @@ import traceback
 import warnings
 from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import AbstractContextManager, ExitStack, contextmanager, suppress
-from functools import cached_property, wraps
+from functools import cached_property, cmp_to_key, wraps
 from typing import (
     IO,
     TYPE_CHECKING,
@@ -2654,6 +2654,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         by: "object",
         aggregates: "dict[str, object]",
         query: "ResourceMetaSearchQuery | Query | None" = None,
+        *,
+        order_by: "str | None" = None,
+        limit: "int | None" = None,
+        offset: int = 0,
     ) -> "list[object]":
         """Group rows by ``by`` and reduce with the named ``aggregates``.
 
@@ -2730,6 +2734,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 "QB.resource_id() / QB.created_by() for ResourceMeta); "
                 f"got {type(by).__name__}."
             )
+
+        # 0b) Parse the #412 group order + guard the page bounds up front. The
+        #     negative-bound check MUST be here: on the pushed path a negative
+        #     ``limit`` would otherwise reach the store, where e.g. SQLite reads
+        #     ``LIMIT -1`` as "no limit" instead of raising. An invalid
+        #     ``order_by`` TARGET needs no up-front check — it is never pushable,
+        #     so it always falls through to ``_order_and_page_groups`` below,
+        #     which raises (the single source of that error, covered on every
+        #     backend).
+        if offset < 0 or (limit is not None and limit < 0):
+            raise ValueError("exp_aggregate_by: offset/limit must be non-negative")
+        order_target: "str | None" = None
+        order_descending = False
+        if order_by is not None:
+            order_target = order_by
+            if order_target[:1] in ("+", "-"):
+                order_descending = order_target[0] == "-"
+                order_target = order_target[1:]
 
         # 1) Split self-aggregates from foreign-aggregates; validate.
         self_aggs: dict[str, Aggregate] = {}
@@ -2814,6 +2836,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         groups: dict[object, dict[str, object]] = {}
         resource_by_key: dict[object, object] = {}
         per_row_mode = by.name == "resource_id" and by.source == "meta"
+        # Set only when the store's engine did the group ORDER BY / LIMIT /
+        # OFFSET (#412) — then step 6 returns ``out`` as-is instead of
+        # re-ordering + re-slicing it (which would double-apply the offset).
+        did_page = False
 
         if per_row_mode:
             parents = self.list_resources(query)
@@ -2846,6 +2872,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             )
             store_specs: list[AggSpec] = []
             to_state: dict[str, "Callable[[dict[str, object]], object]"] = {}
+            # Result-names an engine ORDER BY can target: those whose push-down
+            # plan is exactly ONE store column named after the caller name
+            # (Count / Sum / Min / Max — incl. datetime Min/Max). Avg decomposes
+            # into two columns, so ordering by it stays on the Python path.
+            single_col_aggs: set[str] = set()
             if pushable:
                 for n, a in self_aggs.items():
                     plan = self._agg_pushdown_plan(n, a)
@@ -2855,6 +2886,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     specs, make_state = plan
                     store_specs.extend(specs)
                     to_state[n] = make_state
+                    if len(specs) == 1 and specs[0].result_name == n:
+                        single_col_aggs.add(n)
             if pushable:
                 # ``pushable`` already required ``isinstance(ms, IMetaWithAgg)``;
                 # re-assert so the type checker narrows ``ms`` for aggregate_by.
@@ -2868,6 +2901,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     q = query.build()
                 else:
                     q = query
+                # #412: push the group-level ORDER BY / LIMIT / OFFSET too, but
+                # only when the store advertises the capability AND the order
+                # target is engine-orderable (the group key, or a single-column
+                # aggregate). Anything else — an Avg / ForeignAggregate / non-
+                # paging store — keeps the in-process reorder over all groups.
+                store_order: "str | None" = None
+                if order_target is not None and getattr(
+                    ms, "supports_group_paging", False
+                ):
+                    if order_target == "key" or order_target in single_col_aggs:
+                        store_order = ("-" if order_descending else "") + order_target
+                did_page = store_order is not None
                 rows = ms.aggregate_by(
                     q,
                     # ``by.source`` is narrowed to meta/data by the guard above;
@@ -2876,6 +2921,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                         source=cast(Literal["meta", "data"], by.source), name=by.name
                     ),
                     store_specs,
+                    order_by=store_order,
+                    limit=limit if did_page else None,
+                    offset=offset if did_page else 0,
                 )
                 groups = {
                     key: {n: to_state[n](state) for n in self_aggs}
@@ -2925,6 +2973,81 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             out.append(
                 GroupRow(key=key, resource=resource_by_key.get(key), **row_kwargs)
             )
+
+        # 6) Group-level ordering + pagination (#412). ``order_by`` targets an
+        #    aggregate result-name or the sentinel ``"key"`` (the group key), with
+        #    the ``"-name"`` / ``"+name"`` direction convention from ``Query.sort()``
+        #    (asc default, ``-`` = desc). ``limit`` / ``offset`` page the GROUPS —
+        #    distinct from the row-level ``query.limit/offset`` (still ignored for
+        #    aggregates). When the store's engine already did the ORDER BY / LIMIT /
+        #    OFFSET (``did_page``), ``out`` IS the requested page — return it as-is.
+        #    Otherwise this in-process reference orders + slices the materialized
+        #    ``GroupRow`` list, and every pushed-down path MUST match it.
+        if did_page:
+            return out
+        return self._order_and_page_groups(out, aggregates, order_by, limit, offset)
+
+    def exp_count_groups(
+        self,
+        by: "object",
+        query: "ResourceMetaSearchQuery | Query | None" = None,
+    ) -> int:
+        """The number of DISTINCT groups :meth:`exp_aggregate_by` would return for
+        the same ``by`` + ``query`` — the total a pager needs, independent of any
+        ``limit`` / ``offset``. A missing / UNSET / NULL ``by`` value counts as one
+        group (``key=None``), matching :meth:`exp_aggregate_by`."""
+        from specstar.aggregates import Count
+
+        return len(self.exp_aggregate_by(by, {"__n": Count()}, query=query))
+
+    def _order_and_page_groups(
+        self,
+        out: "list[Any]",
+        aggregates: "dict[str, object]",
+        order_by: "str | None",
+        limit: "int | None",
+        offset: int,
+    ) -> "list[Any]":
+        """#412 in-process reference for group-level ``order_by`` + ``limit`` /
+        ``offset``: sort the materialized ``GroupRow``\\ s and slice. Every backend's
+        pushed ``ORDER BY … LIMIT … OFFSET`` MUST return the SAME result. NULL
+        order-values AND NULL keys sort LAST regardless of direction; the group key
+        is the deterministic secondary sort so pages never straddle on ties.
+
+        ``offset`` / ``limit`` are already guaranteed non-negative by the caller
+        (``exp_aggregate_by`` validates the page bounds up front, for the pushed
+        path too), so this reference only orders + slices."""
+        if order_by is not None:
+            name, descending = order_by, False
+            if name[:1] in ("+", "-"):
+                descending = name[0] == "-"
+                name = name[1:]
+            if name != "key" and name not in aggregates:
+                raise ValueError(
+                    f"exp_aggregate_by: order_by target {name!r} is not an "
+                    "aggregate result-name or 'key'"
+                )
+
+            def _val(r: "Any", _n: str = name) -> "object":
+                return r.key if _n == "key" else r[_n]
+
+            def _cmp(a: "Any", b: "Any") -> int:
+                # Primary: order value by direction, NULLs LAST (direction-free).
+                av, bv = _val(a), _val(b)
+                if av is None or bv is None:
+                    if av is not bv:  # exactly one None → it sorts last
+                        return 1 if av is None else -1
+                elif av != bv:
+                    return (-1 if av < bv else 1) * (-1 if descending else 1)
+                # Secondary: group key ascending, NULLs LAST (stable tiebreak).
+                ak, bk = a.key, b.key
+                if ak is None or bk is None:
+                    return 0 if ak is bk else (1 if ak is None else -1)
+                return 0 if ak == bk else (-1 if ak < bk else 1)
+
+            out.sort(key=cmp_to_key(_cmp))
+        if offset or limit is not None:
+            out = out[offset : None if limit is None else offset + limit]
         return out
 
     #: ResourceMeta datetime attributes eligible for Min/Max push-down. They are

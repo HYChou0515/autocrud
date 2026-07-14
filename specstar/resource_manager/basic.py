@@ -776,12 +776,24 @@ class IMetaWithAgg(IMetaStore, ABC):
     ``tests/meta_store/test_aggregate_by.py``.
     """
 
+    #: Whether this store can push the GROUP-level ``order_by`` + ``limit`` /
+    #: ``offset`` (#412) down to its engine. When ``False`` (the default), the
+    #: :class:`ResourceManager` never passes those args — it materialises all
+    #: groups and orders / pages them with its in-process reference reduction.
+    #: A store that implements the engine-side ``ORDER BY … LIMIT … OFFSET``
+    #: overrides this to ``True``; results MUST still equal the reference.
+    supports_group_paging: bool = False
+
     @abstractmethod
     def aggregate_by(
         self,
         query: ResourceMetaSearchQuery,
         by: AggKeyRef,
         aggregates: list[AggSpec],
+        *,
+        order_by: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[tuple[object, dict[str, object]]]:
         """Group rows matching ``query`` by ``by`` and reduce each aggregate
         per group, pushed down to the store's engine.
@@ -791,8 +803,53 @@ class IMetaWithAgg(IMetaStore, ABC):
         the ResourceManager's ``iter_all`` semantics. Returns one
         ``(key, {result_name: value})`` per distinct ``by`` value; a missing /
         NULL key groups under ``key=None`` to match the Python reference path.
+
+        **Group-level paging (#412)** — only used when
+        :attr:`supports_group_paging` is ``True`` (else the RM leaves these at
+        their defaults and orders / pages the groups itself):
+
+        * ``order_by`` — a store ``AggSpec.result_name`` or the sentinel
+          ``"key"`` (the group key), with the ``"-name"`` / ``"+name"``
+          direction convention (asc default, ``-`` = desc). The engine MUST
+          order NULL order-values LAST (direction-free) and break ties by the
+          group key ascending (NULLs last) — byte-for-byte the
+          ResourceManager's ``_order_and_page_groups`` reference.
+        * ``limit`` / ``offset`` — page the GROUPS themselves (distinct from the
+          ignored row-level ``query.limit/offset``). Only meaningful with a
+          deterministic ``order_by``.
         """
         ...
+
+    @staticmethod
+    def _group_order_clause(
+        order_by: str,
+        key_expr: str,
+        aggregates: "list[AggSpec]",
+        agg_expr: "Callable[[AggSpec], str]",
+    ) -> str:
+        """The #412 group-level ``ORDER BY`` shared by every push-down store.
+
+        ``order_by`` is a store ``AggSpec.result_name`` or the ``"key"`` sentinel
+        with the ``+``/``-`` direction convention. NULLS-LAST is spelled with the
+        version-agnostic ``(expr IS NULL) ASC`` prefix (not native ``NULLS
+        LAST``) so SQLite, Postgres, and the in-process reference agree
+        byte-for-byte; the group key is always the ascending secondary sort so
+        pages are stable and never straddle a tie. ``key_expr`` and ``agg_expr``
+        are the engine-specific SQL a concrete store supplies (its group-key
+        expression and its per-aggregate value expression)."""
+        name, descending = order_by, False
+        if name[:1] in ("+", "-"):
+            descending = name[0] == "-"
+            name = name[1:]
+        if name == "key":
+            order_expr = key_expr
+        else:
+            order_expr = agg_expr(next(a for a in aggregates if a.result_name == name))
+        direction = "DESC" if descending else "ASC"
+        return (
+            f" ORDER BY (({order_expr}) IS NULL) ASC, ({order_expr}) {direction}, "
+            f"(({key_expr}) IS NULL) ASC, ({key_expr}) ASC"
+        )
 
 
 class IBlobStore(ABC):
