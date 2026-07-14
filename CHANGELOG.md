@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.11.15] — 2026-07-14
+
+
+### Added
+
+- Group-level order_by + limit/offset + exp_count_groups (in-process ref)
+- SQLite pushdown of group-level ORDER BY / LIMIT / OFFSET
+- Postgres pushdown of group-level ORDER BY / LIMIT / OFFSET + parity
+
+
+### Documentation
+
+- Design plan — group-level order_by + limit/offset + exp_count_groups
+- Plan status → all phases done + DoD checked
+- How-to page for aggregation + group-level ordering/pagination
+
 ## [Unreleased]
 
 
