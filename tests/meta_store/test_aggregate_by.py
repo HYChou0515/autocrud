@@ -337,6 +337,52 @@ def test_reducers_are_pushed_down_not_iterated(meta_store_type):
     )
 
 
+@pytest.mark.parametrize("meta_store_type", ["sql3-mem"])
+def test_order_and_page_pushed_to_store_not_sliced_in_python(meta_store_type):
+    """#412 Phase 2 — on a group-paging backend the engine does the group-level
+    ``ORDER BY … LIMIT … OFFSET``: the store's ``aggregate_by`` returns ONLY the
+    requested page, not every group for the ResourceManager to slice in Python.
+    Spying on the store proves the page (not the full group set) crossed the
+    boundary — the same fast-path proof as ``*_is_pushed_down_not_iterated``,
+    one level down."""
+    meta_store = get_meta_store(meta_store_type)
+    storage = SimpleStorage(
+        meta_store=meta_store,
+        resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+    )
+    mgr = ResourceManager(
+        Rec,
+        storage=storage,
+        name="rec",
+        default_user="t",
+        indexed_fields=[
+            IndexableField(field_path="bucket", field_type=str),
+            IndexableField(field_path="size", field_type=int),
+        ],
+    )
+    for b in ("a", "b", "c", "d", "e"):
+        mgr.create(Rec(bucket=b, size=1, score=0.0))
+
+    seen: dict[str, int] = {}
+    orig = meta_store.aggregate_by
+
+    def spy(*a, **k):
+        rows = orig(*a, **k)
+        seen["n"] = len(rows)
+        return rows
+
+    meta_store.aggregate_by = spy
+    page = mgr.exp_aggregate_by(
+        QB["bucket"], {"n": Count()}, order_by="key", offset=1, limit=2
+    )
+
+    assert [r.key for r in page] == ["b", "c"]
+    assert seen.get("n") == 2, (
+        f"store returned {seen.get('n')} groups on {meta_store_type} — "
+        "ORDER BY / LIMIT / OFFSET not pushed to the engine"
+    )
+
+
 @pytest.mark.parametrize("meta_store_type", ALL_META_STORE_TYPES)
 class TestAggregateByOrderAndPaginate:
     """#412 — group-level ``order_by`` + ``limit`` / ``offset`` + ``exp_count_groups``.

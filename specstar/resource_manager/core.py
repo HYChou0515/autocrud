@@ -2735,6 +2735,25 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 f"got {type(by).__name__}."
             )
 
+        # 0b) Validate + parse the #412 group-level order/paging up front, so a
+        #     bad order_by target or negative limit/offset raises identically on
+        #     every backend — including the pushed path (which skips the
+        #     in-process _order_and_page_groups that also validates).
+        if offset < 0 or (limit is not None and limit < 0):
+            raise ValueError("exp_aggregate_by: offset/limit must be non-negative")
+        order_target: "str | None" = None
+        order_descending = False
+        if order_by is not None:
+            order_target = order_by
+            if order_target[:1] in ("+", "-"):
+                order_descending = order_target[0] == "-"
+                order_target = order_target[1:]
+            if order_target != "key" and order_target not in aggregates:
+                raise ValueError(
+                    f"exp_aggregate_by: order_by target {order_target!r} is not "
+                    "an aggregate result-name or 'key'"
+                )
+
         # 1) Split self-aggregates from foreign-aggregates; validate.
         self_aggs: dict[str, Aggregate] = {}
         foreign_aggs: dict[str, ForeignAggregate] = {}
@@ -2818,6 +2837,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         groups: dict[object, dict[str, object]] = {}
         resource_by_key: dict[object, object] = {}
         per_row_mode = by.name == "resource_id" and by.source == "meta"
+        # Set only when the store's engine did the group ORDER BY / LIMIT /
+        # OFFSET (#412) — then step 6 returns ``out`` as-is instead of
+        # re-ordering + re-slicing it (which would double-apply the offset).
+        did_page = False
 
         if per_row_mode:
             parents = self.list_resources(query)
@@ -2850,6 +2873,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             )
             store_specs: list[AggSpec] = []
             to_state: dict[str, "Callable[[dict[str, object]], object]"] = {}
+            # Result-names an engine ORDER BY can target: those whose push-down
+            # plan is exactly ONE store column named after the caller name
+            # (Count / Sum / Min / Max — incl. datetime Min/Max). Avg decomposes
+            # into two columns, so ordering by it stays on the Python path.
+            single_col_aggs: set[str] = set()
             if pushable:
                 for n, a in self_aggs.items():
                     plan = self._agg_pushdown_plan(n, a)
@@ -2859,6 +2887,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     specs, make_state = plan
                     store_specs.extend(specs)
                     to_state[n] = make_state
+                    if len(specs) == 1 and specs[0].result_name == n:
+                        single_col_aggs.add(n)
             if pushable:
                 # ``pushable`` already required ``isinstance(ms, IMetaWithAgg)``;
                 # re-assert so the type checker narrows ``ms`` for aggregate_by.
@@ -2872,6 +2902,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     q = query.build()
                 else:
                     q = query
+                # #412: push the group-level ORDER BY / LIMIT / OFFSET too, but
+                # only when the store advertises the capability AND the order
+                # target is engine-orderable (the group key, or a single-column
+                # aggregate). Anything else — an Avg / ForeignAggregate / non-
+                # paging store — keeps the in-process reorder over all groups.
+                store_order: "str | None" = None
+                if order_target is not None and getattr(
+                    ms, "supports_group_paging", False
+                ):
+                    if order_target == "key" or order_target in single_col_aggs:
+                        store_order = ("-" if order_descending else "") + order_target
+                did_page = store_order is not None
                 rows = ms.aggregate_by(
                     q,
                     # ``by.source`` is narrowed to meta/data by the guard above;
@@ -2880,6 +2922,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                         source=cast(Literal["meta", "data"], by.source), name=by.name
                     ),
                     store_specs,
+                    order_by=store_order,
+                    limit=limit if did_page else None,
+                    offset=offset if did_page else 0,
                 )
                 groups = {
                     key: {n: to_state[n](state) for n in self_aggs}
@@ -2935,9 +2980,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         #    the ``"-name"`` / ``"+name"`` direction convention from ``Query.sort()``
         #    (asc default, ``-`` = desc). ``limit`` / ``offset`` page the GROUPS —
         #    distinct from the row-level ``query.limit/offset`` (still ignored for
-        #    aggregates). Applied to the materialized ``GroupRow`` list here — the
-        #    reference semantics every backend, including the store-side ORDER BY /
-        #    LIMIT / OFFSET push-down that follows, MUST match.
+        #    aggregates). When the store's engine already did the ORDER BY / LIMIT /
+        #    OFFSET (``did_page``), ``out`` IS the requested page — return it as-is.
+        #    Otherwise this in-process reference orders + slices the materialized
+        #    ``GroupRow`` list, and every pushed-down path MUST match it.
+        if did_page:
+            return out
         return self._order_and_page_groups(out, aggregates, order_by, limit, offset)
 
     def exp_count_groups(

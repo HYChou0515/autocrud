@@ -776,12 +776,24 @@ class IMetaWithAgg(IMetaStore, ABC):
     ``tests/meta_store/test_aggregate_by.py``.
     """
 
+    #: Whether this store can push the GROUP-level ``order_by`` + ``limit`` /
+    #: ``offset`` (#412) down to its engine. When ``False`` (the default), the
+    #: :class:`ResourceManager` never passes those args — it materialises all
+    #: groups and orders / pages them with its in-process reference reduction.
+    #: A store that implements the engine-side ``ORDER BY … LIMIT … OFFSET``
+    #: overrides this to ``True``; results MUST still equal the reference.
+    supports_group_paging: bool = False
+
     @abstractmethod
     def aggregate_by(
         self,
         query: ResourceMetaSearchQuery,
         by: AggKeyRef,
         aggregates: list[AggSpec],
+        *,
+        order_by: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[tuple[object, dict[str, object]]]:
         """Group rows matching ``query`` by ``by`` and reduce each aggregate
         per group, pushed down to the store's engine.
@@ -791,6 +803,20 @@ class IMetaWithAgg(IMetaStore, ABC):
         the ResourceManager's ``iter_all`` semantics. Returns one
         ``(key, {result_name: value})`` per distinct ``by`` value; a missing /
         NULL key groups under ``key=None`` to match the Python reference path.
+
+        **Group-level paging (#412)** — only used when
+        :attr:`supports_group_paging` is ``True`` (else the RM leaves these at
+        their defaults and orders / pages the groups itself):
+
+        * ``order_by`` — a store ``AggSpec.result_name`` or the sentinel
+          ``"key"`` (the group key), with the ``"-name"`` / ``"+name"``
+          direction convention (asc default, ``-`` = desc). The engine MUST
+          order NULL order-values LAST (direction-free) and break ties by the
+          group key ascending (NULLs last) — byte-for-byte the
+          ResourceManager's ``_order_and_page_groups`` reference.
+        * ``limit`` / ``offset`` — page the GROUPS themselves (distinct from the
+          ignored row-level ``query.limit/offset``). Only meaningful with a
+          deterministic ``order_by``.
         """
         ...
 

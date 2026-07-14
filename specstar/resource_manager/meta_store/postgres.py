@@ -804,6 +804,10 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         query: ResourceMetaSearchQuery,
         by: AggKeyRef,
         aggregates: list[AggSpec],
+        *,
+        order_by: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[tuple[object, dict[str, object]]]:
         """Push a ``Count`` group-by down to PostgreSQL — ``GROUP BY`` over the
         filtered set, never materialising one row per match.
@@ -814,7 +818,18 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         ``WHERE`` is built by the SAME :meth:`_build_where` as
         :meth:`iter_search`, and NO ``LIMIT``/``OFFSET`` is applied — an
         aggregate spans the whole filtered set.
+
+        ``order_by`` / ``limit`` / ``offset`` (#412 group paging) are accepted
+        for interface parity but NOT yet honoured here — :attr:`supports_group_paging`
+        stays ``False`` on Postgres, so the ResourceManager leaves them at their
+        defaults and orders / pages the groups with its in-process reference.
+        Phase 3 pushes them into the engine and flips the flag.
         """
+        assert order_by is None and limit is None and offset == 0, (
+            "PostgresMetaStore.aggregate_by does not yet push group paging "
+            "(supports_group_paging is False); the ResourceManager must not "
+            "pass order_by/limit/offset until Phase 3 implements them."
+        )
         # Push-down ops: Count + numeric Sum/Min/Max (Avg is decomposed by the
         # ResourceManager into Sum+Count and never reaches a store). The RM's
         # dispatch predicate only sends eligible specs, so the assert is a

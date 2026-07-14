@@ -399,11 +399,18 @@ class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
         for row in cursor:
             yield self._serializer.decode(row[0])
 
+    #: SQLite pushes the #412 group-level ORDER BY / LIMIT / OFFSET (below).
+    supports_group_paging = True
+
     def aggregate_by(
         self,
         query: ResourceMetaSearchQuery,
         by: AggKeyRef,
         aggregates: list[AggSpec],
+        *,
+        order_by: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[tuple[object, dict[str, object]]]:
         """Push a ``Count`` group-by down to SQLite — ``GROUP BY`` over the
         filtered set, never materialising one row per match.
@@ -412,8 +419,14 @@ class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
         ``json_extract`` of ``indexed_data`` for ``source="data"`` (a missing
         field yields SQL ``NULL`` → ``None``, matching the Python path). The
         ``WHERE`` is built by the SAME :meth:`_build_where` as
-        :meth:`iter_search`, and NO ``LIMIT``/``OFFSET`` is applied — an
-        aggregate spans the whole filtered set.
+        :meth:`iter_search`, and NO row-level ``LIMIT``/``OFFSET`` is applied —
+        an aggregate spans the whole filtered set.
+
+        When ``order_by`` is given (#412), the engine also orders and pages the
+        GROUPS: NULL order-values LAST (direction-free), then the group key
+        ascending (NULLs last) as the stable tiebreak, then ``LIMIT``/``OFFSET``
+        over those ordered groups — byte-for-byte the ResourceManager's
+        ``_order_and_page_groups`` reference.
         """
         # Push-down ops: Count + numeric Sum/Min/Max (Avg is decomposed by the
         # ResourceManager into Sum+Count and never reaches a store). The RM's
@@ -434,11 +447,40 @@ class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
             f"SELECT {key_expr} AS k, {select_aggs} "
             f"FROM resource_meta {where_clause} GROUP BY {key_expr}"
         )
+        if order_by is not None:
+            sql += self._group_order_clause(order_by, key_expr, aggregates)
+            if limit is not None or offset:
+                # SQLite: LIMIT -1 = "no limit" (offset still applies).
+                sql += " LIMIT ? OFFSET ?"
+                params = [*params, -1 if limit is None else limit, offset]
         cursor = self._conns[threading.get_ident()].execute(sql, params)
         return [
             (row[0], {a.result_name: row[i + 1] for i, a in enumerate(aggregates)})
             for row in cursor
         ]
+
+    def _group_order_clause(
+        self, order_by: str, key_expr: str, aggregates: list[AggSpec]
+    ) -> str:
+        """The ``ORDER BY`` for #412 group paging. ``order_by`` is a store
+        ``result_name`` or ``"key"`` with the ``+``/``-`` direction convention.
+        NULLS-LAST is spelled with the version-agnostic ``(expr IS NULL) ASC``
+        prefix; the group key is always the ascending secondary sort so pages
+        are stable and never straddle a tie."""
+        name, descending = order_by, False
+        if name[:1] in ("+", "-"):
+            descending = name[0] == "-"
+            name = name[1:]
+        if name == "key":
+            order_expr = key_expr
+        else:
+            spec = next(a for a in aggregates if a.result_name == name)
+            order_expr = self._agg_expr(spec)
+        direction = "DESC" if descending else "ASC"
+        return (
+            f" ORDER BY (({order_expr}) IS NULL) ASC, ({order_expr}) {direction}, "
+            f"(({key_expr}) IS NULL) ASC, ({key_expr}) ASC"
+        )
 
     def _agg_expr(self, a: AggSpec) -> str:
         """SQL for one aggregate's value (not the GROUP BY key). ``Count``
