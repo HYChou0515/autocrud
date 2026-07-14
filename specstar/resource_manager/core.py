@@ -10,7 +10,7 @@ import traceback
 import warnings
 from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import AbstractContextManager, ExitStack, contextmanager, suppress
-from functools import cached_property, wraps
+from functools import cached_property, cmp_to_key, wraps
 from typing import (
     IO,
     TYPE_CHECKING,
@@ -2654,6 +2654,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         by: "object",
         aggregates: "dict[str, object]",
         query: "ResourceMetaSearchQuery | Query | None" = None,
+        *,
+        order_by: "str | None" = None,
+        limit: "int | None" = None,
+        offset: int = 0,
     ) -> "list[object]":
         """Group rows by ``by`` and reduce with the named ``aggregates``.
 
@@ -2925,6 +2929,76 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             out.append(
                 GroupRow(key=key, resource=resource_by_key.get(key), **row_kwargs)
             )
+
+        # 6) Group-level ordering + pagination (#412). ``order_by`` targets an
+        #    aggregate result-name or the sentinel ``"key"`` (the group key), with
+        #    the ``"-name"`` / ``"+name"`` direction convention from ``Query.sort()``
+        #    (asc default, ``-`` = desc). ``limit`` / ``offset`` page the GROUPS —
+        #    distinct from the row-level ``query.limit/offset`` (still ignored for
+        #    aggregates). Applied to the materialized ``GroupRow`` list here — the
+        #    reference semantics every backend, including the store-side ORDER BY /
+        #    LIMIT / OFFSET push-down that follows, MUST match.
+        return self._order_and_page_groups(out, aggregates, order_by, limit, offset)
+
+    def exp_count_groups(
+        self,
+        by: "object",
+        query: "ResourceMetaSearchQuery | Query | None" = None,
+    ) -> int:
+        """The number of DISTINCT groups :meth:`exp_aggregate_by` would return for
+        the same ``by`` + ``query`` — the total a pager needs, independent of any
+        ``limit`` / ``offset``. A missing / UNSET / NULL ``by`` value counts as one
+        group (``key=None``), matching :meth:`exp_aggregate_by`."""
+        from specstar.aggregates import Count
+
+        return len(self.exp_aggregate_by(by, {"__n": Count()}, query=query))
+
+    def _order_and_page_groups(
+        self,
+        out: "list[object]",
+        aggregates: "dict[str, object]",
+        order_by: "str | None",
+        limit: "int | None",
+        offset: int,
+    ) -> "list[object]":
+        """#412 in-process reference for group-level ``order_by`` + ``limit`` /
+        ``offset``: sort the materialized ``GroupRow``\\ s and slice. Every backend's
+        pushed ``ORDER BY … LIMIT … OFFSET`` MUST return the SAME result. NULL
+        order-values AND NULL keys sort LAST regardless of direction; the group key
+        is the deterministic secondary sort so pages never straddle on ties."""
+        if offset < 0 or (limit is not None and limit < 0):
+            raise ValueError("exp_aggregate_by: offset/limit must be non-negative")
+        if order_by is not None:
+            name, descending = order_by, False
+            if name[:1] in ("+", "-"):
+                descending = name[0] == "-"
+                name = name[1:]
+            if name != "key" and name not in aggregates:
+                raise ValueError(
+                    f"exp_aggregate_by: order_by target {name!r} is not an "
+                    "aggregate result-name or 'key'"
+                )
+
+            def _val(r: "Any", _n: str = name) -> "object":
+                return r.key if _n == "key" else r[_n]
+
+            def _cmp(a: "Any", b: "Any") -> int:
+                # Primary: order value by direction, NULLs LAST (direction-free).
+                av, bv = _val(a), _val(b)
+                if av is None or bv is None:
+                    if av is not bv:  # exactly one None → it sorts last
+                        return 1 if av is None else -1
+                elif av != bv:
+                    return (-1 if av < bv else 1) * (-1 if descending else 1)
+                # Secondary: group key ascending, NULLs LAST (stable tiebreak).
+                ak, bk = a.key, b.key
+                if ak is None or bk is None:
+                    return 0 if ak is bk else (1 if ak is None else -1)
+                return 0 if ak == bk else (-1 if ak < bk else 1)
+
+            out.sort(key=cmp_to_key(_cmp))
+        if offset or limit is not None:
+            out = out[offset : None if limit is None else offset + limit]
         return out
 
     #: ResourceMeta datetime attributes eligible for Min/Max push-down. They are

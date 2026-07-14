@@ -132,6 +132,13 @@ class Rec(msgspec.Struct):
     score: float
 
 
+class Opt(msgspec.Struct):
+    # a nullable group field — some rows collapse to the key=None group (#412 NULL last).
+    # str (not int) on purpose: int group-keys have an orthogonal cross-backend type
+    # divergence (Postgres returns them as strings); #511 groups by a str cluster_key.
+    val: str | None = None
+
+
 @pytest.mark.parametrize("meta_store_type", ALL_META_STORE_TYPES)
 class TestAggregateByReducerParity:
     """#406 — Sum/Min/Max/Avg (+ datetime Min/Max) must return IDENTICAL
@@ -328,6 +335,149 @@ def test_reducers_are_pushed_down_not_iterated(meta_store_type):
     assert called is False, (
         f"exp_aggregate_by walked iter_all on {meta_store_type} — reducers not pushed"
     )
+
+
+@pytest.mark.parametrize("meta_store_type", ALL_META_STORE_TYPES)
+class TestAggregateByOrderAndPaginate:
+    """#412 — group-level ``order_by`` + ``limit`` / ``offset`` + ``exp_count_groups``.
+    The SAME ordered+paginated groups on every backend, whether the sort/page pushes
+    down to the engine or falls back to the in-process reference reduction."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, meta_store_type, my_tmpdir):
+        self._meta_store_type = meta_store_type
+        self._tmpdir = my_tmpdir
+        yield
+
+    def _mgr(self):
+        meta_store = get_meta_store(self._meta_store_type, tmpdir=self._tmpdir)
+        storage = SimpleStorage(
+            meta_store=meta_store,
+            resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+        )
+        return ResourceManager(
+            Rec,
+            storage=storage,
+            name="rec",
+            default_user="t",
+            indexed_fields=[
+                IndexableField(field_path="bucket", field_type=str),
+                IndexableField(field_path="size", field_type=int),
+            ],
+        )
+
+    def _seed(self, mgr, rows):
+        """rows = [(bucket, size), ...]."""
+        for bucket, size in rows:
+            mgr.create(Rec(bucket=bucket, size=size, score=0.0))
+
+    def test_order_by_aggregate_desc_with_limit_pages_the_groups(self):
+        from specstar.aggregates import Count
+
+        mgr = self._mgr()
+        # group counts: a=3, b=1, c=2 → desc-by-count order is a, c, b
+        self._seed(mgr, [("a", 1), ("a", 1), ("a", 1), ("b", 1), ("c", 1), ("c", 1)])
+        rows = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="-n", limit=2
+        )
+        assert [(r.key, r.n) for r in rows] == [("a", 3), ("c", 2)]
+
+    def test_order_by_group_key_ascending_and_descending(self):
+        from specstar.aggregates import Count
+
+        mgr = self._mgr()
+        self._seed(mgr, [("b", 1), ("a", 1), ("c", 1)])
+        asc = mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, order_by="key")
+        desc = mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, order_by="-key")
+        assert [r.key for r in asc] == ["a", "b", "c"]
+        assert [r.key for r in desc] == ["c", "b", "a"]
+
+    def test_order_by_a_value_reducer_the_511_shape(self):
+        # #511 pages concepts by their newest member: order_by a Max reducer, desc.
+        from specstar.aggregates import Max
+
+        mgr = self._mgr()
+        # per-bucket max size: a=9, b=2, c=5 → desc order a, c, b
+        self._seed(mgr, [("a", 1), ("a", 9), ("b", 2), ("c", 5), ("c", 3)])
+        rows = mgr.exp_aggregate_by(
+            QB["bucket"], {"hi": Max(QB["size"])}, order_by="-hi"
+        )
+        assert [(r.key, r.hi) for r in rows] == [("a", 9), ("c", 5), ("b", 2)]
+
+    def test_offset_pages_past_the_first_groups(self):
+        from specstar.aggregates import Count
+
+        mgr = self._mgr()
+        self._seed(mgr, [("a", 1), ("b", 1), ("c", 1), ("d", 1)])
+        page = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="key", offset=1, limit=2
+        )
+        assert [r.key for r in page] == ["b", "c"]
+
+    def test_ties_break_by_group_key_so_pages_are_stable(self):
+        from specstar.aggregates import Count
+
+        mgr = self._mgr()
+        # every group has count 1 → the order_by target ties; key asc is the tiebreak
+        self._seed(mgr, [("c", 1), ("a", 1), ("b", 1), ("d", 1)])
+        p1 = mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, order_by="-n", limit=2)
+        p2 = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="-n", offset=2, limit=2
+        )
+        assert [r.key for r in p1] == ["a", "b"]  # tie → key asc
+        assert [r.key for r in p2] == ["c", "d"]  # next page, no overlap/gap
+
+    def test_null_group_key_sorts_last_in_both_directions(self):
+        from specstar.aggregates import Count
+
+        meta_store = get_meta_store(self._meta_store_type, tmpdir=self._tmpdir)
+        storage = SimpleStorage(
+            meta_store=meta_store,
+            resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+        )
+        mgr = ResourceManager(
+            Opt,
+            storage=storage,
+            name="opt",
+            default_user="t",
+            indexed_fields=[IndexableField(field_path="val", field_type=str)],
+        )
+        for v in ("a", "a", "b", None, None):
+            mgr.create(Opt(val=v))
+        asc = mgr.exp_aggregate_by(QB["val"], {"n": Count()}, order_by="key")
+        desc = mgr.exp_aggregate_by(QB["val"], {"n": Count()}, order_by="-key")
+        assert [r.key for r in asc] == ["a", "b", None]  # NULL last on asc
+        assert [r.key for r in desc] == ["b", "a", None]  # NULL still last on desc
+
+    def test_exp_count_groups_is_the_total_independent_of_limit_offset(self):
+        from specstar.aggregates import Count
+
+        mgr = self._mgr()
+        self._seed(mgr, [("a", 1), ("b", 1), ("c", 1)])
+        # a limited page returns fewer rows, but the pager total counts all groups
+        page = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="key", limit=1
+        )
+        assert len(page) == 1
+        assert mgr.exp_count_groups(QB["bucket"]) == 3
+
+    def test_bad_order_by_target_raises(self):
+        from specstar.aggregates import Count
+
+        mgr = self._mgr()
+        self._seed(mgr, [("a", 1)])
+        with pytest.raises(ValueError, match="order_by target"):
+            mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, order_by="nope")
+
+    def test_negative_offset_or_limit_raises(self):
+        from specstar.aggregates import Count
+
+        mgr = self._mgr()
+        self._seed(mgr, [("a", 1)])
+        with pytest.raises(ValueError, match="non-negative"):
+            mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, offset=-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, limit=-1)
 
 
 @pytest.fixture
