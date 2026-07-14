@@ -461,6 +461,19 @@ class TestAggregateByOrderAndPaginate:
         )
         assert [r.key for r in page] == ["b", "c"]
 
+    def test_offset_without_limit_returns_the_rest_ordered(self):
+        # order_by + offset but NO limit: every group past the offset, ordered.
+        # Exercises the push-down "no limit" branch (SQLite LIMIT -1 / Postgres
+        # LIMIT NULL) as well as the in-process reference.
+        from specstar.aggregates import Count
+
+        mgr = self._mgr()
+        self._seed(mgr, [("a", 1), ("b", 1), ("c", 1), ("d", 1)])
+        rest = mgr.exp_aggregate_by(
+            QB["bucket"], {"n": Count()}, order_by="key", offset=2
+        )
+        assert [r.key for r in rest] == ["c", "d"]
+
     def test_ties_break_by_group_key_so_pages_are_stable(self):
         from specstar.aggregates import Count
 
