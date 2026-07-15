@@ -23,6 +23,7 @@ from specstar.query_types import (
 from specstar.resource_manager.basic import (
     Encoding,
     IMetaWithAgg,
+    IMetaWithCount,
     ISlowMetaStore,
     MsgspecSerializer,
 )
@@ -31,7 +32,7 @@ from specstar.types import ResourceMeta
 T = TypeVar("T")
 
 
-class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
+class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
     def __init__(
         self,
         *,
@@ -398,6 +399,25 @@ class SqliteMetaStore(IMetaWithAgg, ISlowMetaStore):
 
         for row in cursor:
             yield self._serializer.decode(row[0])
+
+    def count(self, query: ResourceMetaSearchQuery) -> int:
+        """#414: ``COUNT(*)`` in the engine — no row data is decoded.
+
+        The ``IMetaWithCount`` contract is "identical to
+        ``ilen(iter_search(query))``", so the LIMIT/OFFSET window is preserved
+        by counting over a sub-select. ``ORDER BY`` is deliberately dropped: the
+        SIZE of a limited window does not depend on the order its rows come back
+        in, so sorting for a count is pure waste (``iter_search`` pays it today).
+        """
+        where_clause, params = self._build_where(query)
+        sql = (
+            f"SELECT COUNT(*) FROM (SELECT 1 FROM resource_meta {where_clause} "
+            "LIMIT ? OFFSET ?)"
+        )
+        params.extend([query.limit, query.offset])
+
+        cursor = self._conns[threading.get_ident()].execute(sql, params)
+        return int(cursor.fetchone()[0])
 
     #: SQLite pushes the #412 group-level ORDER BY / LIMIT / OFFSET (below).
     supports_group_paging = True
@@ -1045,6 +1065,17 @@ class S3SqliteMetaStore(SqliteMetaStore):
         """Search resources, checking S3 for updates first if enabled"""
         self._check_and_reload_if_needed()
         return super().iter_search(query)
+
+    def count(self, query):
+        """Count resources, checking S3 for updates first if enabled.
+
+        Required for parity (#414): before the pushed-down ``count`` existed,
+        ``SimpleStorage.count`` went through ``iter_search`` above and so
+        inherited its reload. Counting straight in SQLite would silently skip
+        that and read a stale snapshot.
+        """
+        self._check_and_reload_if_needed()
+        return super().count(query)
 
     def save_many(self, metas):
         super().save_many(metas)

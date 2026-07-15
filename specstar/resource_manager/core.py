@@ -162,6 +162,7 @@ from specstar.resource_manager.basic import (
     IBlobStore,
     IMetaStore,
     IMetaWithAgg,
+    IMetaWithCount,
     IResourceStore,
     IStorage,
     MsgspecSerializer,
@@ -358,6 +359,13 @@ class SimpleStorage(IStorage):
         yield from self._meta_store.iter_search(query)
 
     def count(self, query: ResourceMetaSearchQuery) -> int:
+        # #414: push the count into the store's engine when it can do it
+        # (SQL COUNT(*)). The fallback below streams EVERY matching row's meta
+        # blob over the wire and decodes it into a ResourceMeta just to discard
+        # it — an O(n) count. `IMetaWithCount` implementations are contracted to
+        # return exactly what this fallback returns (tests/meta_store/test_count.py).
+        if isinstance(self._meta_store, IMetaWithCount):
+            return self._meta_store.count(query)
         return mit.ilen(self._meta_store.iter_search(query))
 
     def purge_meta(self, resource_id: str) -> None:

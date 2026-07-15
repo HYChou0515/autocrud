@@ -760,6 +760,49 @@ class ISlowMetaStore(IMetaStore):
         """
 
 
+class IMetaWithCount(IMetaStore, ABC):
+    """Meta stores that can push a row COUNT down to their engine.
+
+    Mixed into a concrete store ALONGSIDE its base — e.g.
+    ``class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore)``.
+    The abstract ``count`` forces an implementation, so ``isinstance(ms,
+    IMetaWithCount)`` is a typed, typo-proof capability check (no ``hasattr``
+    sniffing) — the same shape as :class:`IMetaWithAgg`.
+    :meth:`~specstar.resource_manager.core.SimpleStorage.count` uses it to
+    decide whether to push the count down or fall back to counting decoded
+    rows in Python.
+
+    Why it exists (#414): the fallback is
+    ``more_itertools.ilen(store.iter_search(query))``, which streams EVERY
+    matching row's meta blob over the wire and decodes it into a
+    :class:`ResourceMeta` purely to discard it — an O(n) count. A store whose
+    engine can answer ``SELECT COUNT(*)`` should.
+
+    Contract: an implementation MUST return exactly what that ``ilen``
+    reference path returns for the same query — including honouring
+    ``query.limit`` / ``query.offset`` (the size of the paged window, i.e.
+    ``clamp(matching - offset, 0, limit)``) and returning ``0`` when nothing
+    matches. Enforced cross-backend by ``tests/meta_store/test_count.py``.
+
+    ``query.sorts`` is irrelevant to a count and MAY be ignored: the size of a
+    ``LIMIT``-ed window does not depend on the order its rows come back in, so
+    a pushed-down count should skip the sort entirely.
+    """
+
+    @abstractmethod
+    def count(self, query: ResourceMetaSearchQuery) -> int:
+        """Count the rows matching ``query`` in the store's engine.
+
+        Arguments:
+            query (ResourceMetaSearchQuery): the same filter ``iter_search``
+                would apply, including ``limit`` / ``offset``.
+
+        Returns:
+            int: the number of matching rows in the ``limit`` / ``offset``
+            window.
+        """
+
+
 class IMetaWithAgg(IMetaStore, ABC):
     """Meta stores that can push a group-by aggregate down to their engine.
 
