@@ -1577,7 +1577,10 @@ class SpecStar:
 
         # SetIndex fields are indexed list fields (so contains_any can read them
         # from indexed_data); the dedicated shadow column is wired below.
-        from specstar.types import extract_set_index_field_infos
+        from specstar.types import (
+            extract_set_index_field_infos,
+            extract_sort_index_field_infos,
+        )
 
         set_infos = extract_set_index_field_infos(resolved_model)
         if set_infos:
@@ -1724,6 +1727,19 @@ class SpecStar:
         ):
             for sinfo in set_infos:
                 meta_store.ensure_set_column(sinfo.name, sinfo.elem_type)
+
+        # SortIndex: a btree over (indexed_data->'field') so ranges and ORDER BY
+        # stop being full scans / full sorts (#418). Index-only — there is no
+        # column and nothing to backfill, so unlike SetIndex no ordering
+        # constraint applies here.
+        sort_infos = extract_sort_index_field_infos(resolved_model)
+        if (
+            sort_infos
+            and meta_store is not None
+            and hasattr(meta_store, "ensure_sort_index")
+        ):
+            for sinfo in sort_infos:
+                meta_store.ensure_sort_index(sinfo.name)
 
         # Scan Ref / RefRevision annotations and collect relationships
         refs = extract_refs(resolved_model, model_name)

@@ -27,12 +27,13 @@ def _builder(list_fields=(), set_columns=None) -> PostgresMetaStore:
     """A store whose SQL builder runs without a live server.
 
     ``__init__`` eagerly opens a pool and creates tables; ``_build_condition``
-    only reads ``_list_fields`` / ``_set_columns``, so bypassing it keeps these
-    tests service-free.
+    only reads the registries set below, so bypassing it keeps these tests
+    service-free. Keep this in sync when the builder gains a new registry.
     """
     store = object.__new__(PostgresMetaStore)
     store._list_fields = set(list_fields)
     store._set_columns = dict(set_columns or {})
+    store._sort_indexes = set()  # #418
     return store
 
 

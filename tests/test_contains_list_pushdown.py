@@ -38,6 +38,8 @@ def _make_store() -> PostgresMetaStore:
     s.table_name = "resource_meta"
     s._vec_columns = {}
     s._list_fields = set()
+    s._set_columns = {}
+    s._sort_indexes = set()  # #418
     return s
 
 
