@@ -147,16 +147,23 @@ def test_add_model_with_set_index_annotation_wires_shadow_column_end_to_end():
 
 
 def test_backfill_populates_set_column_for_rows_written_before_it_existed():
-    # The schema-change gap: rows created before the shadow column existed have
-    # a NULL shadow column, so && misses them until a backfill (mirrors how
-    # Vector fields need backfill_vectors for pre-existing rows).
+    # There is no schema-change gap: ensure_set_column populates the column for
+    # rows written before it existed, BEFORE enabling the && fast path (#417).
+    #
+    # This deliberately does NOT mirror Vector fields. backfill_vectors cannot
+    # run implicitly because it must re-embed — expensive, external, and not
+    # something a meta store can do at startup. The SetIndex column is "a pure
+    # derivation of indexed_data (no re-encoding needed), so it runs entirely in
+    # SQL" (backfill_set_column.__doc__) — nothing to defer to an operator, and
+    # deferring it silently hid every pre-existing row.
     store = get_meta_store("postgres")
     _seed(store, {"1": ["a", "b"], "2": ["c"]})  # written BEFORE the column
-    store.ensure_set_column("keys", str)  # column added empty for existing rows
-    assert _ids(store, ["a"]) == []  # NULL shadow column → && misses
-    assert store.backfill_set_column("keys") == 2
-    assert _ids(store, ["a"]) == ["1"]  # now visible
+    store.ensure_set_column("keys", str)
+    assert _ids(store, ["a"]) == ["1"]  # visible immediately, no manual step
     assert _ids(store, ["c"]) == ["2"]
+    # backfill_set_column stays, as the way to force a full re-derivation.
+    assert store.backfill_set_column("keys") == 2
+    assert _ids(store, ["a"]) == ["1"]
 
 
 def _pg_spec_with_foo(extra_field: bool = False):
