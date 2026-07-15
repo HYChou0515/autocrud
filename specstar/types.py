@@ -608,6 +608,99 @@ def extract_set_index_field_infos(struct_type: type) -> "list[SetIndexFieldInfo]
     return out
 
 
+class SortIndex:
+    """Annotation marker for a scalar field that should get a btree index.
+
+    The shared ``indexed_data`` GIN is a value->row inverted index with no
+    ordering: it answers ``@>``/``?``/``?|``/``?&`` and nothing else. Ranges and
+    ``ORDER BY`` therefore cannot be served by it at any index size, and stay
+    full scans / full sorts. Declaring ``SortIndex`` makes Postgres build a btree
+    over the extract ``(indexed_data->'field')``, which serves range, ``ORDER BY``
+    and equality from ONE index.
+
+    Opt-in and index-only: no column, no backfill, no write-path change.
+    ``indexed_data`` remains the single source of truth and the index is a pure
+    derivation of it, so adding or removing the annotation costs a
+    ``CREATE``/``DROP INDEX`` and nothing else — the index's absence can only cost
+    speed, never correctness. That is the point: declare it once a field has
+    STOPPED changing shape, and drop it freely if it starts again.
+
+    Postgres-only native acceleration (like :class:`SetIndex` / :class:`Vector`);
+    other backends ignore it. Use :class:`SetIndex`, not this, for list fields — a
+    btree over a jsonb array would order by the whole array.
+
+    Example::
+
+        class Doc(Struct):
+            collection_id: str  # JSONB only, zero DDL
+            quality_score: Annotated[int, SortIndex()]  # stabilised → promote
+    """
+
+    __slots__ = ()
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, SortIndex)
+
+    def __hash__(self) -> int:
+        return hash(SortIndex)
+
+
+class SortIndexFieldInfo(Struct, frozen=True, kw_only=True):
+    """Per-field info about a :class:`SortIndex`-annotated field, returned by
+    :func:`extract_sort_index_field_infos`."""
+
+    name: str
+    value_type: type
+
+
+def extract_sort_index_field_infos(struct_type: type) -> "list[SortIndexFieldInfo]":
+    """Return info for every ``SortIndex``-annotated scalar field.
+
+    ``Optional[T]`` is peeled to ``T``; a JSON null sorts into its own jsonb band,
+    which is the desired SQL semantics (never matches a range, sorts to one end).
+
+    Raises ``TypeError`` for a list field — that is :class:`SetIndex`'s job.
+    """
+    from specstar.util.type_utils import (
+        get_hints,
+        get_non_none_args,
+        is_annotated_type,
+        is_nullable_type,
+        unwrap_annotated,
+    )
+
+    out: list[SortIndexFieldInfo] = []
+    try:
+        hints = get_hints(struct_type)
+    except (TypeError, NameError):
+        return out
+    for field_name, hint in hints.items():
+        if not is_annotated_type(hint):
+            continue
+        inner, metadata = unwrap_annotated(hint)
+        if not any(isinstance(meta, SortIndex) for meta in metadata):
+            continue
+        value_type = inner
+        if is_nullable_type(inner):
+            non_none = get_non_none_args(inner)
+            if non_none:
+                value_type = non_none[0]
+        if _is_list_like(value_type):
+            raise TypeError(
+                f"{struct_type.__name__}.{field_name}: SortIndex cannot be used on a "
+                f"list field — a btree over a jsonb array orders by the whole array. "
+                f"Use SetIndex for element membership."
+            )
+        out.append(SortIndexFieldInfo(name=field_name, value_type=value_type))
+    return out
+
+
+def _is_list_like(tp: type) -> bool:
+    from typing import get_origin
+
+    return tp is list or get_origin(tp) is list
+
+
 def extract_vectors(struct_type: type) -> "list[tuple[str, Vector]]":
     """Return ``(field_name, Vector)`` pairs for Vector-annotated fields."""
     from specstar.util.type_utils import (

@@ -29,6 +29,13 @@ from specstar.resource_manager.basic import (
 )
 from specstar.types import ResourceMeta
 
+_RANGE_OPS = {
+    DataSearchOperator.greater_than: ">",
+    DataSearchOperator.greater_than_or_equal: ">=",
+    DataSearchOperator.less_than: "<",
+    DataSearchOperator.less_than_or_equal: "<=",
+}
+
 
 def _gin_probeable(condition: "DataSearchFilter", value: Any) -> bool:
     """Can *value* be matched by a top-level ``indexed_data @> …`` probe?
@@ -109,6 +116,10 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         self._list_fields: set[str] = set()
         # field_path → pg element type (e.g. "text") for SetIndex array columns
         self._set_columns: dict[str, str] = {}
+        # Field paths carrying a btree expression index over (indexed_data->'f').
+        # Ranges on these use the indexable jsonb form rather than a per-row
+        # numeric cast. See #418.
+        self._sort_indexes: set[str] = set()
 
         # 初始化 PostgreSQL 表
         self._init_postgres_table()
@@ -268,6 +279,43 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         # backfill _migrate_existing_records already does for indexed_data.
         self._run_set_backfill(field_path, pg_elem, only_missing=True)
         self._set_columns[field_path] = pg_elem
+
+    def _sort_idx_name(self, field_path: str) -> str:
+        # JSON paths use ".", which is invalid in an identifier
+        return f"idx_{self.table_name}_sort_{field_path.replace('.', '_')}"
+
+    def ensure_sort_index(self, field_path: str) -> None:
+        """Create a btree index over ``(indexed_data->'field_path')`` (#418).
+
+        Unlike :meth:`ensure_set_column` there is no column, no write-path change
+        and nothing to backfill — the index is a pure derivation of live
+        ``indexed_data``, maintained by Postgres, so it can never be stale and has
+        no window where queries are wrong. ``CONCURRENTLY`` keeps the build online
+        (it cannot run inside a transaction, hence the dedicated connection —
+        same as :meth:`ensure_vector_column`).
+
+        The extract is indexed WITHOUT a cast. Indexing
+        ``((indexed_data->>'f')::numeric)`` would be faster and estimate better,
+        but it makes the index a write-time constraint: any row whose value is not
+        castable is rejected outright (``invalid input syntax for type numeric``),
+        so declaring the annotation could start rejecting writes that previously
+        succeeded, and the build itself fails on legacy data. jsonb extraction is
+        total, and jsonb orders numbers numerically, so this form cannot fail.
+
+        Idempotent; safe to call from ``add_model`` on every process start.
+        """
+        idx_name = self._sort_idx_name(field_path)
+        conn = psycopg2.connect(self._pg_dsn)
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{idx_name}" '
+                    f"ON \"{self.table_name}\" ((indexed_data->'{field_path}'))"
+                )
+        finally:
+            conn.close()
+        self._sort_indexes.add(field_path)
 
     def _extract_set_value(self, meta: ResourceMeta, field_path: str) -> "list | None":
         """The list value for a SetIndex column, copied from indexed_data."""
@@ -1134,14 +1182,19 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             if isinstance(value, bool):
                 return f"{jsonb_text_extract} != %s", ["true" if value else "false"]
             return f"{jsonb_text_extract} != %s", [str(value)]
-        if operator == DataSearchOperator.greater_than:
-            return f"{jsonb_numeric_extract} > %s", [value]
-        if operator == DataSearchOperator.greater_than_or_equal:
-            return f"{jsonb_numeric_extract} >= %s", [value]
-        if operator == DataSearchOperator.less_than:
-            return f"{jsonb_numeric_extract} < %s", [value]
-        if operator == DataSearchOperator.less_than_or_equal:
-            return f"{jsonb_numeric_extract} <= %s", [value]
+        if operator in _RANGE_OPS:
+            sql_op = _RANGE_OPS[operator]
+            if field_path in self._sort_indexes and _gin_probeable(condition, value):
+                # Matches the indexed expression exactly, so the btree from
+                # ensure_sort_index serves it (#418). Only for declared fields:
+                # WITHOUT an index the jsonb form is SLOWER than the cast, which
+                # Postgres parallelises, so rewriting globally would be a pessimism.
+                import json
+
+                return f"indexed_data->'{field_path}' {sql_op} %s::jsonb", [
+                    json.dumps(value, ensure_ascii=False)
+                ]
+            return f"{jsonb_numeric_extract} {sql_op} %s", [value]
         if operator == DataSearchOperator.contains:
             # List-typed fields use JSONB ``@>`` so ``contains`` is true
             # element containment, not a substring on the serialised JSON
