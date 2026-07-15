@@ -204,6 +204,13 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         Idempotent; mirrors :meth:`ensure_vector_column` (pgvector). Other
         backends serve ``contains_any`` from the shared path and need no
         shadow column, so this is Postgres-only native acceleration.
+
+        Called from ``add_model``, i.e. on every process start. The freshly
+        added column is NULL for every row written before it existed, so the
+        rows are backfilled BEFORE the field is registered — registering is what
+        switches ``contains_any`` onto the ``&&`` fast path, and a fast path over
+        a NULL column silently returns no rows rather than failing (#417).
+        Restarts are cheap: the backfill only touches rows still missing a value.
         """
         pg_elem = self._SET_ELEM_TYPES.get(elem_type, "text")
         col = self._set_col_name(field_path)
@@ -224,6 +231,9 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
                 )
         finally:
             conn.close()
+        # Order matters: populate first, register second. Mirrors the startup
+        # backfill _migrate_existing_records already does for indexed_data.
+        self._run_set_backfill(field_path, pg_elem, only_missing=True)
         self._set_columns[field_path] = pg_elem
 
     def _extract_set_value(self, meta: ResourceMeta, field_path: str) -> "list | None":
@@ -233,19 +243,19 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
         v = meta.indexed_data.get(field_path)
         return v if isinstance(v, list) else None
 
-    def backfill_set_column(self, field_path: str) -> int:
-        """Repopulate the SetIndex shadow column for *field_path* from
-        ``indexed_data`` across all existing rows — for rows written before the
-        column was added (it defaults to NULL there). One pushed-down ``UPDATE``;
-        returns rows touched. No-op when the field has no shadow column.
+    def _run_set_backfill(
+        self, field_path: str, pg_elem: str, *, only_missing: bool
+    ) -> int:
+        """The backfill ``UPDATE`` itself, without the ``_set_columns`` guard.
 
-        Analogous to :func:`backfill_vectors` for Vector fields, but the value
-        is a pure derivation of ``indexed_data`` (no re-encoding needed), so it
-        runs entirely in SQL.
+        ``ensure_set_column`` must be able to run this BEFORE registering the
+        field, so the ``&&`` fast path is never live against an unpopulated
+        column (#417).
+
+        ``only_missing`` restricts the rewrite to rows the column has no value
+        for. Startup passes True, so a restart is a no-op rather than a full
+        table rewrite; the CLI passes False to force a complete re-derivation.
         """
-        if field_path not in self._set_columns:
-            return 0
-        pg_elem = self._set_columns[field_path]
         col = self._set_col_name(field_path)
         extract = "jsonb_array_elements_text(indexed_data->%s)"
         arr = (
@@ -257,9 +267,31 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             f'UPDATE "{self.table_name}" SET "{col}" = {arr} '
             f"WHERE jsonb_typeof(indexed_data->%s) = 'array'"
         )
+        if only_missing:
+            sql += f' AND "{col}" IS NULL'
         with self.transaction() as cur:
             cur.execute(sql, [field_path, field_path])
             return cur.rowcount
+
+    def backfill_set_column(self, field_path: str) -> int:
+        """Repopulate the SetIndex shadow column for *field_path* from
+        ``indexed_data`` across all existing rows — for rows written before the
+        column was added (it defaults to NULL there). One pushed-down ``UPDATE``;
+        returns rows touched. No-op when the field has no shadow column.
+
+        Analogous to :func:`backfill_vectors` for Vector fields, but the value
+        is a pure derivation of ``indexed_data`` (no re-encoding needed), so it
+        runs entirely in SQL.
+
+        Since #417 ``ensure_set_column`` backfills on its own, so this is no
+        longer required to make a newly-declared SetIndex field correct. It
+        remains as the way to force a full re-derivation.
+        """
+        if field_path not in self._set_columns:
+            return 0
+        return self._run_set_backfill(
+            field_path, self._set_columns[field_path], only_missing=False
+        )
 
     def _build_vector_condition(
         self, condition: "VectorDistanceCondition"
