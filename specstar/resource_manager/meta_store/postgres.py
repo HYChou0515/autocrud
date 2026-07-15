@@ -24,6 +24,7 @@ from specstar.resource_manager import _pg_pool
 from specstar.resource_manager.basic import (
     Encoding,
     IMetaWithAgg,
+    IMetaWithCount,
     ISlowMetaStore,
     MsgspecSerializer,
 )
@@ -80,7 +81,7 @@ except ImportError:  # pragma: no cover
     execute_batch = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
 
 
-class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
+class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
     """PostgreSQL-backed metadata store.
 
     All stores resolving to the same DSN share one process-global
@@ -911,6 +912,28 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             cur.execute(sql, params)
             for row in cur:
                 yield self._serializer.decode(row["data"])
+
+    def count(self, query: ResourceMetaSearchQuery) -> int:
+        """#414: ``COUNT(*)`` in the engine — no row data crosses the wire.
+
+        The ``IMetaWithCount`` contract is "identical to
+        ``ilen(iter_search(query))``", so the LIMIT/OFFSET window is preserved
+        by counting over a sub-select. ``ORDER BY`` is deliberately dropped: the
+        SIZE of a limited window does not depend on the order its rows come back
+        in, so sorting for a count is pure waste (``iter_search`` pays it today).
+        """
+        where_clause, params = self._build_where(query)
+        sql = (
+            f'SELECT COUNT(*) AS n FROM (SELECT 1 FROM "{self.table_name}" '
+            f"{where_clause} LIMIT %s OFFSET %s) AS sub"
+        )
+        params.append(query.limit)
+        params.append(query.offset)
+
+        with self.stream_cursor() as cur:
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            return int(row["n"])
 
     #: Postgres pushes the #412 group-level ORDER BY / LIMIT / OFFSET (below).
     supports_group_paging = True
