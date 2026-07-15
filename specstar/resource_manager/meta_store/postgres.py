@@ -29,6 +29,39 @@ from specstar.resource_manager.basic import (
 )
 from specstar.types import ResourceMeta
 
+
+def _gin_probeable(condition: "DataSearchFilter", value: Any) -> bool:
+    """Can *value* be matched by a top-level ``indexed_data @> …`` probe?
+
+    Two cases must keep the old ``->>`` path (#416):
+
+    * a ``transform`` compares a DERIVED value (``length`` etc.), while ``@>``
+      only ever matches what is actually stored;
+    * ``None`` — the reference matcher returns Unknown for ``field == None``
+      (``basic.py``), and so does ``->>' f' = 'None'``. ``@> '{"f": null}'``
+      would instead MATCH rows storing a JSON null, which is a behaviour
+      change, not a speed-up.
+    """
+    return getattr(condition, "transform", None) is None and value is not None
+
+
+def _containment(field_path: str, value: Any) -> tuple[str, list]:
+    """A top-level containment probe, served by ``idx_indexed_data_gin``.
+
+    The value is encoded with :func:`json.dumps` — symmetric with the write path
+    (``_meta_row_values``) — so its JSON type survives. This matters: ``@>`` is
+    type-strict and silently returns ZERO rows on a mismatch, so the ``str(value)``
+    the old path used would turn a perf fix into wrong results. Type-strictness
+    also brings Postgres in line with the reference matcher, which compares with
+    a plain Python ``==``.
+    """
+    import json
+
+    return "indexed_data @> %s::jsonb", [
+        json.dumps({field_path: value}, ensure_ascii=False)
+    ]
+
+
 try:
     import psycopg2 as pg
     import psycopg2.pool
@@ -1047,10 +1080,13 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
 
         if operator == DataSearchOperator.equals:
             if isinstance(value, (list, dict)):
-                # For list/dict, use JSONB comparison
+                # Equality on a composite value must stay EXACT: containment
+                # would make ``{"f": [1, 2, 3]}`` match a query for ``[1]``.
                 import json
 
                 return f"indexed_data->'{field_path}' = %s::jsonb", [json.dumps(value)]
+            if _gin_probeable(condition, value):
+                return _containment(field_path, value)
             if isinstance(value, bool):
                 return f"{jsonb_text_extract} = %s", ["true" if value else "false"]
             return f"{jsonb_text_extract} = %s", [str(value)]
@@ -1083,6 +1119,12 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             if field_path in self._list_fields:
                 import json
 
+                if _gin_probeable(condition, value):
+                    # Probe at the TOP level: ``indexed_data->'f' @> …`` applies
+                    # containment to the extract, which the GIN on
+                    # ``indexed_data`` cannot serve any more than ``->>`` can.
+                    # Element membership stays exact either way (#362/#378).
+                    return _containment(field_path, [value])
                 return (
                     f"indexed_data->'{field_path}' @> %s::jsonb",
                     [json.dumps(value)],
@@ -1096,9 +1138,20 @@ class PostgresMetaStore(IMetaWithAgg, ISlowMetaStore):
             return f"{jsonb_text_extract} ~ %s", [value]
         if operator == DataSearchOperator.in_list:
             if isinstance(value, (list, tuple, set)):
-                placeholders = ",".join(["%s"] * len(value))
+                vals = list(value)
+                if not vals:
+                    return "FALSE", []  # ``IN ()`` is not valid SQL
+                if all(_gin_probeable(condition, v) for v in vals):
+                    # Postgres BitmapOr's the probes across the one GIN.
+                    import json
+
+                    ors = " OR ".join(["indexed_data @> %s::jsonb"] * len(vals))
+                    return f"({ors})", [
+                        json.dumps({field_path: v}, ensure_ascii=False) for v in vals
+                    ]
+                placeholders = ",".join(["%s"] * len(vals))
                 return f"{jsonb_text_extract} IN ({placeholders})", [
-                    str(v) for v in value
+                    str(v) for v in vals
                 ]
         elif operator == DataSearchOperator.not_in_list:
             if isinstance(value, (list, tuple, set)):

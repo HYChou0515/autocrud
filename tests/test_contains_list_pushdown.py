@@ -48,7 +48,14 @@ def test_contains_on_list_field_emits_jsonb_containment():
     match ``contains("c1")`` because ``LIKE '%c1%'`` matches the literal
     substring inside ``"c10"``. The ``@>`` form rejects that row because
     ``"c1"`` is not an element of the array.
+
+    #416 moved the probe from the extract (``indexed_data->'f' @> '"c1"'``) to
+    the top level (``indexed_data @> '{"f": ["c1"]}'``): both are exact element
+    membership, but only the top-level form can be served by the GIN on
+    ``indexed_data``. The membership semantics this test guards are unchanged.
     """
+    import json
+
     store = _make_store()
     store.register_list_field("source_chunk_ids")
 
@@ -60,8 +67,12 @@ def test_contains_on_list_field_emits_jsonb_containment():
     sql, params = store._build_condition(cond)
     assert "@>" in sql, f"expected JSONB containment for list field, got: {sql!r}"
     assert "LIKE" not in sql, f"list-field contains must not fall back to LIKE: {sql!r}"
-    # The parameter is JSON-encoded so PG can compare arrays of strings.
-    assert params == ['"c1"'], f"expected JSON-encoded element, got: {params!r}"
+    assert "indexed_data @> " in sql, f"probe must be top-level for the GIN: {sql!r}"
+    # The element is wrapped in its field + a one-element array, so containment
+    # scopes to THIS field and stays element-exact.
+    assert json.loads(params[0]) == {"source_chunk_ids": ["c1"]}, (
+        f"expected a scoped JSON-encoded element, got: {params!r}"
+    )
 
 
 def test_contains_on_unregistered_field_falls_back_to_like():
@@ -143,7 +154,9 @@ def test_add_model_auto_registers_list_typed_indexed_fields(monkeypatch):
         indexed_fields=[
             IndexableField(field_path="title", field_type=str),  # str → not registered
             IndexableField(field_path="note"),  # field_type UNSET → skipped
-            IndexableField(field_path="tags", field_type=list[str]),  # list → registered
+            IndexableField(
+                field_path="tags", field_type=list[str]
+            ),  # list → registered
         ],
     )
 
