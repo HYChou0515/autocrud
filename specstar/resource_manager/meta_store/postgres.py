@@ -769,6 +769,48 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                     ("{}", resource_id),
                 )
 
+    def _searchable_indexed_data(self, meta: ResourceMeta) -> Any:
+        """``meta.indexed_data`` minus the fields that have a pgvector column.
+
+        ``add_model`` puts every Vector field into ``indexed_fields`` on purpose:
+        brute-force backends have no vector column and answer similarity straight
+        out of ``indexed_data``, and we ourselves read that copy on the way in (see
+        ``_extract_vec_value``, called from ``_meta_row_values`` BEFORE this — off
+        the in-memory meta, so the column is populated either way).
+
+        On this backend the copy has no reader once the column is written:
+        ``_build_vector_condition`` and ``_build_vector_order`` both query
+        ``_vec_col_name(...)``, and ``iter_search`` returns metas by decoding the
+        ``data`` BYTEA — which still holds the whole ResourceMeta, vector included.
+        So nothing observable changes; what goes away is dead weight, and it is not
+        the cheap kind. The GIN over ``indexed_data`` indexes every ELEMENT of the
+        array, so one 4096-dim embedding costs 4096 index entries per row, and
+        every ``@>`` probe rechecks against the fat jsonb. Measured on 5000 rows
+        carrying a 4096-dim embedding, against the same rows without it:
+
+            GIN size          43 MB   ->   312 kB     (138x)
+            total relation   280 MB   ->   840 kB     (333x)
+            @> probe        490.8 ms  ->   1.2 ms     (400x)
+
+        That is what made a real deployment's document list take 15 seconds. The
+        bloat predates the #416 rewrite, but nothing USED the GIN while ``->>``
+        forced a Seq Scan, so #416 is what woke it up.
+
+        Only a REGISTERED column licenses the strip: ``_vec_columns`` is empty
+        unless ``ensure_vector_column`` ran, and without a column ``indexed_data``
+        is the only queryable surface left, so the copy stays.
+
+        This strips the JSONB column only, NOT the BYTEA — which is exactly why
+        readers cannot tell, and equally why the storage is not reclaimed. Doing
+        that changes what readers see and is a separate decision.
+        """
+        data = meta.indexed_data
+        if data is UNSET or not isinstance(data, dict) or not self._vec_columns:
+            return data
+        # `ensure_vector_column` is registered under the short alias, which IS the
+        # indexed_data key (crud.core passes `vinfo.name`) — so a plain key drop.
+        return {k: v for k, v in data.items() if k not in self._vec_columns}
+
     def _meta_row_values(self, meta: ResourceMeta) -> tuple:
         """Pack a ResourceMeta into the column-order tuple used by INSERT/UPSERT."""
         import json
@@ -783,7 +825,7 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             meta.is_deleted,
             meta.schema_version,
             (
-                json.dumps(meta.indexed_data, ensure_ascii=False)
+                json.dumps(self._searchable_indexed_data(meta), ensure_ascii=False)
                 if meta.indexed_data is not UNSET
                 else None
             ),
