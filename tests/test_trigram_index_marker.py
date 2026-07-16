@@ -25,7 +25,9 @@ from specstar.query_types import (
     DataSearchCondition,
     DataSearchOperator,
     DataSearchQuantifier,
+    ResourceMetaSortDirection,
     TrigramFuzzyCondition,
+    TrigramSimilaritySort,
 )
 from specstar.resource_manager.meta_store.postgres import PostgresMetaStore
 from specstar.types import TrigramIndex, extract_trigram_index_field_infos
@@ -255,3 +257,30 @@ def test_fuzzy_with_a_threshold_uses_the_exact_word_similarity_function():
     )
     assert sql == "word_similarity(%s, (indexed_data->>'title')) >= %s"
     assert params == ["mol", 0.3]
+
+
+# --- .similarity().desc() ranking sort (compute-then-sort; no index ordering) -
+
+
+def test_similarity_sort_desc_orders_by_word_similarity():
+    sql, params = _builder(trigram_indexes=["title"])._build_trigram_similarity_order(
+        TrigramSimilaritySort(
+            field_path="title",
+            query="mol",
+            direction=ResourceMetaSortDirection.descending,
+        )
+    )
+    assert sql == "word_similarity(%s, (indexed_data->>'title')) DESC"
+    assert params == ["mol"]
+
+
+def test_similarity_sort_asc_flips_the_direction():
+    sql, params = _builder(trigram_indexes=["title"])._build_trigram_similarity_order(
+        TrigramSimilaritySort(
+            field_path="title",
+            query="mol",
+            direction=ResourceMetaSortDirection.ascending,
+        )
+    )
+    assert sql == "word_similarity(%s, (indexed_data->>'title')) ASC"
+    assert params == ["mol"]

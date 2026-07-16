@@ -372,8 +372,13 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         # 構建排序子句
         order_clause = ""
         if query.sorts is not UNSET and query.sorts:
+            from specstar.query_types import TrigramSimilaritySort
+            from specstar.resource_manager.basic import fuzzy_not_supported
+
             order_parts = []
             for sort in query.sorts:
+                if isinstance(sort, TrigramSimilaritySort):
+                    raise fuzzy_not_supported()
                 if isinstance(sort, ResourceMetaSearchSort):
                     direction = (
                         "ASC"

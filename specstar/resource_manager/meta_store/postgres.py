@@ -20,6 +20,7 @@ from specstar.query_types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     TrigramFuzzyCondition,
+    TrigramSimilaritySort,
     VectorDistanceCondition,
     VectorDistanceSort,
 )
@@ -711,6 +712,22 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             float(condition.threshold),
         ]
 
+    def _build_trigram_similarity_order(
+        self, sort: "TrigramSimilaritySort"
+    ) -> tuple[str, list]:
+        """``ORDER BY word_similarity(query, indexed_data->>'f')``.
+
+        A ranking sort, not a filter: the gin_trgm_ops GIN accelerates ``<%`` but
+        cannot ORDER (only a GiST ``<->`` KNN index could), so this is a
+        compute-then-sort. Pair it with a ``.fuzzy()`` filter to keep the set the
+        sort runs over small. ``descending`` = most-similar first.
+        """
+        text = f"(indexed_data->>'{sort.field_path}')"
+        direction = (
+            "ASC" if sort.direction == ResourceMetaSortDirection.ascending else "DESC"
+        )
+        return f"word_similarity(%s, {text}) {direction}", [sort.query]
+
     def _build_vector_order(self, sort: "VectorDistanceSort") -> tuple[str, list]:
         if sort.field_path not in self._vec_columns:
             return "", []
@@ -1241,6 +1258,11 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                     if sql_part:
                         order_parts.append(sql_part)
                         order_params.extend(sort_params)
+                    continue
+                if isinstance(sort, TrigramSimilaritySort):
+                    sql_part, sort_params = self._build_trigram_similarity_order(sort)
+                    order_parts.append(sql_part)
+                    order_params.extend(sort_params)
                     continue
                 if isinstance(sort, ResourceMetaSearchSort):
                     direction = (

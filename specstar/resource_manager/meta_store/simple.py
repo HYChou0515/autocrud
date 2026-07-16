@@ -14,7 +14,7 @@ from specstar.resource_manager.basic import (
     MsgspecSerializer,
     get_sort_fn,
     is_match_query,
-    reject_fuzzy_conditions,
+    reject_fuzzy,
     reject_unquantified_list_string_ops,
 )
 from specstar.types import ResourceMeta
@@ -54,7 +54,7 @@ class MemoryMetaStore(IFastMetaStore):
         return len(self._store)
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
-        reject_fuzzy_conditions(query)
+        reject_fuzzy(query)
         reject_unquantified_list_string_ops(query, self._registered_list_fields())
         results: list[ResourceMeta] = []
         # Snapshot the values: a concurrent write mid-search must not raise
@@ -194,7 +194,7 @@ class DiskMetaStore(IFastMetaStore):
         return sum(1 for _ in self._iter_data_files())
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
-        reject_fuzzy_conditions(query)
+        reject_fuzzy(query)
         reject_unquantified_list_string_ops(query, self._registered_list_fields())
         results: list[ResourceMeta] = []
         for file in self._iter_data_files():

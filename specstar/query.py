@@ -17,6 +17,7 @@ from specstar.query_types import (
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
     TrigramFuzzyCondition,
+    TrigramSimilaritySort,
     VectorDistanceCondition,
     VectorDistanceSort,
 )
@@ -77,6 +78,35 @@ class VectorDistanceExpr:
             query_vector=self.query_vector,
             direction=ResourceMetaSortDirection.descending,
             distance=self.distance,
+        )
+
+
+class TrigramSimilarityExpr:
+    """A trigram-similarity ranking produced by ``Field.similarity(query)``.
+
+    Turn it into a sort with ``.desc()`` (most-similar first, the usual ranking)
+    or ``.asc()``. Passed bare to :meth:`Query.sort` it defaults to descending.
+    Postgres-native (see :class:`~specstar.query_types.TrigramSimilaritySort`).
+    """
+
+    __slots__ = ("field_path", "query")
+
+    def __init__(self, field_path: str, query: str) -> None:
+        self.field_path = field_path
+        self.query = query
+
+    def asc(self) -> TrigramSimilaritySort:
+        return TrigramSimilaritySort(
+            field_path=self.field_path,
+            query=self.query,
+            direction=ResourceMetaSortDirection.ascending,
+        )
+
+    def desc(self) -> TrigramSimilaritySort:
+        return TrigramSimilaritySort(
+            field_path=self.field_path,
+            query=self.query,
+            direction=ResourceMetaSortDirection.descending,
         )
 
 
@@ -147,6 +177,10 @@ class Query:
                 self._sorts.append(sort_obj)
             elif isinstance(s, VectorDistanceExpr):
                 self._sorts.append(s.asc())
+            elif isinstance(s, TrigramSimilarityExpr):
+                # Bare similarity ranks most-similar first (unlike distance, where
+                # smallest/ascending is best).
+                self._sorts.append(s.desc())
             else:
                 self._sorts.append(s)
         return self
@@ -665,6 +699,15 @@ class Field(ConditionBuilder):
                 field_path=self.name, query=query, threshold=threshold
             )
         )
+
+    def similarity(self, query: str) -> TrigramSimilarityExpr:
+        """Rank by trigram similarity to *query* — ``.desc()`` for best-first.
+
+        Pass to ``.sort()``: ``QB["title"].similarity("mol").desc()``. It is a
+        compute-then-sort (no index ordering), so filter with ``.fuzzy()`` first.
+        Postgres-only, like ``.fuzzy()``.
+        """
+        return TrigramSimilarityExpr(self.name, query)
 
     def between(self, min_val: Any, max_val: Any) -> ConditionBuilder:
         """Support range query: field.between(min, max).

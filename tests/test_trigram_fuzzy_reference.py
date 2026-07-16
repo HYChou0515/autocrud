@@ -64,3 +64,18 @@ def test_fuzzy_raises_on_every_non_postgres_backend_with_rows(tmp):
         store[m.resource_id] = m
         with pytest.raises(NotImplementedError, match="pg_trgm"):
             list(store.iter_search(QB["title"].fuzzy("mol").build()))
+
+
+def test_similarity_sort_also_raises_on_every_non_postgres_backend(tmp):
+    """The ranking sort is Postgres-native too — no faithful word_similarity to
+    order by on the reference backends."""
+    from specstar.query_types import ResourceMetaSearchQuery
+
+    for store in _stores(tmp):
+        m = _meta("1", "molecular biology")
+        store[m.resource_id] = m
+        q = ResourceMetaSearchQuery(
+            sorts=[QB["title"].similarity("mol").desc()], limit=100
+        )
+        with pytest.raises(NotImplementedError, match="pg_trgm"):
+            list(store.iter_search(q))

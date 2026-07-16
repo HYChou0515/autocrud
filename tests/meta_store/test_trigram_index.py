@@ -272,3 +272,21 @@ def test_fuzzy_threshold_tightens_the_cutoff(store):
     """A per-call threshold pins the minimum similarity exactly."""
     assert _ids(store, QB["title"].fuzzy("molec", threshold=0.5)) == ["1", "3"]
     assert _ids(store, QB["title"].fuzzy("molec", threshold=0.99)) == []
+
+
+def _ordered_ids(store, builder) -> list[str]:
+    """Iteration order preserved (unlike ``_ids``, which sorts)."""
+    return [m.indexed_data["id"] for m in store.iter_search(builder.build())]
+
+
+def test_similarity_sort_ranks_the_best_match_first(store):
+    """The recommended pairing: ``.fuzzy()`` narrows via the GIN, then
+    ``.similarity().desc()`` ranks the survivors. "molecular" is an exact word of
+    row 1 (1.0) and only partial in row 3 (0.7), so desc = [1, 3], asc = [3, 1]."""
+    store.ensure_trigram_index("title")
+    desc = (
+        QB["title"].fuzzy("molecular").sort(QB["title"].similarity("molecular").desc())
+    )
+    assert _ordered_ids(store, desc) == ["1", "3"]
+    asc = QB["title"].fuzzy("molecular").sort(QB["title"].similarity("molecular").asc())
+    assert _ordered_ids(store, asc) == ["3", "1"]

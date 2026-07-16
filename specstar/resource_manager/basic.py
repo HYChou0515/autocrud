@@ -24,6 +24,7 @@ from specstar.query_types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     TrigramFuzzyCondition,
+    TrigramSimilaritySort,
     VectorDistanceCondition,
     VectorDistanceSort,
 )
@@ -311,19 +312,23 @@ def bad_list_string_op(field_path: str, operator: DataSearchOperator) -> ValueEr
     )
 
 
-def reject_fuzzy_conditions(query: ResourceMetaSearchQuery) -> None:
-    """Raise :func:`fuzzy_not_supported` if *query* carries a ``.fuzzy()`` condition.
+def reject_fuzzy(query: ResourceMetaSearchQuery) -> None:
+    """Raise :func:`fuzzy_not_supported` if *query* uses ``.fuzzy()`` or
+    ``.similarity()`` (a trigram filter OR a trigram-ranking sort).
 
     The pure-Python reference backends run this once per query, before iterating,
-    so an EMPTY store rejects a fuzzy query just like a populated one (and like the
-    sqlite backend, which raises from ``_build_condition``) — the feature is simply
-    absent here, independent of the data.
+    so an EMPTY store rejects it just like a populated one (and like the sqlite
+    backend, which raises from ``_build_condition`` / its sort loop) — the feature
+    is simply absent here, independent of the data.
     """
-    if query.conditions is UNSET:
-        return
-    for condition in query.conditions:
-        if isinstance(condition, TrigramFuzzyCondition):
-            raise fuzzy_not_supported()
+    if query.conditions is not UNSET:
+        for condition in query.conditions:
+            if isinstance(condition, TrigramFuzzyCondition):
+                raise fuzzy_not_supported()
+    if query.sorts is not UNSET:
+        for sort in query.sorts:
+            if isinstance(sort, TrigramSimilaritySort):
+                raise fuzzy_not_supported()
 
 
 def reject_unquantified_list_string_ops(

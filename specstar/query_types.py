@@ -161,6 +161,21 @@ class VectorDistanceSort(Struct, kw_only=True, tag=True):
     distance: "Literal['cosine', 'l2', 'ip'] | None" = None
 
 
+class TrigramSimilaritySort(Struct, kw_only=True, tag=True):
+    """Sort rows by trigram ``word_similarity`` between a text field and *query*.
+
+    ``descending`` puts the closest matches first — the usual "best first" ranking
+    (``QB["title"].similarity("mol").desc()``). Postgres-native (the GIN cannot
+    order, so this is a compute-then-sort — filter with ``.fuzzy()`` first to keep
+    the set small); other backends reject it. Belongs in
+    :attr:`ResourceMetaSearchQuery.sorts`.
+    """
+
+    field_path: str
+    query: str
+    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.descending
+
+
 DEFAULT_QUERY_LIMIT_ENV_VAR = "SPECSTAR_DEFAULT_QUERY_LIMIT"
 DEFAULT_QUERY_LIMIT_LEGACY_ENV_VAR = "AUTOCRUD_DEFAULT_QUERY_LIMIT"
 DEFAULT_QUERY_LIMIT_FALLBACK = 2**32 - 1
@@ -281,7 +296,12 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     """Number of results to skip before starting to collect the result set."""
 
     sorts: (
-        list[ResourceMetaSearchSort | ResourceDataSearchSort | VectorDistanceSort]
+        list[
+            ResourceMetaSearchSort
+            | ResourceDataSearchSort
+            | VectorDistanceSort
+            | TrigramSimilaritySort
+        ]
         | UnsetType
     ) = UNSET
     """Sorting criteria for the search results."""
