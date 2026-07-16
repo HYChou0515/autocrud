@@ -34,11 +34,34 @@ class FieldTransform(StrEnum):
     length = "len"  # Get length of string, list, dict, etc.
 
 
+class DataSearchQuantifier(StrEnum):
+    """Existential/universal quantifier over the elements of a list field.
+
+    When set on a :class:`DataSearchCondition`, the ``operator`` is applied to
+    *each element* of the list field (treated as a scalar) rather than to the
+    field as a whole, and the condition holds when:
+
+    - ``any`` — SOME element satisfies the predicate (existential; empty list
+      never matches);
+    - ``all`` — EVERY element satisfies it (universal; empty list matches
+      vacuously).
+
+    This is what powers ``QB["keys"].any().contains("ol")`` — per-element
+    substring / regex / prefix matching, with anchors bound to a single element
+    instead of the serialised array. See :meth:`specstar.query.Field.any`.
+    """
+
+    any = "any"
+    all = "all"
+
+
 class DataSearchCondition(Struct, kw_only=True, tag=True):
     field_path: str
     operator: DataSearchOperator
     value: Any
     transform: FieldTransform | None = None  # Optional field transformation
+    quantifier: DataSearchQuantifier | None = None
+    """Apply ``operator`` element-wise over a list field (``any``/``all``)."""
 
 
 class DataSearchLogicOperator(StrEnum):
@@ -287,6 +310,7 @@ __all__ = [
     "DataSearchGroup",
     "DataSearchLogicOperator",
     "DataSearchOperator",
+    "DataSearchQuantifier",
     "FieldTransform",
     "ResourceDataSearchSort",
     "ResourceMetaSearchQuery",

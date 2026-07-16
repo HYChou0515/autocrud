@@ -184,6 +184,36 @@ class TestSafeQBParser:
         cond = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert cond.field_path == expected_field  # ty:ignore[unresolved-attribute]
 
+    def test_any_quantifier_parses(self):
+        """QB['keys'].any().contains('ol') is accepted and carries quantifier=any."""
+        from specstar.query_types import DataSearchOperator, DataSearchQuantifier
+
+        parser = SafeQBParser()
+        result = parser.parse("QB['keys'].any().contains('ol')")
+        cond = result.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "keys"  # ty:ignore[unresolved-attribute]
+        assert cond.operator == DataSearchOperator.contains  # ty:ignore[unresolved-attribute]
+        assert cond.quantifier == DataSearchQuantifier.any  # ty:ignore[unresolved-attribute]
+
+    def test_all_quantifier_parses(self):
+        """QB['keys'].all().starts_with('m') is accepted and carries quantifier=all."""
+        from specstar.query_types import DataSearchQuantifier
+
+        parser = SafeQBParser()
+        result = parser.parse("QB['keys'].all().starts_with('m')")
+        cond = result.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.quantifier == DataSearchQuantifier.all  # ty:ignore[unresolved-attribute]
+
+    def test_any_icontains_parses(self):
+        """The i* regex sugar works through .any() over ?qb= too."""
+        from specstar.query_types import DataSearchOperator, DataSearchQuantifier
+
+        parser = SafeQBParser()
+        result = parser.parse("QB['keys'].any().icontains('OL')")
+        cond = result.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.operator == DataSearchOperator.regex  # ty:ignore[unresolved-attribute]
+        assert cond.quantifier == DataSearchQuantifier.any  # ty:ignore[unresolved-attribute]
+
     def test_datetime_integration(self):
         """測試 datetime 整合"""
         parser = SafeQBParser()

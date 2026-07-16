@@ -18,6 +18,7 @@ from specstar.query_types import (
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
+    DataSearchQuantifier,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -223,6 +224,108 @@ def _match_data_condition(
     return result is True
 
 
+def _scalar_op(op: DataSearchOperator, element: Any, compare_value: Any) -> bool:
+    """Apply a *scalar* string/comparison operator to a single list element.
+
+    This is the per-element predicate behind the ``any``/``all`` quantifier: the
+    element is a scalar, so ``contains`` is substring (not the whole-array
+    membership that :data:`DataSearchOperator.contains` means on a list) and
+    ``regex`` anchors ``^``/``$`` to this one element. It mirrors the scalar
+    branches of :func:`_evaluate_trivalent`, kept in sync with them.
+    """
+    if op == DataSearchOperator.equals:
+        return element == compare_value
+    if op == DataSearchOperator.not_equals:
+        return element != compare_value
+    if op == DataSearchOperator.contains:
+        return str(compare_value) in str(element)
+    if op == DataSearchOperator.starts_with:
+        return str(element).startswith(str(compare_value))
+    if op == DataSearchOperator.ends_with:
+        return str(element).endswith(str(compare_value))
+    if op == DataSearchOperator.regex:
+        return re.search(str(compare_value), str(element)) is not None
+    # ElementQuantifier never emits any other operator; be conservative.
+    return False
+
+
+def _match_quantified(
+    quantifier: DataSearchQuantifier,
+    op: DataSearchOperator,
+    field_value: Any,
+    compare_value: Any,
+) -> bool | None:
+    """Fold a per-element scalar predicate with an ``any``/``all`` quantifier.
+
+    ``any`` is existential (empty list -> ``False``); ``all`` is universal
+    (empty list -> vacuously ``True``). A non-list value is Unknown (``None``)
+    — quantifying over a scalar is a category error.
+    """
+    if not isinstance(field_value, list):
+        return None
+    results = [_scalar_op(op, el, compare_value) for el in field_value]
+    if quantifier == DataSearchQuantifier.any:
+        return any(results)
+    return all(results)
+
+
+# Bare scalar-string operators that are meaningless on a list field: without a
+# quantifier they would run against the whole serialised array (a cross-element,
+# backend-divergent, index-blind footgun), so they must go through .any()/.all().
+# ``contains`` stays valid on a list (exact element membership, #362) and is not
+# listed here.
+_LIST_SCALAR_ONLY_OPS = frozenset(
+    {
+        DataSearchOperator.regex,
+        DataSearchOperator.starts_with,
+        DataSearchOperator.ends_with,
+    }
+)
+
+
+def bad_list_string_op(field_path: str, operator: DataSearchOperator) -> ValueError:
+    """The error raised when a bare scalar string op targets a list field."""
+    return ValueError(
+        f"{operator.value!r} on the list field {field_path!r} is not allowed: a "
+        f"scalar string operator would run against the whole serialised array. "
+        f"Quantify over the elements instead, e.g. "
+        f"QB[{field_path!r}].any().{operator.value}(...) "
+        f"(or .all(), or .icontains/.istarts_with/.iends_with through .any())."
+    )
+
+
+def reject_unquantified_list_string_ops(
+    query: ResourceMetaSearchQuery, list_fields: Iterable[str]
+) -> None:
+    """Raise :func:`bad_list_string_op` if *query* applies a bare scalar string
+    operator to a registered list field without ``.any()``/``.all()``.
+
+    A side-effect-free validation the reference (pure-Python) backends run once
+    per query, before iterating — so an empty store rejects a bad query just
+    like the SQL backends, which raise the same error from ``_build_condition``.
+    """
+    fields = set(list_fields)
+    if not fields:
+        return
+
+    def _walk(cond: object) -> None:
+        if isinstance(cond, DataSearchGroup):
+            for sub in cond.conditions:
+                _walk(sub)
+        elif isinstance(cond, DataSearchCondition):
+            if (
+                cond.quantifier is None
+                and cond.operator in _LIST_SCALAR_ONLY_OPS
+                and cond.field_path in fields
+            ):
+                raise bad_list_string_op(cond.field_path, cond.operator)
+
+    for bucket in (query.conditions, query.data_conditions):
+        if bucket is not UNSET:
+            for c in bucket:
+                _walk(c)
+
+
 def _evaluate_trivalent(
     data: dict[str, Any] | ResourceMeta,
     condition: DataSearchCondition | DataSearchGroup | VectorDistanceCondition,
@@ -355,6 +458,13 @@ def _evaluate_trivalent(
         )
     else:
         compare_value = condition.value
+
+    # Element-wise quantifier (``QB[...].any().<op>(...)``): apply the operator
+    # to each list element as a scalar and fold with any/all.
+    if condition.quantifier is not None:
+        return _match_quantified(
+            condition.quantifier, condition.operator, field_value, compare_value
+        )
 
     if condition.operator == DataSearchOperator.equals:
         return field_value == compare_value
@@ -543,6 +653,25 @@ class IMetaStore(MutableMapping[str, ResourceMeta]):
 
     See: https://docs.python.org/3/library/collections.abc.html#collections.abc.MutableMapping
     """
+
+    def register_list_field(self, field_path: str) -> None:
+        """Declare *field_path* as a list-typed indexed field (see #362).
+
+        Base default: record the name so a bare scalar string operator on it is
+        rejected in favour of ``.any()``/``.all()`` (see
+        :func:`reject_unquantified_list_string_ops`). SQL stores override this to
+        *also* route ``contains`` through element membership. Idempotent — safe
+        to call from ``add_model`` on every registration.
+        """
+        try:
+            self._list_fields.add(field_path)  # ty: ignore[unresolved-attribute]
+        except AttributeError:
+            self._list_fields = {field_path}
+
+    def _registered_list_fields(self) -> "set[str] | frozenset[str]":
+        """Names declared list-typed via :meth:`register_list_field` (empty when
+        none were, e.g. a store built directly in a test)."""
+        return getattr(self, "_list_fields", frozenset())
 
     @abstractmethod
     def __getitem__(self, pk: str) -> ResourceMeta:

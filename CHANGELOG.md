@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.12.1] — 2026-07-16
+
+
+### Fixed
+
+- Cap the in_list GIN fan-out so long lists stop being quadratic
+- A failed sort-index build must not take the process down
+
+
+### Performance
+
+- Keep Vector fields out of the indexed_data JSONB
+
 ## [0.12.0] — 2026-07-16
 
 

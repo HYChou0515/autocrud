@@ -14,6 +14,7 @@ from specstar.query_types import (
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
+    DataSearchQuantifier,
     FieldTransform,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -23,11 +24,13 @@ from specstar.query_types import (
 )
 from specstar.resource_manager import _pg_pool
 from specstar.resource_manager.basic import (
+    _LIST_SCALAR_ONLY_OPS,
     Encoding,
     IMetaWithAgg,
     IMetaWithCount,
     ISlowMetaStore,
     MsgspecSerializer,
+    bad_list_string_op,
 )
 from specstar.types import ResourceMeta
 
@@ -1202,6 +1205,62 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             base = f"(indexed_data->>'{ref.name}')::numeric"
         return f"{a.op.upper()}({base})"
 
+    def _scalar_element_sql(
+        self, operator: DataSearchOperator, value: Any
+    ) -> tuple[str | None, list]:
+        """Per-element scalar predicate over a ``jsonb_array_elements_text``
+        alias ``val``.
+
+        Case-sensitive (matching the pure-Python reference) and injection-free —
+        ``strpos``/``starts_with``/``right`` instead of splicing user text into a
+        ``LIKE`` pattern. Returns ``(None, [])`` for an operator the quantifier
+        never emits.
+        """
+        if operator == DataSearchOperator.equals:
+            return "val = %s", [value]
+        if operator == DataSearchOperator.not_equals:
+            return "val <> %s", [value]
+        if operator == DataSearchOperator.contains:
+            return "strpos(val, %s) > 0", [value]
+        if operator == DataSearchOperator.starts_with:
+            return "starts_with(val, %s)", [value]
+        if operator == DataSearchOperator.ends_with:
+            return "right(val, length(%s)) = %s", [value, value]
+        if operator == DataSearchOperator.regex:
+            return "val ~ %s", [value]
+        return None, []
+
+    def _build_quantified(
+        self,
+        field_path: str,
+        operator: DataSearchOperator,
+        value: Any,
+        quantifier: DataSearchQuantifier,
+    ) -> tuple[str, list]:
+        """``any``/``all`` over a list field via ``EXISTS
+        (jsonb_array_elements_text …)``.
+
+        The ``CASE WHEN jsonb_typeof = 'array'`` around the extraction keeps a
+        scalar / missing value from raising "cannot extract elements from a
+        scalar" (it degrades to an empty array). ``any`` then never matches such
+        a row; ``all`` additionally gates on the outer ``= 'array'`` so a
+        non-array is a non-match rather than vacuously true (a present empty
+        array still satisfies ``all``) — aligning every edge with the reference.
+        """
+        pred, params = self._scalar_element_sql(operator, value)
+        if pred is None:
+            return "", []
+        ptr = f"indexed_data->'{field_path}'"
+        arr = f"CASE WHEN jsonb_typeof({ptr}) = 'array' THEN {ptr} ELSE '[]'::jsonb END"
+        elems = f"jsonb_array_elements_text({arr}) AS e(val)"
+        if quantifier == DataSearchQuantifier.any:
+            return f"EXISTS (SELECT 1 FROM {elems} WHERE {pred})", params
+        return (
+            f"(jsonb_typeof({ptr}) = 'array' AND "
+            f"NOT EXISTS (SELECT 1 FROM {elems} WHERE NOT ({pred})))",
+            params,
+        )
+
     def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 PostgreSQL 查詢條件 (支援 Meta 欄位與 JSONB 欄位)"""
         if isinstance(condition, DataSearchGroup):
@@ -1235,6 +1294,13 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         elif isinstance(value, (list, tuple, set)):
             # Handle Enum in lists (for in_list/not_in_list operators)
             value = [v.value if isinstance(v, EnumType) else v for v in value]
+
+        # Element quantifier (``QB[...].any()/.all()``): apply the operator to
+        # each array element and fold existentially / universally.
+        if condition.quantifier is not None:
+            return self._build_quantified(
+                field_path, operator, value, condition.quantifier
+            )
 
         # 判斷是否為 Meta 欄位
         meta_fields = {
@@ -1327,6 +1393,12 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                     return f"{column_name} IS NOT NULL", []
 
             return "", []
+
+        # A bare scalar string op on a registered list field would run against
+        # the serialised array — reject it, directing to .any()/.all(). (The
+        # quantified form already returned above; ``contains`` stays @> membership.)
+        if field_path in self._list_fields and operator in _LIST_SCALAR_ONLY_OPS:
+            raise bad_list_string_op(field_path, operator)
 
         # PostgreSQL JSONB 提取語法: indexed_data->>'field_path'
         # 對於數字比較，使用 (indexed_data->>'field_path')::numeric

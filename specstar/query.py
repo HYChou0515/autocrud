@@ -9,6 +9,7 @@ from specstar.query_types import (
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
+    DataSearchQuantifier,
     FieldTransform,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
@@ -76,6 +77,7 @@ class VectorDistanceExpr:
             direction=ResourceMetaSortDirection.descending,
             distance=self.distance,
         )
+
 
 _PREV_Query = globals().get("Query")
 _PREV_ConditionBuilder = globals().get("ConditionBuilder")
@@ -405,6 +407,94 @@ class ConditionBuilder(Query):
         )
 
 
+class ElementQuantifier:
+    """Element-wise view of a **list** field, produced by :meth:`Field.any`.
+
+    Inside the quantifier, each list element is treated as a scalar, so every
+    string operator recovers its ordinary scalar meaning and is folded over the
+    elements by the quantifier:
+
+    - :meth:`eq` / :meth:`ne` — element (in)equality, i.e. membership;
+    - :meth:`contains` — element **substring** (not the whole-array membership
+      that bare ``Field.contains`` means on a list);
+    - :meth:`starts_with` / :meth:`ends_with` / :meth:`regex` — per-element,
+      with ``^``/``$`` anchored to a single element rather than the serialised
+      array;
+    - :meth:`icontains` / :meth:`istarts_with` / :meth:`iends_with` — the
+      case-insensitive regex sugar, per element.
+
+    ``any`` holds when SOME element satisfies the predicate (an empty list never
+    matches). See :class:`specstar.query_types.DataSearchQuantifier`.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        quantifier: DataSearchQuantifier,
+        transform: FieldTransform | None = None,
+    ):
+        self.name = name
+        self.quantifier = quantifier
+        self.transform = transform
+
+    def _cond(self, op: DataSearchOperator, val: Any) -> ConditionBuilder:
+        return ConditionBuilder(
+            DataSearchCondition(
+                field_path=self.name,
+                operator=op,
+                value=val,
+                transform=self.transform,
+                quantifier=self.quantifier,
+            )
+        )
+
+    def eq(self, value: Any) -> ConditionBuilder:
+        """Some element equals ``value`` (element membership)."""
+        return self._cond(DataSearchOperator.equals, value)
+
+    def ne(self, value: Any) -> ConditionBuilder:
+        """Some element is not equal to ``value``."""
+        return self._cond(DataSearchOperator.not_equals, value)
+
+    def contains(self, value: str) -> ConditionBuilder:
+        """Some element contains ``value`` as a substring."""
+        return self._cond(DataSearchOperator.contains, value)
+
+    def starts_with(self, value: str) -> ConditionBuilder:
+        """Some element starts with ``value``."""
+        return self._cond(DataSearchOperator.starts_with, value)
+
+    def ends_with(self, value: str) -> ConditionBuilder:
+        """Some element ends with ``value``."""
+        return self._cond(DataSearchOperator.ends_with, value)
+
+    def regex(self, value: str) -> ConditionBuilder:
+        """Some element matches the regex ``value`` (anchored per element)."""
+        return self._cond(DataSearchOperator.regex, value)
+
+    def match(self, value: str) -> ConditionBuilder:
+        """Alias for :meth:`regex`."""
+        return self.regex(value)
+
+    def icontains(self, value: str) -> ConditionBuilder:
+        """Some element case-insensitively contains ``value``."""
+        import re
+
+        return self.regex(f"(?i){re.escape(value)}")
+
+    def istarts_with(self, value: str) -> ConditionBuilder:
+        """Some element case-insensitively starts with ``value``."""
+        import re
+
+        return self.regex(f"(?i)^{re.escape(value)}")
+
+    def iends_with(self, value: str) -> ConditionBuilder:
+        """Some element case-insensitively ends with ``value``."""
+        import re
+
+        return self.regex(f"(?i){re.escape(value)}$")
+
+
 class Field(ConditionBuilder):
     def __init__(
         self,
@@ -631,6 +721,40 @@ class Field(ConditionBuilder):
         :meth:`contains` (single-element membership). On a scalar field it
         degrades to membership (``field in value``)."""
         return self._cond(DataSearchOperator.contains_any, value)
+
+    def any(self) -> "ElementQuantifier":
+        """Quantify a string predicate existentially over a **list** field's
+        elements: the row matches when SOME element satisfies it.
+
+        Each element is treated as a scalar, so the chained operator has its
+        ordinary scalar meaning — the composable, index-friendly way to ask
+        "does any element *contain* / *match* this?", which bare
+        :meth:`contains` (exact membership) deliberately does not::
+
+            QB["norm_keys"].any().contains("ol")  # some element has substring "ol"
+            QB["norm_keys"].any().icontains("OL")  # ... case-insensitively
+            QB["norm_keys"].any().regex("^m")  # ... ^ anchored per element
+            QB["norm_keys"].any().eq("mol")  # some element == "mol" (membership)
+
+        An empty list never matches. The bare per-element string operators
+        (``regex``/``starts_with``/``ends_with`` and case-insensitive sugar) are
+        only valid *through* ``any()`` — calling them directly on a list field
+        raises, because they would otherwise run against the serialised array.
+        """
+        return ElementQuantifier(self.name, DataSearchQuantifier.any, self.transform)
+
+    def all(self) -> "ElementQuantifier":
+        """Universal sibling of :meth:`any`: the row matches when EVERY element
+        of the list satisfies the chained predicate. An empty list matches
+        vacuously (there is no element that fails)::
+
+            QB["norm_keys"].all().starts_with("m")  # every element starts "m"
+
+        Note this is unrelated to the ``QB.all(c1, c2)`` static combinator, which
+        ANDs whole conditions — here the quantifier ranges over one field's
+        elements.
+        """
+        return ElementQuantifier(self.name, DataSearchQuantifier.all, self.transform)
 
     def not_in(self, value: list[Any]) -> ConditionBuilder:
         return self._cond(DataSearchOperator.not_in_list, value)
