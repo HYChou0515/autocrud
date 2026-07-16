@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.12.0] — 2026-07-16
+
+
+### Added
+
+- SortIndex — opt-in btree over (indexed_data->'field') for range/ORDER BY (#421)
+
+
+### Fixed
+
+- Populate the SetIndex column before enabling the && fast path (#420)
+- SetIndex/SortIndex over the whole lifecycle, and when pods boot together (#422)
+
+
+### Performance
+
+- Probe indexed_data with @> so the GIN it already maintains is used (#419)
+- Push count_resources down to SQL COUNT(*) instead of decoding every row
+
 ## [0.11.15] — 2026-07-14
 
 
