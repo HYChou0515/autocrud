@@ -701,6 +701,103 @@ def _is_list_like(tp: type) -> bool:
     return tp is list or get_origin(tp) is list
 
 
+class TrigramIndex:
+    """Annotation marker for a text or ``list[str]`` field that should get a
+    pg_trgm GIN index for substring and fuzzy search.
+
+    The shared ``indexed_data`` GIN (jsonb_ops) serves only ``@>``/``?`` and can
+    never accelerate a substring ``LIKE`` or a trigram similarity. Declaring
+    ``TrigramIndex`` makes Postgres build a ``gin_trgm_ops`` GIN over the text
+    extract ``(indexed_data->>'field')``, which serves ``ILIKE '%x%'`` (exact
+    substring) and ``word_similarity`` (typo/partial fuzzy) — the primitives
+    behind ``.contains`` / ``.any().contains`` and ``.fuzzy`` / ``.similarity``.
+
+    Opt-in and index-only: no column, no backfill, no write-path change.
+    ``indexed_data`` remains the single source of truth and the index is a pure
+    derivation of it, so adding or removing the annotation costs a
+    ``CREATE``/``DROP INDEX`` and nothing else — the index's absence can only cost
+    speed, never correctness.
+
+    Accepts a scalar ``str`` field (the GIN goes over the value) OR a
+    ``list[str]`` field (the GIN goes over the serialised-array text, which
+    coarse-filters ``.any().contains()`` before an exact per-element recheck).
+    Text only: a numeric field should use :class:`SortIndex`.
+
+    Postgres-only native acceleration (like :class:`SortIndex` / :class:`SetIndex`
+    / :class:`Vector`); other backends ignore it and serve the query by scan.
+
+    Example::
+
+        class Card(Struct):
+            title: Annotated[str, TrigramIndex()]
+            norm_keys: Annotated[list[str], TrigramIndex()]
+    """
+
+    __slots__ = ()
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, TrigramIndex)
+
+    def __hash__(self) -> int:
+        return hash(TrigramIndex)
+
+
+class TrigramIndexFieldInfo(Struct, frozen=True, kw_only=True):
+    """Per-field info about a :class:`TrigramIndex`-annotated field, returned by
+    :func:`extract_trigram_index_field_infos`. ``is_list`` is ``True`` for a
+    ``list[str]`` field (the query rewrite then coarse-filters + rechecks)."""
+
+    name: str
+    is_list: bool
+
+
+def extract_trigram_index_field_infos(
+    struct_type: type,
+) -> "list[TrigramIndexFieldInfo]":
+    """Return info for every ``TrigramIndex``-annotated field.
+
+    Accepts a scalar ``str`` field or a ``list[str]`` field; ``Optional[T]`` is
+    peeled first. Raises ``TypeError`` for a non-text field (a trigram index over
+    a number is meaningless — use :class:`SortIndex`).
+    """
+    from typing import get_args
+
+    from specstar.util.type_utils import (
+        get_hints,
+        get_non_none_args,
+        is_annotated_type,
+        is_nullable_type,
+        unwrap_annotated,
+    )
+
+    out: list[TrigramIndexFieldInfo] = []
+    try:
+        hints = get_hints(struct_type)
+    except (TypeError, NameError):
+        return out
+    for field_name, hint in hints.items():
+        if not is_annotated_type(hint):
+            continue
+        inner, metadata = unwrap_annotated(hint)
+        if not any(isinstance(meta, TrigramIndex) for meta in metadata):
+            continue
+        value_type = inner
+        if is_nullable_type(inner):
+            non_none = get_non_none_args(inner)
+            if non_none:
+                value_type = non_none[0]
+        is_list = _is_list_like(value_type)
+        elem_type = (get_args(value_type) or (None,))[0] if is_list else value_type
+        if elem_type is not str:
+            raise TypeError(
+                f"{struct_type.__name__}.{field_name}: TrigramIndex is a text index "
+                f"and accepts only a str or list[str] field. Use SortIndex for a "
+                f"numeric field."
+            )
+        out.append(TrigramIndexFieldInfo(name=field_name, is_list=is_list))
+    return out
+
+
 def extract_vectors(struct_type: type) -> "list[tuple[str, Vector]]":
     """Return ``(field_name, Vector)`` pairs for Vector-annotated fields."""
     from specstar.util.type_utils import (
