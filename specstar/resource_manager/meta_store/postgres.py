@@ -1,3 +1,4 @@
+import logging
 import time
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
@@ -68,6 +69,32 @@ def _containment(field_path: str, value: Any) -> tuple[str, list]:
     return "indexed_data @> %s::jsonb", [
         json.dumps({field_path: value}, ensure_ascii=False)
     ]
+
+
+logger = logging.getLogger(__name__)
+
+
+#: Longest ``in_list`` still expanded into one GIN probe per value.
+#:
+#: The probes are BitmapOr'd across the single GIN, which is a large win while the
+#: list is short and a severe loss once it is not: Postgres plans and OR's one
+#: branch PER VALUE, so the cost grows superlinearly, whereas the flat predicate
+#: below is a Seq Scan whose cost is independent of the list. Measured, 60k rows:
+#:
+#:     N        probes (plan+exec)     flat
+#:     1              0.15 ms          ~7 ms
+#:     100            5.95 ms          ~8 ms    <- probes still ahead
+#:     200           14.33 ms          ~8 ms    <- crossover passed
+#:     1000         168.25 ms          ~8 ms
+#:     2000         977.00 ms         ~15 ms    <- 64x slower
+#:
+#: 64 sits comfortably below the ~150 crossover. It is deliberately not tuned to
+#: the crossover itself: the probes' advantage over a scan is small near it (6 ms
+#: vs 8 ms at N=100) while the loss past it is unbounded, so the risk is one-sided.
+#: The true crossover also moves with table size — a scan costs more on a bigger
+#: table, which buys the probes room — so a fixed limit is a heuristic, chosen to
+#: keep the common short-list case fast without ever letting the tail blow up.
+IN_LIST_PROBE_LIMIT = 64
 
 
 try:
@@ -318,7 +345,13 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         self._build_sort_index_ddl(field_path)
 
     def _build_sort_index_ddl(self, field_path: str) -> None:
-        """Best-effort: get the index built, without fighting the other pods.
+        """Best-effort: get the index built, without ever failing the caller.
+
+        "Best-effort" is load-bearing and was previously only half-true: the pods
+        that LOST the race skipped safely, but the one that won propagated any DDL
+        error straight out of ``add_model`` — the boot path. Nothing about this
+        index is worth a failed boot, so every failure below is swallowed and
+        logged.
 
         Postgres permits only ONE concurrent index build per table at a time, so
         N pods reaching ``CREATE INDEX CONCURRENTLY`` together deadlock each other
@@ -334,6 +367,30 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         while the planner ignores the index — the annotation silently dead. Drop
         it first when we find one.
         """
+        try:
+            self._try_build_sort_index(field_path)
+        except Exception:
+            # "Best-effort" has to mean it. This runs from add_model, on every
+            # process's boot path, and CREATE INDEX CONCURRENTLY fails for reasons
+            # that have nothing to do with the caller: a statement_timeout, a
+            # cancelled backend, the pod killed mid-rollout, disk pressure. The
+            # index is DERIVED metadata — present it is fast, absent it is slow —
+            # so a failed build must degrade to slow, never take the process down.
+            # Raising here also made the damage self-sustaining: a killed build
+            # leaves an INVALID index, and the repair for it lives at the top of
+            # this very function, i.e. on the next boot — which is the thing that
+            # was crashing. That is a crash loop caused by an index whose entire
+            # job is to make one sort faster.
+            logger.warning(
+                "sort index build for %r on %r failed; queries stay correct but "
+                "unaccelerated until a later boot rebuilds it",
+                field_path,
+                self.table_name,
+                exc_info=True,
+            )
+
+    def _try_build_sort_index(self, field_path: str) -> None:
+        """The DDL itself. Raises; :meth:`_build_sort_index_ddl` is the guard."""
         idx_name = self._sort_idx_name(field_path)
         # Stable across pods, distinct per (table, field), and fits in bigint.
         lock_key = self._advisory_key(f"sort_index:{self.table_name}:{field_path}")
@@ -358,7 +415,20 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                         f"ON \"{self.table_name}\" ((indexed_data->'{field_path}'))"
                     )
                 finally:
-                    cur.execute("SELECT pg_advisory_unlock(%s)", [lock_key])
+                    # Best-effort too: if the backend was cancelled the connection
+                    # may be unusable, and raising HERE would mask the real error
+                    # with a confusing one. Postgres releases session advisory
+                    # locks when the connection drops, which conn.close() below
+                    # guarantees — so the lock is never stranded either way.
+                    try:
+                        cur.execute("SELECT pg_advisory_unlock(%s)", [lock_key])
+                    except Exception:
+                        logger.debug(
+                            "advisory unlock for %r failed; the closing connection "
+                            "releases it",
+                            field_path,
+                            exc_info=True,
+                        )
         finally:
             conn.close()
 
@@ -699,6 +769,48 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                     ("{}", resource_id),
                 )
 
+    def _searchable_indexed_data(self, meta: ResourceMeta) -> Any:
+        """``meta.indexed_data`` minus the fields that have a pgvector column.
+
+        ``add_model`` puts every Vector field into ``indexed_fields`` on purpose:
+        brute-force backends have no vector column and answer similarity straight
+        out of ``indexed_data``, and we ourselves read that copy on the way in (see
+        ``_extract_vec_value``, called from ``_meta_row_values`` BEFORE this — off
+        the in-memory meta, so the column is populated either way).
+
+        On this backend the copy has no reader once the column is written:
+        ``_build_vector_condition`` and ``_build_vector_order`` both query
+        ``_vec_col_name(...)``, and ``iter_search`` returns metas by decoding the
+        ``data`` BYTEA — which still holds the whole ResourceMeta, vector included.
+        So nothing observable changes; what goes away is dead weight, and it is not
+        the cheap kind. The GIN over ``indexed_data`` indexes every ELEMENT of the
+        array, so one 4096-dim embedding costs 4096 index entries per row, and
+        every ``@>`` probe rechecks against the fat jsonb. Measured on 5000 rows
+        carrying a 4096-dim embedding, against the same rows without it:
+
+            GIN size          43 MB   ->   312 kB     (138x)
+            total relation   280 MB   ->   840 kB     (333x)
+            @> probe        490.8 ms  ->   1.2 ms     (400x)
+
+        That is what made a real deployment's document list take 15 seconds. The
+        bloat predates the #416 rewrite, but nothing USED the GIN while ``->>``
+        forced a Seq Scan, so #416 is what woke it up.
+
+        Only a REGISTERED column licenses the strip: ``_vec_columns`` is empty
+        unless ``ensure_vector_column`` ran, and without a column ``indexed_data``
+        is the only queryable surface left, so the copy stays.
+
+        This strips the JSONB column only, NOT the BYTEA — which is exactly why
+        readers cannot tell, and equally why the storage is not reclaimed. Doing
+        that changes what readers see and is a separate decision.
+        """
+        data = meta.indexed_data
+        if data is UNSET or not isinstance(data, dict) or not self._vec_columns:
+            return data
+        # `ensure_vector_column` is registered under the short alias, which IS the
+        # indexed_data key (crud.core passes `vinfo.name`) — so a plain key drop.
+        return {k: v for k, v in data.items() if k not in self._vec_columns}
+
     def _meta_row_values(self, meta: ResourceMeta) -> tuple:
         """Pack a ResourceMeta into the column-order tuple used by INSERT/UPSERT."""
         import json
@@ -713,7 +825,7 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             meta.is_deleted,
             meta.schema_version,
             (
-                json.dumps(meta.indexed_data, ensure_ascii=False)
+                json.dumps(self._searchable_indexed_data(meta), ensure_ascii=False)
                 if meta.indexed_data is not UNSET
                 else None
             ),
@@ -1305,12 +1417,22 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                 if not vals:
                     return "FALSE", []  # ``IN ()`` is not valid SQL
                 if all(_gin_probeable(condition, v) for v in vals):
-                    # Postgres BitmapOr's the probes across the one GIN.
                     import json
 
-                    ors = " OR ".join(["indexed_data @> %s::jsonb"] * len(vals))
-                    return f"({ors})", [
-                        json.dumps({field_path: v}, ensure_ascii=False) for v in vals
+                    if len(vals) <= IN_LIST_PROBE_LIMIT:
+                        # Postgres BitmapOr's the probes across the one GIN. Only
+                        # worth it while the list is short — see the constant.
+                        ors = " OR ".join(["indexed_data @> %s::jsonb"] * len(vals))
+                        return f"({ors})", [
+                            json.dumps({field_path: v}, ensure_ascii=False)
+                            for v in vals
+                        ]
+                    # Long list: ONE flat predicate whose cost does not grow with
+                    # the list. Still jsonb equality, so it agrees value-for-value
+                    # with the probes above — the length picks the plan, never the
+                    # answer.
+                    return f"indexed_data->'{field_path}' = ANY(%s::jsonb[])", [
+                        [json.dumps(v, ensure_ascii=False) for v in vals]
                     ]
                 placeholders = ",".join(["%s"] * len(vals))
                 return f"{jsonb_text_extract} IN ({placeholders})", [
