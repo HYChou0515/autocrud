@@ -151,10 +151,15 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         # Ranges on these use the indexable jsonb form rather than a per-row
         # numeric cast. See #418.
         self._sort_indexes: set[str] = set()
+        # Field paths carrying a pg_trgm GIN over (indexed_data->>'f'). Substring
+        # LIKE / fuzzy word_similarity on these become index-served; for a list
+        # field the array text is coarse-filtered before an exact recheck.
+        self._trigram_indexes: set[str] = set()
 
         # 初始化 PostgreSQL 表
         self._init_postgres_table()
         self._has_pgvector = self._detect_pgvector()
+        self._has_pg_trgm = self._detect_pg_trgm()
 
     def _detect_pgvector(self) -> bool:
         # Use a dedicated raw connection to avoid touching the pool — pool
@@ -181,6 +186,31 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
     @property
     def supports_native_vector_search(self) -> bool:
         return self._has_pgvector
+
+    def _detect_pg_trgm(self) -> bool:
+        # Dedicated raw connection, same as _detect_pgvector: never touch the pool.
+        try:
+            conn = psycopg2.connect(self._pg_dsn)
+        except BaseException:
+            return False
+        try:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm' LIMIT 1"
+                )
+                return cur.fetchone() is not None
+        except BaseException:
+            return False
+        finally:
+            try:
+                conn.close()
+            except BaseException:
+                pass
+
+    @property
+    def supports_native_trigram_search(self) -> bool:
+        return self._has_pg_trgm
 
     def register_list_field(self, field_path: str) -> None:
         """Declare *field_path* as a list-typed indexed field.
@@ -445,6 +475,97 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
         digest = hashlib.blake2b(name.encode(), digest_size=8).digest()
         return int.from_bytes(digest, "big", signed=True)
+
+    def _trigram_idx_name(self, field_path: str) -> str:
+        # JSON paths use ".", which is invalid in an identifier
+        return f"idx_{self.table_name}_trgm_{field_path.replace('.', '_')}"
+
+    def ensure_trigram_index(self, field_path: str) -> None:
+        """Create a pg_trgm GIN over ``(indexed_data->>'field_path')`` (TrigramIndex).
+
+        Like :meth:`ensure_sort_index` there is no column, no write-path change and
+        nothing to backfill — the index is a pure derivation of live
+        ``indexed_data``, maintained by Postgres, so it can never be stale and has
+        no window where queries are wrong. The GIN serves substring ``LIKE`` and
+        ``word_similarity`` over the text extract, which is exactly what a scalar
+        ``.contains`` / ``.fuzzy`` already emits; for a ``list[str]`` field the same
+        extract yields the serialised-array text, which the ``.any()`` rewrite
+        coarse-filters before an exact per-element recheck.
+
+        Idempotent; safe to call from ``add_model`` on every process start, and
+        from several pods at once (see :meth:`_build_trigram_index_ddl`).
+        """
+        # Register FIRST and unconditionally — the emitted SQL follows the
+        # ANNOTATION, identical on every pod, never the outcome of the DDL below.
+        # The coarse ``ILIKE`` prefilter the ``.any()`` rewrite adds is a correct
+        # superset with or without the index; the index only decides Seq Scan vs
+        # Bitmap. Same discipline as :meth:`ensure_sort_index`.
+        self._trigram_indexes.add(field_path)
+        self._build_trigram_index_ddl(field_path)
+
+    def _build_trigram_index_ddl(self, field_path: str) -> None:
+        """Best-effort: get the GIN built, without ever failing the caller.
+
+        Runs from ``add_model`` on every boot. ``CREATE EXTENSION`` needs a
+        privilege the app role may not have, and ``CREATE INDEX CONCURRENTLY``
+        fails for reasons unrelated to the caller (statement_timeout, a cancelled
+        backend, a pod killed mid-rollout). The index is DERIVED metadata — present
+        it is fast, absent it is slow — so every failure degrades to a scan, never
+        takes the process down. See :meth:`_build_sort_index_ddl` for the full
+        rationale (advisory-lock election, INVALID-index repair, crash-loop trap).
+        """
+        try:
+            self._try_build_trigram_index(field_path)
+        except Exception:
+            logger.warning(
+                "trigram index build for %r on %r failed; queries stay correct but "
+                "unaccelerated until a later boot rebuilds it",
+                field_path,
+                self.table_name,
+                exc_info=True,
+            )
+
+    def _try_build_trigram_index(self, field_path: str) -> None:
+        """The DDL itself. Raises; :meth:`_build_trigram_index_ddl` is the guard."""
+        idx_name = self._trigram_idx_name(field_path)
+        lock_key = self._advisory_key(f"trigram_index:{self.table_name}:{field_path}")
+        conn = psycopg2.connect(self._pg_dsn)
+        conn.autocommit = True  # CONCURRENTLY cannot run inside a transaction
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_try_advisory_lock(%s)", [lock_key])
+                if not cur.fetchone()[0]:
+                    return  # another pod is on it; ours would only deadlock
+                try:
+                    # gin_trgm_ops lives in pg_trgm; ensure it before the opclass is
+                    # referenced. Best-effort like the rest — if the role can't create
+                    # it, the CREATE INDEX below raises and the guard degrades to scan.
+                    cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+                    cur.execute(
+                        "SELECT indisvalid FROM pg_index "
+                        "WHERE indexrelid = to_regclass(%s)",
+                        [idx_name],
+                    )
+                    row = cur.fetchone()
+                    if row is not None and not row[0]:
+                        cur.execute(f'DROP INDEX CONCURRENTLY IF EXISTS "{idx_name}"')
+                    cur.execute(
+                        f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{idx_name}" '
+                        f'ON "{self.table_name}" USING GIN '
+                        f"((indexed_data->>'{field_path}') gin_trgm_ops)"
+                    )
+                finally:
+                    try:
+                        cur.execute("SELECT pg_advisory_unlock(%s)", [lock_key])
+                    except Exception:
+                        logger.debug(
+                            "advisory unlock for %r failed; the closing connection "
+                            "releases it",
+                            field_path,
+                            exc_info=True,
+                        )
+        finally:
+            conn.close()
 
     def _extract_set_value(self, meta: ResourceMeta, field_path: str) -> "list | None":
         """The list value for a SetIndex column, copied from indexed_data."""

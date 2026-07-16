@@ -1580,6 +1580,7 @@ class SpecStar:
         from specstar.types import (
             extract_set_index_field_infos,
             extract_sort_index_field_infos,
+            extract_trigram_index_field_infos,
         )
 
         set_infos = extract_set_index_field_infos(resolved_model)
@@ -1740,6 +1741,18 @@ class SpecStar:
         ):
             for sinfo in sort_infos:
                 meta_store.ensure_sort_index(sinfo.name)
+
+        # TrigramIndex: a pg_trgm GIN over (indexed_data->>'field') so substring
+        # LIKE and fuzzy word_similarity stop being full scans. Index-only, no
+        # column, nothing to backfill; accepts scalar str AND list[str] fields.
+        trigram_infos = extract_trigram_index_field_infos(resolved_model)
+        if (
+            trigram_infos
+            and meta_store is not None
+            and hasattr(meta_store, "ensure_trigram_index")
+        ):
+            for tinfo in trigram_infos:
+                meta_store.ensure_trigram_index(tinfo.name)
 
         # Scan Ref / RefRevision annotations and collect relationships
         refs = extract_refs(resolved_model, model_name)
