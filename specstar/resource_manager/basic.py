@@ -18,6 +18,7 @@ from specstar.query_types import (
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
+    DataSearchQuantifier,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -223,6 +224,51 @@ def _match_data_condition(
     return result is True
 
 
+def _scalar_op(op: DataSearchOperator, element: Any, compare_value: Any) -> bool:
+    """Apply a *scalar* string/comparison operator to a single list element.
+
+    This is the per-element predicate behind the ``any``/``all`` quantifier: the
+    element is a scalar, so ``contains`` is substring (not the whole-array
+    membership that :data:`DataSearchOperator.contains` means on a list) and
+    ``regex`` anchors ``^``/``$`` to this one element. It mirrors the scalar
+    branches of :func:`_evaluate_trivalent`, kept in sync with them.
+    """
+    if op == DataSearchOperator.equals:
+        return element == compare_value
+    if op == DataSearchOperator.not_equals:
+        return element != compare_value
+    if op == DataSearchOperator.contains:
+        return str(compare_value) in str(element)
+    if op == DataSearchOperator.starts_with:
+        return str(element).startswith(str(compare_value))
+    if op == DataSearchOperator.ends_with:
+        return str(element).endswith(str(compare_value))
+    if op == DataSearchOperator.regex:
+        return re.search(str(compare_value), str(element)) is not None
+    # ElementQuantifier never emits any other operator; be conservative.
+    return False
+
+
+def _match_quantified(
+    quantifier: DataSearchQuantifier,
+    op: DataSearchOperator,
+    field_value: Any,
+    compare_value: Any,
+) -> bool | None:
+    """Fold a per-element scalar predicate with an ``any``/``all`` quantifier.
+
+    ``any`` is existential (empty list -> ``False``); ``all`` is universal
+    (empty list -> vacuously ``True``). A non-list value is Unknown (``None``)
+    — quantifying over a scalar is a category error.
+    """
+    if not isinstance(field_value, list):
+        return None
+    results = [_scalar_op(op, el, compare_value) for el in field_value]
+    if quantifier == DataSearchQuantifier.any:
+        return any(results)
+    return all(results)
+
+
 def _evaluate_trivalent(
     data: dict[str, Any] | ResourceMeta,
     condition: DataSearchCondition | DataSearchGroup | VectorDistanceCondition,
@@ -355,6 +401,13 @@ def _evaluate_trivalent(
         )
     else:
         compare_value = condition.value
+
+    # Element-wise quantifier (``QB[...].any().<op>(...)``): apply the operator
+    # to each list element as a scalar and fold with any/all.
+    if condition.quantifier is not None:
+        return _match_quantified(
+            condition.quantifier, condition.operator, field_value, compare_value
+        )
 
     if condition.operator == DataSearchOperator.equals:
         return field_value == compare_value
