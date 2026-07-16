@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.12.3] — 2026-07-16
+
+
+### Fixed
+
+- Dispatch fuzzy/vector conditions when nested inside a group
+
 ## [0.12.2] — 2026-07-16
 
 
