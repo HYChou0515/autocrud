@@ -26,7 +26,6 @@ import pytest
 
 from specstar.query import QB
 from specstar.types import ResourceMeta
-
 from tests.meta_store.common import get_meta_store
 
 
