@@ -15,12 +15,35 @@ never runs in CI. Live-Postgres behaviour is pinned by
 ``tests/meta_store/test_trigram_index.py``.
 """
 
+import json
 from typing import Annotated, Optional
 
 import msgspec
 import pytest
 
+from specstar.query_types import (
+    DataSearchCondition,
+    DataSearchOperator,
+    DataSearchQuantifier,
+)
+from specstar.resource_manager.meta_store.postgres import PostgresMetaStore
 from specstar.types import TrigramIndex, extract_trigram_index_field_infos
+
+
+def _builder(list_fields=(), trigram_indexes=()) -> PostgresMetaStore:
+    """A store whose SQL builder runs without a live server (see #418's helper)."""
+    store = object.__new__(PostgresMetaStore)
+    store._list_fields = set(list_fields)
+    store._set_columns = {}
+    store._sort_indexes = set()
+    store._trigram_indexes = set(trigram_indexes)
+    return store
+
+
+def _quant(op, value, quantifier, field_path="keys") -> DataSearchCondition:
+    return DataSearchCondition(
+        field_path=field_path, operator=op, value=value, quantifier=quantifier
+    )
 
 
 def test_extract_finds_a_scalar_text_field():
@@ -82,3 +105,46 @@ def test_marker_is_exported_from_the_top_level_package():
     import specstar
 
     assert specstar.TrigramIndex is TrigramIndex
+
+
+# --- .any().eq() membership → GIN-probeable @> (no TrigramIndex needed) ------
+
+
+def test_any_eq_routes_to_the_top_level_containment_probe():
+    """``.any().eq(v)`` is exact element membership, so it can go through the
+    shared ``idx_indexed_data_gin`` (``indexed_data @> {"f": [v]}``) instead of a
+    per-row ``EXISTS(jsonb_array_elements_text …)`` scan."""
+    sql, params = _builder(list_fields=["keys"])._build_condition(
+        _quant(DataSearchOperator.equals, "mol", DataSearchQuantifier.any)
+    )
+    assert sql == "indexed_data @> %s::jsonb"
+    assert json.loads(params[0]) == {"keys": ["mol"]}
+
+
+def test_all_eq_is_not_membership_and_keeps_the_universal_exists():
+    """``.all().eq(v)`` means EVERY element equals v — not membership — so the
+    ``@>`` short-circuit must not swallow it."""
+    sql, _ = _builder()._build_condition(
+        _quant(DataSearchOperator.equals, "mol", DataSearchQuantifier.all)
+    )
+    assert "@>" not in sql
+    assert "NOT EXISTS" in sql
+
+
+def test_any_contains_is_substring_not_membership_and_keeps_exists():
+    """``.any().contains(v)`` is substring, which ``@>`` (membership) cannot do."""
+    sql, _ = _builder()._build_condition(
+        _quant(DataSearchOperator.contains, "ol", DataSearchQuantifier.any)
+    )
+    assert "@>" not in sql
+    assert "strpos(val" in sql
+
+
+def test_any_eq_none_keeps_exists_not_a_containment_probe():
+    """``@> {"f": [null]}`` would MATCH a stored JSON null; the reference returns
+    Unknown for ``== None``. ``None`` must stay on the EXISTS path (see
+    ``_gin_probeable``)."""
+    sql, _ = _builder()._build_condition(
+        _quant(DataSearchOperator.equals, None, DataSearchQuantifier.any)
+    )
+    assert "@>" not in sql

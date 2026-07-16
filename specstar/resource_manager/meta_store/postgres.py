@@ -1419,6 +1419,18 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         # Element quantifier (``QB[...].any()/.all()``): apply the operator to
         # each array element and fold existentially / universally.
         if condition.quantifier is not None:
+            # ``.any().eq(v)`` is exactly element membership, so it is the same
+            # question as a bare list ``.contains(v)`` — route it to the top-level
+            # ``indexed_data @> {"f": [v]}`` probe served by idx_indexed_data_gin
+            # instead of a per-row EXISTS(jsonb_array_elements_text) scan. The
+            # containment form matches the reference on every edge (a scalar /
+            # missing / empty-array field all fail it, just like ``any`` does).
+            if (
+                condition.quantifier == DataSearchQuantifier.any
+                and operator == DataSearchOperator.equals
+                and _gin_probeable(condition, value)
+            ):
+                return _containment(field_path, [value])
             return self._build_quantified(
                 field_path, operator, value, condition.quantifier
             )

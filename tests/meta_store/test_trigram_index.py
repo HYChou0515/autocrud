@@ -139,3 +139,23 @@ def test_a_list_field_gets_a_gin_and_any_contains_stays_correct(store):
     assert _index_exists(store, store._trigram_idx_name("keys"))
     # substring over elements: "ol" ⊂ "mol" (row 1) and "ol" itself (row 3).
     assert _ids(store, QB["keys"].any().contains("ol")) == ["1", "3"]
+
+
+def test_any_eq_membership_uses_the_shared_jsonb_gin(store):
+    """``.any().eq(v)`` needs no TrigramIndex — as exact membership it rides the
+    always-present shared jsonb GIN via ``indexed_data @> {"keys": [v]}``, not a
+    per-row unnest scan."""
+    assert _ids(store, QB["keys"].any().eq("mol")) == ["1"]  # only the literal "mol"
+    plan = _explain(
+        store,
+        'SELECT count(*) FROM {t} WHERE indexed_data @> \'{{"keys": ["mol"]}}\'',
+    )
+    assert "idx_indexed_data_gin" in plan, plan
+
+
+def test_any_eq_membership_matches_the_reference_answer(store):
+    """Membership, not substring: "mol" hits only row 1, never "small molecule"
+    (row 3's title) or the "m4"/"m40" keys."""
+    assert _ids(store, QB["keys"].any().eq("mol")) == ["1"]
+    assert _ids(store, QB["keys"].any().eq("m4")) == ["2"]
+    assert _ids(store, QB["keys"].any().eq("nope")) == []
