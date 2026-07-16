@@ -97,10 +97,12 @@ class TrigramFuzzyCondition(Struct, kw_only=True, tag=True):
     a ``list[str]`` field the serialised-array text word-splits on the quotes and
     commas, so the match is effectively "any element is fuzzy-similar".
 
-    Postgres-native (requires the pg_trgm extension); other backends have no
-    faithful equivalent and reject it. ``threshold`` is the minimum similarity
-    (0..1); ``None`` uses the server's ``pg_trgm.word_similarity_threshold`` (0.6),
-    which is the index-accelerated form. Belongs in
+    Postgres serves this with pg_trgm's ``word_similarity``; the memory / disk /
+    sqlite backends compute the identical value with :mod:`specstar.util.trigram`
+    (a faithful port), so the rows match everywhere — only the Postgres GIN
+    acceleration is backend-specific. ``threshold`` is the minimum similarity
+    (0..1); ``None`` uses pg_trgm's ``word_similarity_threshold`` (0.6), which on
+    Postgres is the index-accelerated ``<%`` form. Belongs in
     :attr:`ResourceMetaSearchQuery.conditions`.
     """
 
@@ -165,9 +167,10 @@ class TrigramSimilaritySort(Struct, kw_only=True, tag=True):
     """Sort rows by trigram ``word_similarity`` between a text field and *query*.
 
     ``descending`` puts the closest matches first — the usual "best first" ranking
-    (``QB["title"].similarity("mol").desc()``). Postgres-native (the GIN cannot
-    order, so this is a compute-then-sort — filter with ``.fuzzy()`` first to keep
-    the set small); other backends reject it. Belongs in
+    (``QB["title"].similarity("mol").desc()``). A compute-then-sort on every
+    backend (even on Postgres the GIN cannot order, so filter with ``.fuzzy()``
+    first to keep the set small); the reference backends rank with the same
+    :mod:`specstar.util.trigram` ``word_similarity``. Belongs in
     :attr:`ResourceMetaSearchQuery.sorts`.
     """
 

@@ -86,7 +86,8 @@ class TrigramSimilarityExpr:
 
     Turn it into a sort with ``.desc()`` (most-similar first, the usual ranking)
     or ``.asc()``. Passed bare to :meth:`Query.sort` it defaults to descending.
-    Postgres-native (see :class:`~specstar.query_types.TrigramSimilaritySort`).
+    Works on every backend (see
+    :class:`~specstar.query_types.TrigramSimilaritySort`).
     """
 
     __slots__ = ("field_path", "query")
@@ -691,8 +692,9 @@ class Field(ConditionBuilder):
         A fragment matches a longer word — ``QB["title"].fuzzy("mol")`` finds
         "molecular". On a ``list[str]`` field it matches when ANY element is
         similar. ``threshold`` (0..1) is the minimum similarity; ``None`` uses the
-        server default (0.6) and is the index-accelerated form. Postgres-only —
-        other backends have no faithful equivalent and reject it.
+        pg_trgm default (0.6), which on Postgres is the index-accelerated form.
+        Works on every backend — Postgres via pg_trgm, the others via a faithful
+        Python port of the same ``word_similarity`` (:mod:`specstar.util.trigram`).
         """
         return ConditionBuilder(
             TrigramFuzzyCondition(

@@ -290,3 +290,64 @@ def test_similarity_sort_ranks_the_best_match_first(store):
     assert _ordered_ids(store, desc) == ["1", "3"]
     asc = QB["title"].fuzzy("molecular").sort(QB["title"].similarity("molecular").asc())
     assert _ordered_ids(store, asc) == ["3", "1"]
+
+
+# --- Reference-backend parity: the Python port must match live Postgres --------
+
+
+# (query, target) spanning fragments, typos, the ``->>`` serialised-array text,
+# and non-ASCII — the port is what lets memory / disk / sqlite serve .fuzzy().
+_PARITY_PAIRS = [
+    ("mol", "molecular biology"),
+    ("mole", "small molecule"),
+    ("molec", "molecular"),
+    ("capor", "capping protein"),
+    ("mu", "must-have"),
+    ("xyz", "molecular"),
+    ("quick", "the quick brown fox"),
+    ("cap", '["capping", "protein"]'),  # the text ``->>`` exposes for a list
+    ("phys", '["quantum", "physics"]'),
+    ("分子", "分子生物學"),
+    ("中文", "這是中文測試"),
+]
+
+
+@pytest.mark.parametrize(("query", "target"), _PARITY_PAIRS)
+def test_reference_matches_live_postgres(store, query, target):
+    """The standing guard against pg_trgm drift: :mod:`specstar.util.trigram` must
+    equal live Postgres ``word_similarity`` / ``similarity`` for the same inputs.
+    This is *why* the reference backends can return the same rows as production."""
+    from specstar.util import trigram
+
+    with store.transaction() as cur:
+        cur.execute(
+            "SELECT word_similarity(%s, %s), similarity(%s, %s)",
+            [query, target, query, target],
+        )
+        pg_ws, pg_sim = cur.fetchone()
+    assert trigram.word_similarity(query, target) == pytest.approx(
+        float(pg_ws), abs=1e-6
+    )
+    assert trigram.similarity(query, target) == pytest.approx(float(pg_sim), abs=1e-6)
+
+
+@pytest.mark.parametrize("store_type", ["memory", "disk", "sql3-mem"])
+def test_fuzzy_answers_match_postgres_on_every_backend(store, store_type, tmp_path):
+    """End-to-end: ``.fuzzy()`` / ``.similarity()`` over the reference backends
+    return the SAME ids (and ranking) as the live-Postgres ``store`` fixture."""
+    ref = _seed(get_meta_store(store_type, tmp_path))
+    for cond in [
+        QB["title"].fuzzy("molecular"),
+        QB["title"].fuzzy("polymer"),
+        QB["title"].fuzzy("zzznope"),
+        QB["keys"].fuzzy("capp"),
+        QB["title"].fuzzy("molec", threshold=0.5),
+        QB["title"].fuzzy("molec", threshold=0.99),
+    ]:
+        assert _ids(ref, cond) == _ids(store, cond)
+
+    # ranking parity too (distinct similarities → deterministic order everywhere)
+    desc = (
+        QB["title"].fuzzy("molecular").sort(QB["title"].similarity("molecular").desc())
+    )
+    assert _ordered_ids(ref, desc) == _ordered_ids(store, desc) == ["1", "3"]

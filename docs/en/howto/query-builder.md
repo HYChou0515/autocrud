@@ -139,10 +139,10 @@ use `.fuzzy()`. It matches by trigram similarity (pg_trgm `word_similarity`), so
 a short, even slightly-misspelled query matches a longer word:
 
 ```python
-QB["title"].fuzzy("molec")            # matches "molecular", "small molecule", …
-QB["title"].fuzzy("capor")            # typo-tolerant: still finds "capping"
-QB["title"].fuzzy("mol", threshold=0.3)   # loosen the minimum similarity (0..1)
-QB["tags"].fuzzy("capp")              # on a list field: ANY element may match
+QB["title"].fuzzy("molec")                 # matches "molecular", "small molecule", …
+QB["title"].fuzzy("capp")                  # a fragment of "capping"
+QB["title"].fuzzy("capor", threshold=0.3)  # typo-tolerant once you loosen the cutoff
+QB["tags"].fuzzy("mol")                    # on a list field: ANY element may match
 ```
 
 To order the matches best-first, sort by `.similarity()`:
@@ -174,11 +174,15 @@ class Card(Struct):
 The same index also accelerates an exact substring `.contains()` /
 `.any().contains()` on that field.
 
-> **Postgres only.** `.fuzzy()` / `.similarity()` are backed by pg_trgm, which
-> has no faithful equivalent on the memory / disk / sqlite backends — those
-> reject the query rather than return different rows than production. A custom
-> `threshold` currently runs as a scan; the default threshold is the
-> index-accelerated form.
+> **Works on every backend; indexed only on Postgres.** `.fuzzy()` /
+> `.similarity()` are pg_trgm's `word_similarity` on Postgres, and a faithful
+> Python port of the same algorithm (`specstar.util.trigram`) on the memory /
+> disk / sqlite backends — so a query returns the *same* rows everywhere, not
+> merely "something fuzzy". Only the **acceleration** is Postgres-specific: the
+> `TrigramIndex` GIN serves the default-threshold `<%` form (a custom `threshold`
+> runs as a scan); the other backends have no such index and compute by scan,
+> which is fine at their scale. The default cutoff is pg_trgm's
+> `word_similarity_threshold` (0.6).
 
 ### Null and value checks
 
@@ -299,7 +303,7 @@ a forgotten `limit` can't silently truncate the result.
 - **`is_deleted` is the one exception**: it may be combined with `qb`. The server ANDs it into the QB conditions automatically. Swagger always sends `is_deleted=false` by default, so QB expressions work in Swagger out of the box.
 - invalid or unsupported QB expressions return HTTP 400
 - a bare scalar string operator (`regex` / `starts_with` / `ends_with` / `icontains`) on a **list** field is rejected — quantify it with `.any()` / `.all()` instead
-- `.fuzzy()` / `.similarity()` (trigram search) are **Postgres-only**; the memory / disk / sqlite backends reject them, and `TrigramIndex` acceleration is a Postgres-only pg_trgm GIN (other backends ignore the annotation)
+- `.fuzzy()` / `.similarity()` (trigram search) work on **every** backend — pg_trgm on Postgres, a faithful Python port (`specstar.util.trigram`) elsewhere, so the rows match; only the **acceleration** is Postgres-only (`TrigramIndex` builds a pg_trgm GIN; other backends ignore the annotation and compute by scan)
 - URL `limit` and `offset` override pagination values defined inside the QB expression
 - for metadata filtering in QB mode (time ranges, creator filters, revision filters, etc.), include them directly in the expression — for example `QB.created_time().last_n_days(7)`, `QB.created_by().eq("alice")`, or `QB.rev_status().eq("draft")`
 

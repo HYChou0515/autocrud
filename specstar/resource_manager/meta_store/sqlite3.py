@@ -32,8 +32,23 @@ from specstar.resource_manager.basic import (
     bad_list_string_op,
 )
 from specstar.types import ResourceMeta
+from specstar.util import trigram
 
 T = TypeVar("T")
+
+
+def _sqlite_word_similarity(query: object, text: object) -> float | None:
+    """SQLite UDF: pg_trgm ``word_similarity(query, text)``.
+
+    ``text`` is whatever ``json_extract`` returns for the field — the raw string
+    for a scalar, or the JSON-array text for a list (``["a","b"]``), which
+    trigram word-splitting reduces to the same element words Postgres' ``->>``
+    does. A NULL (missing field) propagates as NULL so ``>= threshold`` excludes
+    it, matching Postgres and the pure-Python backends.
+    """
+    if query is None or text is None:
+        return None
+    return trigram.word_similarity(str(query), str(text))
 
 
 class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
@@ -63,6 +78,7 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                     return False
 
             conn.create_function("REGEXP", 2, regexp)
+            conn.create_function("word_similarity", 2, _sqlite_word_similarity)
             return conn
 
         self._get_conn = _get_conn_wrapper
@@ -371,15 +387,24 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
         # 構建排序子句
         order_clause = ""
+        order_params: list = []
         if query.sorts is not UNSET and query.sorts:
             from specstar.query_types import TrigramSimilaritySort
-            from specstar.resource_manager.basic import fuzzy_not_supported
 
             order_parts = []
             for sort in query.sorts:
                 if isinstance(sort, TrigramSimilaritySort):
-                    raise fuzzy_not_supported()
-                if isinstance(sort, ResourceMetaSearchSort):
+                    direction = (
+                        "ASC"
+                        if sort.direction == ResourceMetaSortDirection.ascending
+                        else "DESC"
+                    )
+                    text = f"json_extract(indexed_data, '$.\"{sort.field_path}\"')"
+                    # The query param binds in ORDER BY position — after the WHERE
+                    # params, before LIMIT/OFFSET (see order_params threading below).
+                    order_parts.append(f"word_similarity(?, {text}) {direction}")
+                    order_params.append(sort.query)
+                elif isinstance(sort, ResourceMetaSearchSort):
                     direction = (
                         "ASC"
                         if sort.direction == ResourceMetaSortDirection.ascending
@@ -402,6 +427,7 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
         # 在 SQL 層面應用分頁
         sql = f"SELECT data FROM resource_meta {where_clause} {order_clause} LIMIT ? OFFSET ?"
+        params.extend(order_params)
         params.extend([query.limit, query.offset])
 
         cursor = self._conns[threading.get_ident()].execute(sql, params)
@@ -573,10 +599,15 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             DataSearchOperator,
             TrigramFuzzyCondition,
         )
-        from specstar.resource_manager.basic import fuzzy_not_supported
 
         if isinstance(condition, TrigramFuzzyCondition):
-            raise fuzzy_not_supported()
+            text = f"json_extract(indexed_data, '$.\"{condition.field_path}\"')"
+            threshold = (
+                trigram.WORD_SIMILARITY_THRESHOLD
+                if condition.threshold is None
+                else float(condition.threshold)
+            )
+            return f"word_similarity(?, {text}) >= ?", [condition.query, threshold]
 
         if isinstance(condition, DataSearchGroup):
             sub_conditions = []

@@ -165,6 +165,10 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
                 if not _match_vector_condition(meta, condition):
                     return False
                 continue
+            if isinstance(condition, TrigramFuzzyCondition):
+                if not _match_fuzzy_condition(meta, condition):
+                    return False
+                continue
             if not _match_condition(meta, condition):
                 return False
 
@@ -215,6 +219,47 @@ def _match_vector_condition(
     if op == DataSearchOperator.greater_than_or_equal:
         return d >= condition.threshold
     return False
+
+
+def _fuzzy_field_text(value: Any) -> str | None:
+    """The text pg_trgm's ``->>`` would expose for a field, for trigram matching.
+
+    A scalar string is itself; a list joins its elements so each is a separate
+    word — the same words Postgres' serialised-array text (``["a", "b"]``) splits
+    into, since every quote / bracket / comma is a trigram boundary. Anything else
+    (not a text or ``text[]`` field) is ``None`` — no fuzzy match.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return " ".join(str(el) for el in value)
+    return None
+
+
+def _match_fuzzy_condition(
+    meta: ResourceMeta,
+    condition: TrigramFuzzyCondition,
+) -> bool:
+    """Brute-force evaluation of a :class:`TrigramFuzzyCondition` (``.fuzzy()``).
+
+    Mirrors Postgres' ``word_similarity(query, indexed_data->>'f') >= threshold``
+    (default :data:`~specstar.util.trigram.WORD_SIMILARITY_THRESHOLD`). The
+    :mod:`specstar.util.trigram` port is bit-for-bit identical to pg_trgm, so an
+    empty / missing / non-text field never reaches the threshold and is excluded.
+    """
+    from specstar.util.trigram import WORD_SIMILARITY_THRESHOLD, word_similarity
+
+    if meta.indexed_data is UNSET:
+        return False
+    text = _fuzzy_field_text(meta.indexed_data.get(condition.field_path))
+    if text is None:
+        return False
+    threshold = (
+        WORD_SIMILARITY_THRESHOLD
+        if condition.threshold is None
+        else condition.threshold
+    )
+    return word_similarity(condition.query, text) >= threshold
 
 
 def _match_data_condition(
@@ -285,22 +330,6 @@ _LIST_SCALAR_ONLY_OPS = frozenset(
 )
 
 
-def fuzzy_not_supported() -> NotImplementedError:
-    """The error raised when a ``.fuzzy()`` condition reaches a non-Postgres store.
-
-    Trigram similarity (pg_trgm ``word_similarity``) has no faithful, portable
-    definition — unlike vector cosine distance, which is an exact formula the
-    reference backends can reproduce — so rather than silently return DIFFERENT
-    rows than production Postgres, the memory / disk / sqlite backends reject it.
-    """
-    return NotImplementedError(
-        "QB.fuzzy() (trigram similarity search) requires the Postgres backend "
-        "with the pg_trgm extension; the memory / disk / sqlite backends have no "
-        "faithful equivalent. Use an exact operator (.contains / .any().contains) "
-        "on those backends, or run the query against Postgres."
-    )
-
-
 def bad_list_string_op(field_path: str, operator: DataSearchOperator) -> ValueError:
     """The error raised when a bare scalar string op targets a list field."""
     return ValueError(
@@ -310,25 +339,6 @@ def bad_list_string_op(field_path: str, operator: DataSearchOperator) -> ValueEr
         f"QB[{field_path!r}].any().{operator.value}(...) "
         f"(or .all(), or .icontains/.istarts_with/.iends_with through .any())."
     )
-
-
-def reject_fuzzy(query: ResourceMetaSearchQuery) -> None:
-    """Raise :func:`fuzzy_not_supported` if *query* uses ``.fuzzy()`` or
-    ``.similarity()`` (a trigram filter OR a trigram-ranking sort).
-
-    The pure-Python reference backends run this once per query, before iterating,
-    so an EMPTY store rejects it just like a populated one (and like the sqlite
-    backend, which raises from ``_build_condition`` / its sort loop) — the feature
-    is simply absent here, independent of the data.
-    """
-    if query.conditions is not UNSET:
-        for condition in query.conditions:
-            if isinstance(condition, TrigramFuzzyCondition):
-                raise fuzzy_not_supported()
-    if query.sorts is not UNSET:
-        for sort in query.sorts:
-            if isinstance(sort, TrigramSimilaritySort):
-                raise fuzzy_not_supported()
 
 
 def reject_unquantified_list_string_ops(
@@ -626,6 +636,21 @@ def get_sort_fn(qsorts: list[ResourceMetaSearchSort | ResourceDataSearchSort]):
                     if isinstance(v2_raw, list)
                     else UNSET
                 )
+            elif isinstance(sort, TrigramSimilaritySort):
+                from specstar.util.trigram import word_similarity
+
+                text1 = _fuzzy_field_text(
+                    meta1.indexed_data.get(sort.field_path)
+                    if meta1.indexed_data is not UNSET
+                    else None
+                )
+                text2 = _fuzzy_field_text(
+                    meta2.indexed_data.get(sort.field_path)
+                    if meta2.indexed_data is not UNSET
+                    else None
+                )
+                v1 = word_similarity(sort.query, text1) if text1 is not None else UNSET
+                v2 = word_similarity(sort.query, text2) if text2 is not None else UNSET
             else:
                 v1 = (
                     meta1.indexed_data.get(sort.field_path)
