@@ -8,7 +8,7 @@ import threading
 from collections import defaultdict
 from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from msgspec import UNSET
 
@@ -16,6 +16,8 @@ from specstar.query_types import (
     AggKeyRef,
     AggSpec,
     DataSearchFilter,
+    DataSearchOperator,
+    DataSearchQuantifier,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
@@ -503,6 +505,59 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             val = f"json_extract(indexed_data, '$.\"{ref.name}\"')"
         return f"{a.op.upper()}({val})"
 
+    def _scalar_element_sql(
+        self, operator: DataSearchOperator, value: Any
+    ) -> tuple[str | None, list]:
+        """Per-element scalar predicate over ``json_each``'s ``value`` column.
+
+        Case-sensitive (binary) — matching the pure-Python reference — via
+        ``instr``/``substr`` rather than the case-insensitive ``LIKE``, and
+        injection-free (no user text spliced into a LIKE/GLOB pattern). Returns
+        ``(None, [])`` for an operator the quantifier never emits.
+        """
+        if operator == DataSearchOperator.equals:
+            return "value = ?", [value]
+        if operator == DataSearchOperator.not_equals:
+            return "value != ?", [value]
+        if operator == DataSearchOperator.contains:
+            return "instr(value, ?) > 0", [value]
+        if operator == DataSearchOperator.starts_with:
+            return "substr(value, 1, length(?)) = ?", [value, value]
+        if operator == DataSearchOperator.ends_with:
+            return "substr(value, -length(?)) = ?", [value, value]
+        if operator == DataSearchOperator.regex:
+            return "value REGEXP ?", [value]
+        return None, []
+
+    def _build_quantified(
+        self,
+        field_path: str,
+        operator: DataSearchOperator,
+        value: Any,
+        quantifier: DataSearchQuantifier,
+    ) -> tuple[str, list]:
+        """``any``/``all`` over a list field via ``EXISTS (json_each …)``.
+
+        The ``json_type = 'array'`` guard makes a missing / null / scalar value
+        a non-match for both quantifiers (a present empty array still satisfies
+        ``all`` vacuously), aligning every edge with the reference backend.
+        """
+        pred, params = self._scalar_element_sql(operator, value)
+        if pred is None:
+            return "", []
+        each = f"json_each(indexed_data, '$.\"{field_path}\"')"
+        is_array = f"json_type(indexed_data, '$.\"{field_path}\"') = 'array'"
+        if quantifier == DataSearchQuantifier.any:
+            return (
+                f"({is_array} AND EXISTS (SELECT 1 FROM {each} WHERE {pred}))",
+                params,
+            )
+        # all: array present and no element fails the predicate (empty -> vacuous)
+        return (
+            f"({is_array} AND NOT EXISTS (SELECT 1 FROM {each} WHERE NOT ({pred})))",
+            params,
+        )
+
     def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 SQLite 查詢條件 (支援 Meta 欄位與 JSON 欄位)"""
         from specstar.query_types import (
@@ -543,6 +598,13 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         elif isinstance(value, (list, tuple, set)):
             # Handle Enum in lists (for in_list/not_in_list operators)
             value = [v.value if isinstance(v, EnumType) else v for v in value]
+
+        # Element quantifier (``QB[...].any()/.all()``): apply the operator to
+        # each array element and fold existentially / universally.
+        if condition.quantifier is not None:
+            return self._build_quantified(
+                field_path, operator, value, condition.quantifier
+            )
 
         # 判斷是否為 Meta 欄位
         meta_fields = {
