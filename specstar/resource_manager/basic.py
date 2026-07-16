@@ -375,7 +375,10 @@ def reject_unquantified_list_string_ops(
 
 def _evaluate_trivalent(
     data: dict[str, Any] | ResourceMeta,
-    condition: DataSearchCondition | DataSearchGroup | VectorDistanceCondition,
+    condition: DataSearchCondition
+    | DataSearchGroup
+    | VectorDistanceCondition
+    | TrigramFuzzyCondition,
 ) -> bool | None:
     """
     Evaluate condition using SQL-like trivalent logic (True, False, Unknown/None).
@@ -395,6 +398,23 @@ def _evaluate_trivalent(
             wrapper = _Wrap()
             wrapper.indexed_data = data  # type: ignore[attr-defined]
             return _match_vector_condition(wrapper, condition)  # type: ignore[arg-type]
+        return None
+
+    if isinstance(condition, TrigramFuzzyCondition):
+        # Like vector conditions, a fuzzy condition can be AND/OR-combined with
+        # other filters (``QB[...] == v) & QB[...].fuzzy(q)``), so it must be
+        # evaluated when reached INSIDE a group too — not only at the top level.
+        # It reads the same indexed_data; wrap a bare dict when nested.
+        if isinstance(data, ResourceMeta):
+            return _match_fuzzy_condition(data, condition)
+        if isinstance(data, dict):
+
+            class _Wrap:
+                pass
+
+            wrapper = _Wrap()
+            wrapper.indexed_data = data  # type: ignore[attr-defined]
+            return _match_fuzzy_condition(wrapper, condition)  # type: ignore[arg-type]
         return None
 
     if isinstance(condition, DataSearchGroup):

@@ -92,6 +92,29 @@ def test_fuzzy_filter_returns_same_rows_on_every_backend(tmp, make_query, expect
         assert got == expected
 
 
+def test_fuzzy_and_or_combined_with_a_filter_on_every_backend(tmp):
+    """The essential 'scope + fuzzy' query — a fuzzy condition AND/OR-combined
+    with another filter. It nests inside a DataSearchGroup, which every backend
+    must dispatch to the fuzzy path rather than treat as a plain scalar condition
+    (regression: it used to raise ``'TrigramFuzzyCondition' has no attribute
+    'operator'/'transform'`` on Postgres / memory)."""
+    for store in _stores(tmp):
+        _load(
+            store,
+            [
+                _meta("1", coll="a", title="molecular biology"),
+                _meta("2", coll="a", title="capping protein"),
+                _meta("3", coll="b", title="molecular biology"),
+            ],
+        )
+        # AND: collection "a" AND fuzzy-matches "mol" -> only row 1
+        q_and = ((QB["coll"] == "a") & QB["title"].fuzzy("mol")).build()
+        assert {m.indexed_data["id"] for m in store.iter_search(q_and)} == {"1"}
+        # OR: collection "b" OR fuzzy-matches "mol" -> row 1 (fuzzy) + row 3 (coll b)
+        q_or = ((QB["coll"] == "b") | QB["title"].fuzzy("mol")).build()
+        assert {m.indexed_data["id"] for m in store.iter_search(q_or)} == {"1", "3"}
+
+
 # ── List-field fuzzy filter (any element may match) ──────────────────────────
 
 _TAGGED = [

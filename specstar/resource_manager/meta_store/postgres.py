@@ -1489,6 +1489,15 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
     def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 PostgreSQL 查詢條件 (支援 Meta 欄位與 JSONB 欄位)"""
+        # Vector / fuzzy conditions carry no ``operator``/``value``, so they must be
+        # dispatched to their own builders BEFORE the scalar path — not only at the
+        # top level (``_build_where``) but also when reached recursively INSIDE a
+        # group, i.e. AND/OR-combined with another filter.
+        if isinstance(condition, VectorDistanceCondition):
+            return self._build_vector_condition(condition)
+        if isinstance(condition, TrigramFuzzyCondition):
+            return self._build_fuzzy_condition(condition)
+
         if isinstance(condition, DataSearchGroup):
             sub_conditions = []
             sub_params = []

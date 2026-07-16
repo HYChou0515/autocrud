@@ -292,6 +292,20 @@ def test_similarity_sort_ranks_the_best_match_first(store):
     assert _ordered_ids(store, asc) == ["3", "1"]
 
 
+def test_fuzzy_combined_with_a_filter_in_a_group(store):
+    """Regression: ``.fuzzy()`` AND/OR-combined with another filter nests inside a
+    DataSearchGroup, so the group SQL builder must dispatch it to word_similarity —
+    not the scalar path, which reads ``.operator`` (absent on a fuzzy condition)."""
+    store.ensure_trigram_index("title")
+    # AND: title contains "biology" AND fuzzy-matches "molecular" -> only row 1
+    # ("molecular biology"), NOT row 3 ("small molecule") which fuzzy alone matches.
+    q_and = QB["title"].contains("biology") & QB["title"].fuzzy("molecular")
+    assert _ids(store, q_and) == ["1"]
+    # OR: title contains "polymer" OR fuzzy-matches "molecular" -> rows 1, 2, 3
+    q_or = QB["title"].contains("polymer") | QB["title"].fuzzy("molecular")
+    assert _ids(store, q_or) == ["1", "2", "3"]
+
+
 # --- Reference-backend parity: the Python port must match live Postgres --------
 
 
