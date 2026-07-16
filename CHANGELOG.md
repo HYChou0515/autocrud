@@ -6,6 +6,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.12.2] — 2026-07-16
+
+
+### Added
+
+- P1 — .any()/.all() element quantifier for list fields (pure-Python reference)
+- P2 — push .any()/.all() down to SQLite and Postgres
+- P3 — reject bare scalar string ops on a list field, direct to .any()
+- P1 — TrigramIndex opt-in annotation for substring/fuzzy search
+- P2 — build the pg_trgm GIN for a TrigramIndex field on Postgres
+- P5 — .fuzzy() pg_trgm word_similarity search (Postgres-native)
+- P6 — .similarity().desc() trigram ranking sort (Postgres-native)
+- P7 — accept .fuzzy() / .similarity() over the HTTP ?qb= surface
+- P9 — .fuzzy()/.similarity() on every backend via a Python port
+
+
+### Documentation
+
+- P5 — document the .any()/.all() element quantifier
+- P8 — document .fuzzy() / .similarity() and TrigramIndex
+
+
+### Performance
+
+- P3 — route .any().eq() to the GIN-probeable @> membership
+- P4 — index-back .any().contains() with a coarse LIKE + recheck
+
 ## [0.12.1] — 2026-07-16
 
 
