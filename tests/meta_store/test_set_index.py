@@ -161,8 +161,11 @@ def test_backfill_populates_set_column_for_rows_written_before_it_existed():
     store.ensure_set_column("keys", str)
     assert _ids(store, ["a"]) == ["1"]  # visible immediately, no manual step
     assert _ids(store, ["c"]) == ["2"]
-    # backfill_set_column stays, as the way to force a full re-derivation.
-    assert store.backfill_set_column("keys") == 2
+    # backfill_set_column reconciles rather than rewrites, so once
+    # ensure_set_column has run there is nothing left to repair. The count is
+    # rows FIXED, and zero is the honest answer here — see
+    # test_set_index_lifecycle.py for the cases where it is not.
+    assert store.backfill_set_column("keys") == 0
     assert _ids(store, ["a"]) == ["1"]
 
 
@@ -199,10 +202,30 @@ def test_backfill_set_columns_script_runs_via_resource_manager():
     rm.create(Foo(keys=["a", "b"]))
     rm.create(Foo(keys=["c"]))
 
+    # These rows were written WITH the annotation live, so the write path already
+    # kept the column consistent: the script reports zero rows repaired, which is
+    # a stronger statement than "it rewrote 2".
     summary = backfill_set_columns(rm, field_name="keys")
-    assert summary.encoded == 2
-    # still queryable after backfill
+    assert summary.encoded == 0
     assert len(rm.list_resources(QB["keys"].contains_any(["a"]).build())) == 1
+
+
+def test_backfill_set_columns_script_repairs_a_drifted_column():
+    """What the script is actually FOR: reconciling a column that disagrees."""
+    from specstar.resource_manager.backfill import backfill_set_columns
+
+    sp, rm, Foo = _pg_spec_with_foo()
+    rm.create(Foo(keys=["a", "b"]))
+    store = sp.get_resource_manager(Foo).storage.meta_store
+
+    with store.transaction() as cur:
+        cur.execute(f'UPDATE "{store.table_name}" SET set_keys = %s', [["stale"]])
+    assert len(rm.list_resources(QB["keys"].contains_any(["a"]).build())) == 0
+
+    summary = backfill_set_columns(rm, field_name="keys")
+    assert summary.encoded == 1
+    assert len(rm.list_resources(QB["keys"].contains_any(["a"]).build())) == 1
+    assert len(rm.list_resources(QB["keys"].contains_any(["stale"]).build())) == 0
 
 
 def test_multiple_set_index_fields_each_get_their_own_column():

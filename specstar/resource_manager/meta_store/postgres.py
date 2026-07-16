@@ -250,12 +250,14 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         backends serve ``contains_any`` from the shared path and need no
         shadow column, so this is Postgres-only native acceleration.
 
-        Called from ``add_model``, i.e. on every process start. The freshly
-        added column is NULL for every row written before it existed, so the
-        rows are backfilled BEFORE the field is registered — registering is what
-        switches ``contains_any`` onto the ``&&`` fast path, and a fast path over
-        a NULL column silently returns no rows rather than failing (#417).
-        Restarts are cheap: the backfill only touches rows still missing a value.
+        Called from ``add_model``, i.e. on every process start. The column is
+        reconciled against ``indexed_data`` BEFORE the field is registered —
+        registering is what switches ``contains_any`` onto the ``&&`` fast path,
+        and that fast path over a column which is NULL (never filled) or stale
+        (filled, then the row changed while the annotation was absent) silently
+        returns wrong rows rather than failing (#417). Reconciling, rather than
+        filling the blanks, is what makes re-adding a removed annotation safe;
+        it is also idempotent, so a restart on a clean table costs zero writes.
         """
         pg_elem = self._SET_ELEM_TYPES.get(elem_type, "text")
         col = self._set_col_name(field_path)
@@ -278,7 +280,7 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             conn.close()
         # Order matters: populate first, register second. Mirrors the startup
         # backfill _migrate_existing_records already does for indexed_data.
-        self._run_set_backfill(field_path, pg_elem, only_missing=True)
+        self._run_set_backfill(field_path, pg_elem)
         self._set_columns[field_path] = pg_elem
 
     def _sort_idx_name(self, field_path: str) -> str:
@@ -303,20 +305,73 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         succeeded, and the build itself fails on legacy data. jsonb extraction is
         total, and jsonb orders numbers numerically, so this form cannot fail.
 
-        Idempotent; safe to call from ``add_model`` on every process start.
+        Idempotent; safe to call from ``add_model`` on every process start, and
+        from several pods at once (see :meth:`_build_sort_index_ddl`).
+        """
+        # Register FIRST, and never conditionally. The emitted SQL must follow the
+        # ANNOTATION — identical code on every pod — not the outcome of the DDL
+        # below. If registration could be skipped by a lost race or a raised DDL,
+        # pods would emit different SQL for the same query; on a string field the
+        # two forms do not merely differ in speed, the numeric-cast one raises.
+        # Whether the index exists only ever decides Seq Scan vs Index Scan.
+        self._sort_indexes.add(field_path)
+        self._build_sort_index_ddl(field_path)
+
+    def _build_sort_index_ddl(self, field_path: str) -> None:
+        """Best-effort: get the index built, without fighting the other pods.
+
+        Postgres permits only ONE concurrent index build per table at a time, so
+        N pods reaching ``CREATE INDEX CONCURRENTLY`` together deadlock each other
+        (measured: 4 of 6 pods died with DeadlockDetected — a CrashLoopBackOff on
+        the first rollout after the annotation ships). An advisory lock elects one
+        builder; the losers simply skip, which is safe precisely because a missing
+        index costs speed and nothing else. The index lives in Postgres, not in
+        the pod, so once the winner is done every pod's next query uses it — no
+        restart, no reconnect.
+
+        A build killed mid-flight leaves an INVALID index behind, and
+        ``IF NOT EXISTS`` matches BY NAME, so it would skip the repair forever
+        while the planner ignores the index — the annotation silently dead. Drop
+        it first when we find one.
         """
         idx_name = self._sort_idx_name(field_path)
+        # Stable across pods, distinct per (table, field), and fits in bigint.
+        lock_key = self._advisory_key(f"sort_index:{self.table_name}:{field_path}")
         conn = psycopg2.connect(self._pg_dsn)
-        conn.autocommit = True
+        conn.autocommit = True  # CONCURRENTLY cannot run inside a transaction
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{idx_name}" '
-                    f"ON \"{self.table_name}\" ((indexed_data->'{field_path}'))"
-                )
+                cur.execute("SELECT pg_try_advisory_lock(%s)", [lock_key])
+                if not cur.fetchone()[0]:
+                    return  # another pod is on it; ours would only deadlock
+                try:
+                    cur.execute(
+                        "SELECT indisvalid FROM pg_index "
+                        "WHERE indexrelid = to_regclass(%s)",
+                        [idx_name],
+                    )
+                    row = cur.fetchone()
+                    if row is not None and not row[0]:
+                        cur.execute(f'DROP INDEX CONCURRENTLY IF EXISTS "{idx_name}"')
+                    cur.execute(
+                        f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{idx_name}" '
+                        f"ON \"{self.table_name}\" ((indexed_data->'{field_path}'))"
+                    )
+                finally:
+                    cur.execute("SELECT pg_advisory_unlock(%s)", [lock_key])
         finally:
             conn.close()
-        self._sort_indexes.add(field_path)
+
+    @staticmethod
+    def _advisory_key(name: str) -> int:
+        """A stable signed-bigint key for pg_advisory_lock.
+
+        Must not depend on PYTHONHASHSEED: pods have to agree.
+        """
+        import hashlib
+
+        digest = hashlib.blake2b(name.encode(), digest_size=8).digest()
+        return int.from_bytes(digest, "big", signed=True)
 
     def _extract_set_value(self, meta: ResourceMeta, field_path: str) -> "list | None":
         """The list value for a SetIndex column, copied from indexed_data."""
@@ -325,18 +380,22 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         v = meta.indexed_data.get(field_path)
         return v if isinstance(v, list) else None
 
-    def _run_set_backfill(
-        self, field_path: str, pg_elem: str, *, only_missing: bool
-    ) -> int:
-        """The backfill ``UPDATE`` itself, without the ``_set_columns`` guard.
+    def _run_set_backfill(self, field_path: str, pg_elem: str) -> int:
+        """Reconcile the shadow column with ``indexed_data``. Returns rows fixed.
 
-        ``ensure_set_column`` must be able to run this BEFORE registering the
-        field, so the ``&&`` fast path is never live against an unpopulated
-        column (#417).
+        Kept separate from :meth:`backfill_set_column` so ``ensure_set_column``
+        can run it BEFORE registering the field, i.e. before the ``&&`` fast path
+        can read the column (#417).
 
-        ``only_missing`` restricts the rewrite to rows the column has no value
-        for. Startup passes True, so a restart is a no-op rather than a full
-        table rewrite; the CLI passes False to force a complete re-derivation.
+        The predicate is ``IS DISTINCT FROM``, not ``IS NULL``. "Has this row been
+        filled in?" is the wrong question — writes populate the column from
+        ``_set_columns``, so a row written while the annotation was absent keeps
+        whatever the column held before (``ON CONFLICT DO UPDATE`` never names it).
+        Such a row is non-NULL and WRONG, and an ``IS NULL`` predicate skips it: the
+        fast path then answers from stale data, which unlike a NULL column also
+        returns rows that do not match. The right question is "does this row still
+        agree with the source of truth?", which also makes the pass idempotent —
+        a clean table costs zero writes, so running it on every boot is cheap.
         """
         col = self._set_col_name(field_path)
         extract = "jsonb_array_elements_text(indexed_data->%s)"
@@ -347,33 +406,29 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         )
         sql = (
             f'UPDATE "{self.table_name}" SET "{col}" = {arr} '
-            f"WHERE jsonb_typeof(indexed_data->%s) = 'array'"
+            f"WHERE jsonb_typeof(indexed_data->%s) = 'array' "
+            f'AND "{col}" IS DISTINCT FROM {arr}'
         )
-        if only_missing:
-            sql += f' AND "{col}" IS NULL'
         with self.transaction() as cur:
-            cur.execute(sql, [field_path, field_path])
+            cur.execute(sql, [field_path, field_path, field_path])
             return cur.rowcount
 
     def backfill_set_column(self, field_path: str) -> int:
-        """Repopulate the SetIndex shadow column for *field_path* from
-        ``indexed_data`` across all existing rows — for rows written before the
-        column was added (it defaults to NULL there). One pushed-down ``UPDATE``;
-        returns rows touched. No-op when the field has no shadow column.
+        """Reconcile the SetIndex shadow column for *field_path* against
+        ``indexed_data``. One pushed-down ``UPDATE``; returns rows fixed. No-op
+        when the field has no shadow column.
 
         Analogous to :func:`backfill_vectors` for Vector fields, but the value
         is a pure derivation of ``indexed_data`` (no re-encoding needed), so it
         runs entirely in SQL.
 
-        Since #417 ``ensure_set_column`` backfills on its own, so this is no
-        longer required to make a newly-declared SetIndex field correct. It
-        remains as the way to force a full re-derivation.
+        Since #417 ``ensure_set_column`` reconciles on its own, so this is not
+        required to make a newly-declared SetIndex field correct. It remains as
+        an explicit repair for a column suspected of drift.
         """
         if field_path not in self._set_columns:
             return 0
-        return self._run_set_backfill(
-            field_path, self._set_columns[field_path], only_missing=False
-        )
+        return self._run_set_backfill(field_path, self._set_columns[field_path])
 
     def _build_vector_condition(
         self, condition: "VectorDistanceCondition"
