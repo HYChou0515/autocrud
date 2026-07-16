@@ -132,6 +132,54 @@ index-blind footgun). Use `.any()` / `.all()` instead.
 > combinators** below, which OR / AND whole conditions. Here the quantifier
 > ranges over one field's elements.
 
+### Fuzzy search: `.fuzzy()` and `.similarity()`
+
+When the user only knows a fragment that *must* be there — not the exact word —
+use `.fuzzy()`. It matches by trigram similarity (pg_trgm `word_similarity`), so
+a short, even slightly-misspelled query matches a longer word:
+
+```python
+QB["title"].fuzzy("molec")            # matches "molecular", "small molecule", …
+QB["title"].fuzzy("capor")            # typo-tolerant: still finds "capping"
+QB["title"].fuzzy("mol", threshold=0.3)   # loosen the minimum similarity (0..1)
+QB["tags"].fuzzy("capp")              # on a list field: ANY element may match
+```
+
+To order the matches best-first, sort by `.similarity()`:
+
+```python
+(
+    QB["title"].fuzzy("mol")                       # narrow to the candidates
+    .sort(QB["title"].similarity("mol").desc())    # then rank by closeness
+)
+```
+
+`.fuzzy()` filters and `.similarity()` ranks — pair them: the filter is
+index-accelerated, and the ranking then only has to score the survivors. Both
+work over HTTP: `?qb=QB["title"].fuzzy("mol")`.
+
+To make `.fuzzy()` (and the default-threshold path in particular)
+index-accelerated instead of a full scan, annotate the field with
+`TrigramIndex` — an opt-in pg_trgm GIN, index-only like `SortIndex` (no column,
+no backfill, drop it any time):
+
+```python
+from specstar import TrigramIndex
+
+class Card(Struct):
+    title: Annotated[str, TrigramIndex()]
+    norm_keys: Annotated[list[str], TrigramIndex()]  # list fields too
+```
+
+The same index also accelerates an exact substring `.contains()` /
+`.any().contains()` on that field.
+
+> **Postgres only.** `.fuzzy()` / `.similarity()` are backed by pg_trgm, which
+> has no faithful equivalent on the memory / disk / sqlite backends — those
+> reject the query rather than return different rows than production. A custom
+> `threshold` currently runs as a scan; the default threshold is the
+> index-accelerated form.
+
 ### Null and value checks
 
 ```python
@@ -251,6 +299,7 @@ a forgotten `limit` can't silently truncate the result.
 - **`is_deleted` is the one exception**: it may be combined with `qb`. The server ANDs it into the QB conditions automatically. Swagger always sends `is_deleted=false` by default, so QB expressions work in Swagger out of the box.
 - invalid or unsupported QB expressions return HTTP 400
 - a bare scalar string operator (`regex` / `starts_with` / `ends_with` / `icontains`) on a **list** field is rejected — quantify it with `.any()` / `.all()` instead
+- `.fuzzy()` / `.similarity()` (trigram search) are **Postgres-only**; the memory / disk / sqlite backends reject them, and `TrigramIndex` acceleration is a Postgres-only pg_trgm GIN (other backends ignore the annotation)
 - URL `limit` and `offset` override pagination values defined inside the QB expression
 - for metadata filtering in QB mode (time ranges, creator filters, revision filters, etc.), include them directly in the expression — for example `QB.created_time().last_n_days(7)`, `QB.created_by().eq("alice")`, or `QB.rev_status().eq("draft")`
 
