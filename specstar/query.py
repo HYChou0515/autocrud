@@ -16,6 +16,7 @@ from specstar.query_types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
+    TrigramFuzzyCondition,
     VectorDistanceCondition,
     VectorDistanceSort,
 )
@@ -649,6 +650,21 @@ class Field(ConditionBuilder):
     def ip(self, query_vector) -> VectorDistanceExpr:
         """Build an inner-product distance expression for this field."""
         return VectorDistanceExpr(self.name, query_vector, "ip")
+
+    def fuzzy(self, query: str, threshold: float | None = None) -> ConditionBuilder:
+        """Keep rows whose text is trigram-similar to *query* (pg_trgm fuzzy).
+
+        A fragment matches a longer word — ``QB["title"].fuzzy("mol")`` finds
+        "molecular". On a ``list[str]`` field it matches when ANY element is
+        similar. ``threshold`` (0..1) is the minimum similarity; ``None`` uses the
+        server default (0.6) and is the index-accelerated form. Postgres-only —
+        other backends have no faithful equivalent and reject it.
+        """
+        return ConditionBuilder(
+            TrigramFuzzyCondition(
+                field_path=self.name, query=query, threshold=threshold
+            )
+        )
 
     def between(self, min_val: Any, max_val: Any) -> ConditionBuilder:
         """Support range query: field.between(min, max).

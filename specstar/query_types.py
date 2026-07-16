@@ -89,7 +89,32 @@ class VectorDistanceCondition(Struct, kw_only=True, tag=True):
     distance: "Literal['cosine', 'l2', 'ip'] | None" = None
 
 
-DataSearchFilter = DataSearchCondition | DataSearchGroup | VectorDistanceCondition
+class TrigramFuzzyCondition(Struct, kw_only=True, tag=True):
+    """Keep rows whose text field is trigram-similar to *query* (``.fuzzy()``).
+
+    Uses pg_trgm ``word_similarity``: *query* must be similar to some word / extent
+    of the field's text — so a fragment like ``"mol"`` matches ``"molecular"``. On
+    a ``list[str]`` field the serialised-array text word-splits on the quotes and
+    commas, so the match is effectively "any element is fuzzy-similar".
+
+    Postgres-native (requires the pg_trgm extension); other backends have no
+    faithful equivalent and reject it. ``threshold`` is the minimum similarity
+    (0..1); ``None`` uses the server's ``pg_trgm.word_similarity_threshold`` (0.6),
+    which is the index-accelerated form. Belongs in
+    :attr:`ResourceMetaSearchQuery.conditions`.
+    """
+
+    field_path: str
+    query: str
+    threshold: float | None = None
+
+
+DataSearchFilter = (
+    DataSearchCondition
+    | DataSearchGroup
+    | VectorDistanceCondition
+    | TrigramFuzzyCondition
+)
 
 
 class ResourceMetaSortDirection(StrEnum):

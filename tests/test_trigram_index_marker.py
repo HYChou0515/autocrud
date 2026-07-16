@@ -25,6 +25,7 @@ from specstar.query_types import (
     DataSearchCondition,
     DataSearchOperator,
     DataSearchQuantifier,
+    TrigramFuzzyCondition,
 )
 from specstar.resource_manager.meta_store.postgres import PostgresMetaStore
 from specstar.types import TrigramIndex, extract_trigram_index_field_infos
@@ -230,3 +231,27 @@ def test_all_contains_never_gets_a_coarse_like():
     )
     assert "LIKE" not in sql
     assert "NOT EXISTS" in sql
+
+
+# --- .fuzzy(): pg_trgm word_similarity, index-accelerated by default ----------
+
+
+def test_fuzzy_without_a_threshold_uses_the_indexable_word_similarity_operator():
+    """``%s <% (indexed_data->>'title')`` is what the gin_trgm_ops GIN serves, at
+    the server's default word_similarity_threshold (0.6)."""
+    sql, params = _builder(trigram_indexes=["title"])._build_fuzzy_condition(
+        TrigramFuzzyCondition(field_path="title", query="mol")
+    )
+    # ``<%%`` — the ``%`` in the ``<%`` operator is doubled for psycopg2.
+    assert sql == "%s <%% (indexed_data->>'title')"
+    assert params == ["mol"]
+
+
+def test_fuzzy_with_a_threshold_uses_the_exact_word_similarity_function():
+    """A per-call threshold pins the cut-off exactly (the ``<%`` operator only
+    reads the session GUC), at the cost of the index — v1 runs it as a scan."""
+    sql, params = _builder(trigram_indexes=["title"])._build_fuzzy_condition(
+        TrigramFuzzyCondition(field_path="title", query="mol", threshold=0.3)
+    )
+    assert sql == "word_similarity(%s, (indexed_data->>'title')) >= %s"
+    assert params == ["mol", 0.3]

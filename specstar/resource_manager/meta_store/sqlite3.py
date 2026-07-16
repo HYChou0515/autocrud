@@ -566,7 +566,12 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             DataSearchGroup,
             DataSearchLogicOperator,
             DataSearchOperator,
+            TrigramFuzzyCondition,
         )
+        from specstar.resource_manager.basic import fuzzy_not_supported
+
+        if isinstance(condition, TrigramFuzzyCondition):
+            raise fuzzy_not_supported()
 
         if isinstance(condition, DataSearchGroup):
             sub_conditions = []

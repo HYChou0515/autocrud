@@ -234,3 +234,41 @@ def test_json_unsafe_needle_still_correct_via_the_exists_fallback(store):
     store.ensure_trigram_index("keys")
     assert _ids(store, QB["keys"].any().contains("a\\b")) == ["9"]
     assert _ids(store, QB["keys"].any().contains("a\\z")) == []
+
+
+# --- .fuzzy(): pg_trgm word_similarity search --------------------------------
+
+
+def test_fuzzy_matches_a_fragment_of_a_word(store):
+    """A short query matches a longer, similar word: "molecular" hits both the
+    "molecular biology" and "small molecule" titles, "polymer" only its own."""
+    assert _ids(store, QB["title"].fuzzy("molecular")) == ["1", "3"]
+    assert _ids(store, QB["title"].fuzzy("polymer")) == ["2"]
+    assert _ids(store, QB["title"].fuzzy("zzznope")) == []
+
+
+def test_fuzzy_is_index_accelerated_but_works_without_the_index(store):
+    """``<%`` needs no TrigramIndex to be correct — the index only turns the scan
+    into a bitmap. Same rows before and after; the GIN serves the operator."""
+    before = _ids(store, QB["title"].fuzzy("molecular"))
+    store.ensure_trigram_index("title")
+    assert _ids(store, QB["title"].fuzzy("molecular")) == before == ["1", "3"]
+    plan = _explain(
+        store,
+        "SELECT count(*) FROM {t} WHERE 'molecular' <% (indexed_data->>'title')",
+    )
+    assert store._trigram_idx_name("title") in plan, plan
+
+
+def test_fuzzy_on_a_list_field_matches_any_similar_element(store):
+    """The array text word-splits on the quotes/commas, so ``.fuzzy`` on a list
+    matches when any element is similar: "capp" ~ the "capping" key."""
+    store.ensure_trigram_index("keys")
+    assert _ids(store, QB["keys"].fuzzy("capp")) == ["1"]
+    assert _ids(store, QB["keys"].fuzzy("mol")) == ["1"]
+
+
+def test_fuzzy_threshold_tightens_the_cutoff(store):
+    """A per-call threshold pins the minimum similarity exactly."""
+    assert _ids(store, QB["title"].fuzzy("molec", threshold=0.5)) == ["1", "3"]
+    assert _ids(store, QB["title"].fuzzy("molec", threshold=0.99)) == []

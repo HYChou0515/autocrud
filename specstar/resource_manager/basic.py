@@ -23,6 +23,7 @@ from specstar.query_types import (
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
+    TrigramFuzzyCondition,
     VectorDistanceCondition,
     VectorDistanceSort,
 )
@@ -283,6 +284,22 @@ _LIST_SCALAR_ONLY_OPS = frozenset(
 )
 
 
+def fuzzy_not_supported() -> NotImplementedError:
+    """The error raised when a ``.fuzzy()`` condition reaches a non-Postgres store.
+
+    Trigram similarity (pg_trgm ``word_similarity``) has no faithful, portable
+    definition — unlike vector cosine distance, which is an exact formula the
+    reference backends can reproduce — so rather than silently return DIFFERENT
+    rows than production Postgres, the memory / disk / sqlite backends reject it.
+    """
+    return NotImplementedError(
+        "QB.fuzzy() (trigram similarity search) requires the Postgres backend "
+        "with the pg_trgm extension; the memory / disk / sqlite backends have no "
+        "faithful equivalent. Use an exact operator (.contains / .any().contains) "
+        "on those backends, or run the query against Postgres."
+    )
+
+
 def bad_list_string_op(field_path: str, operator: DataSearchOperator) -> ValueError:
     """The error raised when a bare scalar string op targets a list field."""
     return ValueError(
@@ -292,6 +309,21 @@ def bad_list_string_op(field_path: str, operator: DataSearchOperator) -> ValueEr
         f"QB[{field_path!r}].any().{operator.value}(...) "
         f"(or .all(), or .icontains/.istarts_with/.iends_with through .any())."
     )
+
+
+def reject_fuzzy_conditions(query: ResourceMetaSearchQuery) -> None:
+    """Raise :func:`fuzzy_not_supported` if *query* carries a ``.fuzzy()`` condition.
+
+    The pure-Python reference backends run this once per query, before iterating,
+    so an EMPTY store rejects a fuzzy query just like a populated one (and like the
+    sqlite backend, which raises from ``_build_condition``) — the feature is simply
+    absent here, independent of the data.
+    """
+    if query.conditions is UNSET:
+        return
+    for condition in query.conditions:
+        if isinstance(condition, TrigramFuzzyCondition):
+            raise fuzzy_not_supported()
 
 
 def reject_unquantified_list_string_ops(

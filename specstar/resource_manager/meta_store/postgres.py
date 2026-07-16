@@ -19,6 +19,7 @@ from specstar.query_types import (
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
+    TrigramFuzzyCondition,
     VectorDistanceCondition,
     VectorDistanceSort,
 )
@@ -687,6 +688,29 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             [vec_literal, float(condition.threshold)],
         )
 
+    def _build_fuzzy_condition(
+        self, condition: "TrigramFuzzyCondition"
+    ) -> tuple[str, list]:
+        """pg_trgm ``word_similarity`` over the field's ``->>`` text.
+
+        No ``threshold`` → the ``%s <% (indexed_data->>'f')`` operator, which the
+        gin_trgm_ops GIN serves at the server's ``pg_trgm.word_similarity_threshold``
+        (0.6 by default — permissive enough that a fragment like "mol" matches
+        "molecular"). A per-call ``threshold`` pins the cut-off exactly with the
+        ``word_similarity(a, b) >= t`` function form; ``<%`` can't (it only reads
+        the session GUC), so that form runs as a scan in v1.
+        """
+        text = f"(indexed_data->>'{condition.field_path}')"
+        if condition.threshold is None:
+            # ``<%%`` not ``<%``: psycopg2 does %-substitution on the SQL, so the
+            # literal ``%`` in the ``<%`` operator has to be doubled or it raises
+            # "unsupported format character".
+            return f"%s <%% {text}", [condition.query]
+        return f"word_similarity(%s, {text}) >= %s", [
+            condition.query,
+            float(condition.threshold),
+        ]
+
     def _build_vector_order(self, sort: "VectorDistanceSort") -> tuple[str, list]:
         if sort.field_path not in self._vec_columns:
             return "", []
@@ -1186,6 +1210,12 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                     if sql_cond:
                         conditions.append(sql_cond)
                         params.extend(vec_params)
+                    continue
+                if isinstance(condition, TrigramFuzzyCondition):
+                    sql_cond, fz_params = self._build_fuzzy_condition(condition)
+                    if sql_cond:
+                        conditions.append(sql_cond)
+                        params.extend(fz_params)
                     continue
                 json_condition, json_params = self._build_condition(condition)
                 if json_condition:
