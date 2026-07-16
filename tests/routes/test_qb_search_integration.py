@@ -885,3 +885,61 @@ def test_qb_with_is_deleted_filter(client: TestClient, sample_users: list[str]) 
     )
     assert response.status_code == 200
     assert len(response.json()) == 0
+
+
+class Doc(Struct):
+    title: str
+    tags: list[str] = []
+
+
+@pytest.fixture
+def doc_client() -> TestClient:
+    """A client over a model with a list[str] indexed field."""
+    app: FastAPI = FastAPI()
+    router: APIRouter = APIRouter()
+    spec: SpecStar = SpecStar()
+    spec.add_model(Doc, indexed_fields=["title", "tags"])
+    spec.apply(router)
+    app.include_router(router)
+    return TestClient(app)
+
+
+@pytest.fixture
+def sample_docs(doc_client: TestClient) -> None:
+    for doc in (
+        {"title": "1", "tags": ["mol", "capping"]},
+        {"title": "2", "tags": ["m4", "m40"]},
+        {"title": "3", "tags": ["ol"]},
+        {"title": "6", "tags": ["MOL"]},
+    ):
+        assert doc_client.post("/doc", json=doc).status_code == 200
+
+
+def test_qb_any_element_substring_over_http(
+    doc_client: TestClient, sample_docs: None
+) -> None:
+    """?qb=QB['tags'].any().contains('ol') matches per element over HTTP."""
+    response = doc_client.get(
+        "/doc/data", params={"qb": "QB['tags'].any().contains('ol')"}
+    )
+    assert response.status_code == 200
+    titles = sorted(d["title"] for d in response.json())
+    assert titles == ["1", "3"]  # mol, ol — not the uppercase MOL
+
+
+def test_qb_any_icontains_over_http(doc_client: TestClient, sample_docs: None) -> None:
+    """The case-insensitive sugar also works through ?qb=."""
+    response = doc_client.get(
+        "/doc/data", params={"qb": "QB['tags'].any().icontains('OL')"}
+    )
+    assert response.status_code == 200
+    titles = sorted(d["title"] for d in response.json())
+    assert titles == ["1", "3", "6"]
+
+
+def test_qb_bare_regex_on_list_rejected_over_http(
+    doc_client: TestClient, sample_docs: None
+) -> None:
+    """A bare scalar string op on the list field is rejected, not silently wrong."""
+    response = doc_client.get("/doc/data", params={"qb": "QB['tags'].regex('ol')"})
+    assert response.status_code >= 400
