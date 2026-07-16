@@ -70,6 +70,29 @@ def _containment(field_path: str, value: Any) -> tuple[str, list]:
     ]
 
 
+#: Longest ``in_list`` still expanded into one GIN probe per value.
+#:
+#: The probes are BitmapOr'd across the single GIN, which is a large win while the
+#: list is short and a severe loss once it is not: Postgres plans and OR's one
+#: branch PER VALUE, so the cost grows superlinearly, whereas the flat predicate
+#: below is a Seq Scan whose cost is independent of the list. Measured, 60k rows:
+#:
+#:     N        probes (plan+exec)     flat
+#:     1              0.15 ms          ~7 ms
+#:     100            5.95 ms          ~8 ms    <- probes still ahead
+#:     200           14.33 ms          ~8 ms    <- crossover passed
+#:     1000         168.25 ms          ~8 ms
+#:     2000         977.00 ms         ~15 ms    <- 64x slower
+#:
+#: 64 sits comfortably below the ~150 crossover. It is deliberately not tuned to
+#: the crossover itself: the probes' advantage over a scan is small near it (6 ms
+#: vs 8 ms at N=100) while the loss past it is unbounded, so the risk is one-sided.
+#: The true crossover also moves with table size — a scan costs more on a bigger
+#: table, which buys the probes room — so a fixed limit is a heuristic, chosen to
+#: keep the common short-list case fast without ever letting the tail blow up.
+IN_LIST_PROBE_LIMIT = 64
+
+
 try:
     import psycopg2 as pg
     import psycopg2.pool
@@ -1305,12 +1328,22 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                 if not vals:
                     return "FALSE", []  # ``IN ()`` is not valid SQL
                 if all(_gin_probeable(condition, v) for v in vals):
-                    # Postgres BitmapOr's the probes across the one GIN.
                     import json
 
-                    ors = " OR ".join(["indexed_data @> %s::jsonb"] * len(vals))
-                    return f"({ors})", [
-                        json.dumps({field_path: v}, ensure_ascii=False) for v in vals
+                    if len(vals) <= IN_LIST_PROBE_LIMIT:
+                        # Postgres BitmapOr's the probes across the one GIN. Only
+                        # worth it while the list is short — see the constant.
+                        ors = " OR ".join(["indexed_data @> %s::jsonb"] * len(vals))
+                        return f"({ors})", [
+                            json.dumps({field_path: v}, ensure_ascii=False)
+                            for v in vals
+                        ]
+                    # Long list: ONE flat predicate whose cost does not grow with
+                    # the list. Still jsonb equality, so it agrees value-for-value
+                    # with the probes above — the length picks the plan, never the
+                    # answer.
+                    return f"indexed_data->'{field_path}' = ANY(%s::jsonb[])", [
+                        [json.dumps(v, ensure_ascii=False) for v in vals]
                     ]
                 placeholders = ",".join(["%s"] * len(vals))
                 return f"{jsonb_text_extract} IN ({placeholders})", [
