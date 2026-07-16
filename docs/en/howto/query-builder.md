@@ -104,6 +104,34 @@ QB["role"].not_in(["guest"])
 QB["owner"].one_of(["alice", "bob"])
 ```
 
+### Matching inside a list field: `.any()` / `.all()`
+
+On a **list-typed** indexed field, `.contains(v)` means exact *element
+membership* (`["m4"]` never matches `"m40"`). To match **within** an element —
+substring, prefix, regex — quantify over the elements with `.any()` (some
+element satisfies it) or `.all()` (every element does; an empty list matches
+`.all()` vacuously). Inside the quantifier each element is a scalar, so every
+string operator has its ordinary scalar meaning:
+
+```python
+QB["tags"].any().contains("ol")     # some element contains the substring "ol"
+QB["tags"].any().icontains("OL")    # ... case-insensitively
+QB["tags"].any().regex("^m")        # ... ^ / $ anchored to a single element
+QB["tags"].any().eq("mol")          # some element equals "mol" (same as .contains on a list)
+QB["tags"].all().starts_with("m")   # every element starts with "m"
+```
+
+This also works over HTTP: `?qb=QB["tags"].any().contains("ol")`.
+
+Calling a bare scalar string operator (`regex` / `starts_with` / `ends_with`,
+or the `icontains` family) **directly** on a list field is rejected — without a
+quantifier it would run against the serialised array (a cross-element,
+index-blind footgun). Use `.any()` / `.all()` instead.
+
+> Not to be confused with the `QB.any(cond1, cond2)` / `QB.all(...)` **static
+> combinators** below, which OR / AND whole conditions. Here the quantifier
+> ranges over one field's elements.
+
 ### Null and value checks
 
 ```python
@@ -222,6 +250,7 @@ a forgotten `limit` can't silently truncate the result.
 - if `qb` is used in HTTP requests, do not combine it with `data_conditions`, `conditions`, `sorts`, time-range / user filter params (`created_time_start`, `created_time_end`, `updated_time_start`, `updated_time_end`, `created_bys`, `updated_bys`), or revision filter params (`rev_statuses`, `rev_created_bys`, `rev_updated_bys`, `rev_created_time_start`, `rev_created_time_end`, `rev_updated_time_start`, `rev_updated_time_end`); conflicting requests return HTTP 422
 - **`is_deleted` is the one exception**: it may be combined with `qb`. The server ANDs it into the QB conditions automatically. Swagger always sends `is_deleted=false` by default, so QB expressions work in Swagger out of the box.
 - invalid or unsupported QB expressions return HTTP 400
+- a bare scalar string operator (`regex` / `starts_with` / `ends_with` / `icontains`) on a **list** field is rejected — quantify it with `.any()` / `.all()` instead
 - URL `limit` and `offset` override pagination values defined inside the QB expression
 - for metadata filtering in QB mode (time ranges, creator filters, revision filters, etc.), include them directly in the expression — for example `QB.created_time().last_n_days(7)`, `QB.created_by().eq("alice")`, or `QB.rev_status().eq("draft")`
 
