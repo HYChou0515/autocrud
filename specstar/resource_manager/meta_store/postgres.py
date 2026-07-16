@@ -1,3 +1,4 @@
+import logging
 import time
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
@@ -68,6 +69,9 @@ def _containment(field_path: str, value: Any) -> tuple[str, list]:
     return "indexed_data @> %s::jsonb", [
         json.dumps({field_path: value}, ensure_ascii=False)
     ]
+
+
+logger = logging.getLogger(__name__)
 
 
 #: Longest ``in_list`` still expanded into one GIN probe per value.
@@ -341,7 +345,13 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         self._build_sort_index_ddl(field_path)
 
     def _build_sort_index_ddl(self, field_path: str) -> None:
-        """Best-effort: get the index built, without fighting the other pods.
+        """Best-effort: get the index built, without ever failing the caller.
+
+        "Best-effort" is load-bearing and was previously only half-true: the pods
+        that LOST the race skipped safely, but the one that won propagated any DDL
+        error straight out of ``add_model`` — the boot path. Nothing about this
+        index is worth a failed boot, so every failure below is swallowed and
+        logged.
 
         Postgres permits only ONE concurrent index build per table at a time, so
         N pods reaching ``CREATE INDEX CONCURRENTLY`` together deadlock each other
@@ -357,6 +367,30 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         while the planner ignores the index — the annotation silently dead. Drop
         it first when we find one.
         """
+        try:
+            self._try_build_sort_index(field_path)
+        except Exception:
+            # "Best-effort" has to mean it. This runs from add_model, on every
+            # process's boot path, and CREATE INDEX CONCURRENTLY fails for reasons
+            # that have nothing to do with the caller: a statement_timeout, a
+            # cancelled backend, the pod killed mid-rollout, disk pressure. The
+            # index is DERIVED metadata — present it is fast, absent it is slow —
+            # so a failed build must degrade to slow, never take the process down.
+            # Raising here also made the damage self-sustaining: a killed build
+            # leaves an INVALID index, and the repair for it lives at the top of
+            # this very function, i.e. on the next boot — which is the thing that
+            # was crashing. That is a crash loop caused by an index whose entire
+            # job is to make one sort faster.
+            logger.warning(
+                "sort index build for %r on %r failed; queries stay correct but "
+                "unaccelerated until a later boot rebuilds it",
+                field_path,
+                self.table_name,
+                exc_info=True,
+            )
+
+    def _try_build_sort_index(self, field_path: str) -> None:
+        """The DDL itself. Raises; :meth:`_build_sort_index_ddl` is the guard."""
         idx_name = self._sort_idx_name(field_path)
         # Stable across pods, distinct per (table, field), and fits in bigint.
         lock_key = self._advisory_key(f"sort_index:{self.table_name}:{field_path}")
@@ -381,7 +415,20 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                         f"ON \"{self.table_name}\" ((indexed_data->'{field_path}'))"
                     )
                 finally:
-                    cur.execute("SELECT pg_advisory_unlock(%s)", [lock_key])
+                    # Best-effort too: if the backend was cancelled the connection
+                    # may be unusable, and raising HERE would mask the real error
+                    # with a confusing one. Postgres releases session advisory
+                    # locks when the connection drops, which conn.close() below
+                    # guarantees — so the lock is never stranded either way.
+                    try:
+                        cur.execute("SELECT pg_advisory_unlock(%s)", [lock_key])
+                    except Exception:
+                        logger.debug(
+                            "advisory unlock for %r failed; the closing connection "
+                            "releases it",
+                            field_path,
+                            exc_info=True,
+                        )
         finally:
             conn.close()
 
