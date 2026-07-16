@@ -24,11 +24,13 @@ from specstar.query_types import (
 )
 from specstar.resource_manager import _pg_pool
 from specstar.resource_manager.basic import (
+    _LIST_SCALAR_ONLY_OPS,
     Encoding,
     IMetaWithAgg,
     IMetaWithCount,
     ISlowMetaStore,
     MsgspecSerializer,
+    bad_list_string_op,
 )
 from specstar.types import ResourceMeta
 
@@ -1391,6 +1393,12 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                     return f"{column_name} IS NOT NULL", []
 
             return "", []
+
+        # A bare scalar string op on a registered list field would run against
+        # the serialised array — reject it, directing to .any()/.all(). (The
+        # quantified form already returned above; ``contains`` stays @> membership.)
+        if field_path in self._list_fields and operator in _LIST_SCALAR_ONLY_OPS:
+            raise bad_list_string_op(field_path, operator)
 
         # PostgreSQL JSONB 提取語法: indexed_data->>'field_path'
         # 對於數字比較，使用 (indexed_data->>'field_path')::numeric

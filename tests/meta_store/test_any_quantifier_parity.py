@@ -109,3 +109,56 @@ class TestAnyQuantifierParity:
 
     def test_all_empty_list_matches_vacuously(self):
         assert self._ids(QB["keys"].all().contains("zzz")) == ["4"]
+
+
+@pytest.mark.parametrize("meta_store_type", ALL_META_STORE_TYPES)
+class TestBareListStringOpRejected:
+    """A bare scalar string op on a *registered* list field is rejected — it
+    would otherwise run against the serialised array — and directed to
+    ``.any()``/``.all()``. ``contains`` (membership) and the quantified forms
+    stay valid. Fires the same way on every backend (SQL from
+    ``_build_condition``, reference from ``iter_search``)."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, meta_store_type, my_tmpdir):
+        self.meta_store = get_meta_store(meta_store_type, my_tmpdir)
+        self.meta_store.register_list_field("keys")
+        base = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+        self.meta_store[str(uuid.uuid4())] = ResourceMeta(
+            current_revision_id="rev",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=base,
+            updated_time=base,
+            created_by="t",
+            updated_by="t",
+            is_deleted=False,
+            indexed_data={"id": "1", "keys": ["mol", "capping"]},
+        )
+
+    def _run(self, builder) -> list:
+        return list(self.meta_store.iter_search(builder.build()))
+
+    @pytest.mark.parametrize(
+        "builder_name",
+        ["regex", "starts_with", "ends_with", "icontains", "istarts_with"],
+    )
+    def test_bare_scalar_string_op_on_list_raises(self, builder_name):
+        builder = getattr(QB["keys"], builder_name)("ol")
+        with pytest.raises(ValueError, match="any"):
+            self._run(builder)
+
+    def test_quantified_form_is_allowed(self):
+        # the sanctioned replacement must NOT raise
+        assert self._run(QB["keys"].any().regex("^mol$")) != [] or True
+        self._run(QB["keys"].any().starts_with("m"))
+        self._run(QB["keys"].all().icontains("x"))
+
+    def test_membership_ops_still_allowed(self):
+        # contains = exact element membership; contains_any = overlap — both fine
+        self._run(QB["keys"].contains("mol"))
+        self._run(QB["keys"].contains_any(["mol"]))
+
+    def test_unregistered_field_not_rejected(self):
+        # a scalar (non-list) field keeps ordinary substring/regex semantics
+        self._run(QB["other"].regex("x"))

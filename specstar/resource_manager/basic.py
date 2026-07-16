@@ -269,6 +269,63 @@ def _match_quantified(
     return all(results)
 
 
+# Bare scalar-string operators that are meaningless on a list field: without a
+# quantifier they would run against the whole serialised array (a cross-element,
+# backend-divergent, index-blind footgun), so they must go through .any()/.all().
+# ``contains`` stays valid on a list (exact element membership, #362) and is not
+# listed here.
+_LIST_SCALAR_ONLY_OPS = frozenset(
+    {
+        DataSearchOperator.regex,
+        DataSearchOperator.starts_with,
+        DataSearchOperator.ends_with,
+    }
+)
+
+
+def bad_list_string_op(field_path: str, operator: DataSearchOperator) -> ValueError:
+    """The error raised when a bare scalar string op targets a list field."""
+    return ValueError(
+        f"{operator.value!r} on the list field {field_path!r} is not allowed: a "
+        f"scalar string operator would run against the whole serialised array. "
+        f"Quantify over the elements instead, e.g. "
+        f"QB[{field_path!r}].any().{operator.value}(...) "
+        f"(or .all(), or .icontains/.istarts_with/.iends_with through .any())."
+    )
+
+
+def reject_unquantified_list_string_ops(
+    query: ResourceMetaSearchQuery, list_fields: Iterable[str]
+) -> None:
+    """Raise :func:`bad_list_string_op` if *query* applies a bare scalar string
+    operator to a registered list field without ``.any()``/``.all()``.
+
+    A side-effect-free validation the reference (pure-Python) backends run once
+    per query, before iterating — so an empty store rejects a bad query just
+    like the SQL backends, which raise the same error from ``_build_condition``.
+    """
+    fields = set(list_fields)
+    if not fields:
+        return
+
+    def _walk(cond: object) -> None:
+        if isinstance(cond, DataSearchGroup):
+            for sub in cond.conditions:
+                _walk(sub)
+        elif isinstance(cond, DataSearchCondition):
+            if (
+                cond.quantifier is None
+                and cond.operator in _LIST_SCALAR_ONLY_OPS
+                and cond.field_path in fields
+            ):
+                raise bad_list_string_op(cond.field_path, cond.operator)
+
+    for bucket in (query.conditions, query.data_conditions):
+        if bucket is not UNSET:
+            for c in bucket:
+                _walk(c)
+
+
 def _evaluate_trivalent(
     data: dict[str, Any] | ResourceMeta,
     condition: DataSearchCondition | DataSearchGroup | VectorDistanceCondition,
@@ -596,6 +653,25 @@ class IMetaStore(MutableMapping[str, ResourceMeta]):
 
     See: https://docs.python.org/3/library/collections.abc.html#collections.abc.MutableMapping
     """
+
+    def register_list_field(self, field_path: str) -> None:
+        """Declare *field_path* as a list-typed indexed field (see #362).
+
+        Base default: record the name so a bare scalar string operator on it is
+        rejected in favour of ``.any()``/``.all()`` (see
+        :func:`reject_unquantified_list_string_ops`). SQL stores override this to
+        *also* route ``contains`` through element membership. Idempotent — safe
+        to call from ``add_model`` on every registration.
+        """
+        try:
+            self._list_fields.add(field_path)  # ty: ignore[unresolved-attribute]
+        except AttributeError:
+            self._list_fields = {field_path}
+
+    def _registered_list_fields(self) -> "set[str] | frozenset[str]":
+        """Names declared list-typed via :meth:`register_list_field` (empty when
+        none were, e.g. a store built directly in a test)."""
+        return getattr(self, "_list_fields", frozenset())
 
     @abstractmethod
     def __getitem__(self, pk: str) -> ResourceMeta:

@@ -23,11 +23,13 @@ from specstar.query_types import (
     ResourceMetaSortDirection,
 )
 from specstar.resource_manager.basic import (
+    _LIST_SCALAR_ONLY_OPS,
     Encoding,
     IMetaWithAgg,
     IMetaWithCount,
     ISlowMetaStore,
     MsgspecSerializer,
+    bad_list_string_op,
 )
 from specstar.types import ResourceMeta
 
@@ -697,6 +699,12 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
             # Fallback or unsupported operator for meta fields
             return "", []
+
+        # A bare scalar string op on a registered list field would run against
+        # the serialised array — reject it, directing to .any()/.all(). (The
+        # quantified form already returned above; ``contains`` stays membership.)
+        if field_path in self._list_fields and operator in _LIST_SCALAR_ONLY_OPS:
+            raise bad_list_string_op(field_path, operator)
 
         # SQLite JSON 提取語法: json_extract(indexed_data, '$.field_path')
         json_extract = f"json_extract(indexed_data, '$.\"{field_path}\"')"

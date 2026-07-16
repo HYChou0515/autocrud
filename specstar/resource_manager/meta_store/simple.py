@@ -14,6 +14,7 @@ from specstar.resource_manager.basic import (
     MsgspecSerializer,
     get_sort_fn,
     is_match_query,
+    reject_unquantified_list_string_ops,
 )
 from specstar.types import ResourceMeta
 from specstar.util.fanout import (
@@ -52,6 +53,7 @@ class MemoryMetaStore(IFastMetaStore):
         return len(self._store)
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+        reject_unquantified_list_string_ops(query, self._registered_list_fields())
         results: list[ResourceMeta] = []
         # Snapshot the values: a concurrent write mid-search must not raise
         # "dictionary changed size during iteration".
@@ -152,9 +154,7 @@ class DiskMetaStore(IFastMetaStore):
         # write leaves only the temp file (excluded by the ``*.data`` glob and
         # never decoded), so it is invisible to the loader instead of crashing
         # boot.
-        fd, tmp = tempfile.mkstemp(
-            dir=path.parent, prefix=f"{pk}.", suffix=".data.tmp"
-        )
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f"{pk}.", suffix=".data.tmp")
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
@@ -192,6 +192,7 @@ class DiskMetaStore(IFastMetaStore):
         return sum(1 for _ in self._iter_data_files())
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+        reject_unquantified_list_string_ops(query, self._registered_list_fields())
         results: list[ResourceMeta] = []
         for file in self._iter_data_files():
 
