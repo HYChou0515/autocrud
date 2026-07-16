@@ -214,6 +214,47 @@ class TestSafeQBParser:
         assert cond.operator == DataSearchOperator.regex  # ty:ignore[unresolved-attribute]
         assert cond.quantifier == DataSearchQuantifier.any  # ty:ignore[unresolved-attribute]
 
+    def test_fuzzy_parses(self):
+        """QB['title'].fuzzy('mol') is accepted over ?qb= as a fuzzy condition."""
+        from specstar.query_types import TrigramFuzzyCondition
+
+        parser = SafeQBParser()
+        result = parser.parse("QB['title'].fuzzy('mol')")
+        cond = result.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert isinstance(cond, TrigramFuzzyCondition)
+        assert cond.field_path == "title"
+        assert cond.query == "mol"
+        assert cond.threshold is None
+
+    def test_fuzzy_with_threshold_parses(self):
+        """A keyword threshold survives the safe parser."""
+        from specstar.query_types import TrigramFuzzyCondition
+
+        parser = SafeQBParser()
+        result = parser.parse("QB['title'].fuzzy('mol', threshold=0.3)")
+        cond = result.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert isinstance(cond, TrigramFuzzyCondition)
+        assert cond.threshold == 0.3
+
+    def test_similarity_sort_parses(self):
+        """The recommended shape over ?qb=: a ``.fuzzy()`` filter chained with a
+        ``.similarity().desc()`` ranking sort (a bare sort has no ``.build()``,
+        same as cosine)."""
+        from specstar.query_types import (
+            ResourceMetaSortDirection,
+            TrigramSimilaritySort,
+        )
+
+        parser = SafeQBParser()
+        result = parser.parse(
+            "QB['title'].fuzzy('mol').sort(QB['title'].similarity('mol').desc())"
+        )
+        sort = result.build().sorts[0]  # ty:ignore[not-subscriptable]
+        assert isinstance(sort, TrigramSimilaritySort)
+        assert sort.field_path == "title"
+        assert sort.query == "mol"
+        assert sort.direction == ResourceMetaSortDirection.descending
+
     def test_datetime_integration(self):
         """測試 datetime 整合"""
         parser = SafeQBParser()

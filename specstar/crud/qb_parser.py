@@ -103,6 +103,9 @@ class SafeQBParser:
         "cosine",
         "l2",
         "ip",
+        # trigram 模糊搜尋 (pg_trgm)：.fuzzy() 過濾、.similarity() 排序
+        "fuzzy",
+        "similarity",
         # 排序方向
         "asc",
         "desc",

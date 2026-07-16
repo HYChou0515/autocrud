@@ -89,7 +89,34 @@ class VectorDistanceCondition(Struct, kw_only=True, tag=True):
     distance: "Literal['cosine', 'l2', 'ip'] | None" = None
 
 
-DataSearchFilter = DataSearchCondition | DataSearchGroup | VectorDistanceCondition
+class TrigramFuzzyCondition(Struct, kw_only=True, tag=True):
+    """Keep rows whose text field is trigram-similar to *query* (``.fuzzy()``).
+
+    Uses pg_trgm ``word_similarity``: *query* must be similar to some word / extent
+    of the field's text — so a fragment like ``"mol"`` matches ``"molecular"``. On
+    a ``list[str]`` field the serialised-array text word-splits on the quotes and
+    commas, so the match is effectively "any element is fuzzy-similar".
+
+    Postgres serves this with pg_trgm's ``word_similarity``; the memory / disk /
+    sqlite backends compute the identical value with :mod:`specstar.util.trigram`
+    (a faithful port), so the rows match everywhere — only the Postgres GIN
+    acceleration is backend-specific. ``threshold`` is the minimum similarity
+    (0..1); ``None`` uses pg_trgm's ``word_similarity_threshold`` (0.6), which on
+    Postgres is the index-accelerated ``<%`` form. Belongs in
+    :attr:`ResourceMetaSearchQuery.conditions`.
+    """
+
+    field_path: str
+    query: str
+    threshold: float | None = None
+
+
+DataSearchFilter = (
+    DataSearchCondition
+    | DataSearchGroup
+    | VectorDistanceCondition
+    | TrigramFuzzyCondition
+)
 
 
 class ResourceMetaSortDirection(StrEnum):
@@ -134,6 +161,22 @@ class VectorDistanceSort(Struct, kw_only=True, tag=True):
     query_vector: list[float] | str
     direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
     distance: "Literal['cosine', 'l2', 'ip'] | None" = None
+
+
+class TrigramSimilaritySort(Struct, kw_only=True, tag=True):
+    """Sort rows by trigram ``word_similarity`` between a text field and *query*.
+
+    ``descending`` puts the closest matches first — the usual "best first" ranking
+    (``QB["title"].similarity("mol").desc()``). A compute-then-sort on every
+    backend (even on Postgres the GIN cannot order, so filter with ``.fuzzy()``
+    first to keep the set small); the reference backends rank with the same
+    :mod:`specstar.util.trigram` ``word_similarity``. Belongs in
+    :attr:`ResourceMetaSearchQuery.sorts`.
+    """
+
+    field_path: str
+    query: str
+    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.descending
 
 
 DEFAULT_QUERY_LIMIT_ENV_VAR = "SPECSTAR_DEFAULT_QUERY_LIMIT"
@@ -256,7 +299,12 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     """Number of results to skip before starting to collect the result set."""
 
     sorts: (
-        list[ResourceMetaSearchSort | ResourceDataSearchSort | VectorDistanceSort]
+        list[
+            ResourceMetaSearchSort
+            | ResourceDataSearchSort
+            | VectorDistanceSort
+            | TrigramSimilaritySort
+        ]
         | UnsetType
     ) = UNSET
     """Sorting criteria for the search results."""

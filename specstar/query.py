@@ -16,6 +16,8 @@ from specstar.query_types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
+    TrigramFuzzyCondition,
+    TrigramSimilaritySort,
     VectorDistanceCondition,
     VectorDistanceSort,
 )
@@ -76,6 +78,36 @@ class VectorDistanceExpr:
             query_vector=self.query_vector,
             direction=ResourceMetaSortDirection.descending,
             distance=self.distance,
+        )
+
+
+class TrigramSimilarityExpr:
+    """A trigram-similarity ranking produced by ``Field.similarity(query)``.
+
+    Turn it into a sort with ``.desc()`` (most-similar first, the usual ranking)
+    or ``.asc()``. Passed bare to :meth:`Query.sort` it defaults to descending.
+    Works on every backend (see
+    :class:`~specstar.query_types.TrigramSimilaritySort`).
+    """
+
+    __slots__ = ("field_path", "query")
+
+    def __init__(self, field_path: str, query: str) -> None:
+        self.field_path = field_path
+        self.query = query
+
+    def asc(self) -> TrigramSimilaritySort:
+        return TrigramSimilaritySort(
+            field_path=self.field_path,
+            query=self.query,
+            direction=ResourceMetaSortDirection.ascending,
+        )
+
+    def desc(self) -> TrigramSimilaritySort:
+        return TrigramSimilaritySort(
+            field_path=self.field_path,
+            query=self.query,
+            direction=ResourceMetaSortDirection.descending,
         )
 
 
@@ -146,6 +178,10 @@ class Query:
                 self._sorts.append(sort_obj)
             elif isinstance(s, VectorDistanceExpr):
                 self._sorts.append(s.asc())
+            elif isinstance(s, TrigramSimilarityExpr):
+                # Bare similarity ranks most-similar first (unlike distance, where
+                # smallest/ascending is best).
+                self._sorts.append(s.desc())
             else:
                 self._sorts.append(s)
         return self
@@ -649,6 +685,31 @@ class Field(ConditionBuilder):
     def ip(self, query_vector) -> VectorDistanceExpr:
         """Build an inner-product distance expression for this field."""
         return VectorDistanceExpr(self.name, query_vector, "ip")
+
+    def fuzzy(self, query: str, threshold: float | None = None) -> ConditionBuilder:
+        """Keep rows whose text is trigram-similar to *query* (pg_trgm fuzzy).
+
+        A fragment matches a longer word — ``QB["title"].fuzzy("mol")`` finds
+        "molecular". On a ``list[str]`` field it matches when ANY element is
+        similar. ``threshold`` (0..1) is the minimum similarity; ``None`` uses the
+        pg_trgm default (0.6), which on Postgres is the index-accelerated form.
+        Works on every backend — Postgres via pg_trgm, the others via a faithful
+        Python port of the same ``word_similarity`` (:mod:`specstar.util.trigram`).
+        """
+        return ConditionBuilder(
+            TrigramFuzzyCondition(
+                field_path=self.name, query=query, threshold=threshold
+            )
+        )
+
+    def similarity(self, query: str) -> TrigramSimilarityExpr:
+        """Rank by trigram similarity to *query* — ``.desc()`` for best-first.
+
+        Pass to ``.sort()``: ``QB["title"].similarity("mol").desc()``. It is a
+        compute-then-sort (no index ordering), so filter with ``.fuzzy()`` first.
+        Postgres-only, like ``.fuzzy()``.
+        """
+        return TrigramSimilarityExpr(self.name, query)
 
     def between(self, min_val: Any, max_val: Any) -> ConditionBuilder:
         """Support range query: field.between(min, max).

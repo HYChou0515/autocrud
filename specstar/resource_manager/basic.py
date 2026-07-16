@@ -23,6 +23,8 @@ from specstar.query_types import (
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
+    TrigramFuzzyCondition,
+    TrigramSimilaritySort,
     VectorDistanceCondition,
     VectorDistanceSort,
 )
@@ -163,6 +165,10 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
                 if not _match_vector_condition(meta, condition):
                     return False
                 continue
+            if isinstance(condition, TrigramFuzzyCondition):
+                if not _match_fuzzy_condition(meta, condition):
+                    return False
+                continue
             if not _match_condition(meta, condition):
                 return False
 
@@ -213,6 +219,47 @@ def _match_vector_condition(
     if op == DataSearchOperator.greater_than_or_equal:
         return d >= condition.threshold
     return False
+
+
+def _fuzzy_field_text(value: Any) -> str | None:
+    """The text pg_trgm's ``->>`` would expose for a field, for trigram matching.
+
+    A scalar string is itself; a list joins its elements so each is a separate
+    word — the same words Postgres' serialised-array text (``["a", "b"]``) splits
+    into, since every quote / bracket / comma is a trigram boundary. Anything else
+    (not a text or ``text[]`` field) is ``None`` — no fuzzy match.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return " ".join(str(el) for el in value)
+    return None
+
+
+def _match_fuzzy_condition(
+    meta: ResourceMeta,
+    condition: TrigramFuzzyCondition,
+) -> bool:
+    """Brute-force evaluation of a :class:`TrigramFuzzyCondition` (``.fuzzy()``).
+
+    Mirrors Postgres' ``word_similarity(query, indexed_data->>'f') >= threshold``
+    (default :data:`~specstar.util.trigram.WORD_SIMILARITY_THRESHOLD`). The
+    :mod:`specstar.util.trigram` port is bit-for-bit identical to pg_trgm, so an
+    empty / missing / non-text field never reaches the threshold and is excluded.
+    """
+    from specstar.util.trigram import WORD_SIMILARITY_THRESHOLD, word_similarity
+
+    if meta.indexed_data is UNSET:
+        return False
+    text = _fuzzy_field_text(meta.indexed_data.get(condition.field_path))
+    if text is None:
+        return False
+    threshold = (
+        WORD_SIMILARITY_THRESHOLD
+        if condition.threshold is None
+        else condition.threshold
+    )
+    return word_similarity(condition.query, text) >= threshold
 
 
 def _match_data_condition(
@@ -589,6 +636,21 @@ def get_sort_fn(qsorts: list[ResourceMetaSearchSort | ResourceDataSearchSort]):
                     if isinstance(v2_raw, list)
                     else UNSET
                 )
+            elif isinstance(sort, TrigramSimilaritySort):
+                from specstar.util.trigram import word_similarity
+
+                text1 = _fuzzy_field_text(
+                    meta1.indexed_data.get(sort.field_path)
+                    if meta1.indexed_data is not UNSET
+                    else None
+                )
+                text2 = _fuzzy_field_text(
+                    meta2.indexed_data.get(sort.field_path)
+                    if meta2.indexed_data is not UNSET
+                    else None
+                )
+                v1 = word_similarity(sort.query, text1) if text1 is not None else UNSET
+                v2 = word_similarity(sort.query, text2) if text2 is not None else UNSET
             else:
                 v1 = (
                     meta1.indexed_data.get(sort.field_path)
