@@ -74,6 +74,42 @@ def _containment(field_path: str, value: Any) -> tuple[str, list]:
     ]
 
 
+def _like_escape(value: str) -> str:
+    """Escape the LIKE metacharacters so a needle is matched literally.
+
+    Backslash first (it is the default escape char), then ``%`` / ``_``.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _json_text_safe(value: str) -> bool:
+    """Does *value* appear verbatim inside a jsonb array's ``->>`` text?
+
+    The coarse prefilter runs over ``indexed_data->>'field'``, which for a list
+    is the SERIALISED array text (``["mol", "capping"]``) — there ``"`` and ``\\``
+    and control chars are JSON-escaped, so a needle containing one of them would
+    NOT be a substring of the serialised text even when an element contains it,
+    and the coarse would wrongly DROP that row (a false negative the recheck
+    cannot repair). A needle free of those characters appears unchanged inside the
+    serialised text, so the coarse stays a correct superset. Anything else falls
+    back to the exact EXISTS scan — correct, just unaccelerated.
+    """
+    return not any(c in '"\\' or ord(c) < 0x20 for c in value)
+
+
+# The ``.any()`` substring family whose coarse ``LIKE '%v%'`` prefilter over the
+# serialised-array text is a correct SUPERSET: "some element contains / starts
+# with / ends with v" all imply "v occurs in the array text". Anchored regex
+# does NOT (``^v$`` binds to a single element), so it is deliberately excluded.
+_TRGM_COARSE_OPS = frozenset(
+    {
+        DataSearchOperator.contains,
+        DataSearchOperator.starts_with,
+        DataSearchOperator.ends_with,
+    }
+)
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -1375,7 +1411,24 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         arr = f"CASE WHEN jsonb_typeof({ptr}) = 'array' THEN {ptr} ELSE '[]'::jsonb END"
         elems = f"jsonb_array_elements_text({arr}) AS e(val)"
         if quantifier == DataSearchQuantifier.any:
-            return f"EXISTS (SELECT 1 FROM {elems} WHERE {pred})", params
+            exists = f"EXISTS (SELECT 1 FROM {elems} WHERE {pred})"
+            # When the field carries a TrigramIndex, AND in a coarse
+            # ``(indexed_data->>'f') LIKE '%v%'`` over the serialised-array text.
+            # That expression is what the gin_trgm_ops GIN is built on, so the
+            # planner bitmap-scans candidate rows instead of unnesting every row;
+            # the EXISTS then rechecks exact per-element membership. The coarse is
+            # a correct SUPERSET only for the substring family and only for
+            # ``any`` — an empty array yields "[]" text that the coarse rejects,
+            # which is exactly what ``any`` wants (``all`` would need it kept).
+            if (
+                operator in _TRGM_COARSE_OPS
+                and isinstance(value, str)
+                and _json_text_safe(value)
+                and field_path in self._trigram_indexes
+            ):
+                coarse = f"(indexed_data->>'{field_path}') LIKE %s"
+                return f"({coarse} AND {exists})", [f"%{_like_escape(value)}%", *params]
+            return exists, params
         return (
             f"(jsonb_typeof({ptr}) = 'array' AND "
             f"NOT EXISTS (SELECT 1 FROM {elems} WHERE NOT ({pred})))",

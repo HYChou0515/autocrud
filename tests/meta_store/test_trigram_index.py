@@ -20,6 +20,11 @@ from datetime import UTC, datetime
 import pytest
 
 from specstar.query import QB
+from specstar.query_types import (
+    DataSearchCondition,
+    DataSearchOperator,
+    DataSearchQuantifier,
+)
 from specstar.types import ResourceMeta
 
 from .common import get_meta_store
@@ -159,3 +164,73 @@ def test_any_eq_membership_matches_the_reference_answer(store):
     assert _ids(store, QB["keys"].any().eq("mol")) == ["1"]
     assert _ids(store, QB["keys"].any().eq("m4")) == ["2"]
     assert _ids(store, QB["keys"].any().eq("nope")) == []
+
+
+def _explain_cond(store, cond) -> str:
+    """EXPLAIN the ACTUAL SQL specstar builds for *cond* (a raw condition)."""
+    sql, params = store._build_condition(cond)
+    with store.transaction() as cur:
+        cur.execute("SET LOCAL enable_seqscan = off")
+        cur.execute(
+            f'EXPLAIN SELECT count(*) FROM "{store.table_name}" WHERE {sql}', params
+        )
+        return "\n".join(r[0] for r in cur.fetchall())
+
+
+def _any_contains(field, value) -> DataSearchCondition:
+    return DataSearchCondition(
+        field_path=field,
+        operator=DataSearchOperator.contains,
+        value=value,
+        quantifier=DataSearchQuantifier.any,
+    )
+
+
+def test_any_contains_on_a_trigram_list_field_uses_the_gin(store):
+    """The whole point of P4: ``.any().contains`` stops being a per-row unnest.
+    The coarse LIKE over the array text lets the planner bitmap-scan the GIN."""
+    store.ensure_trigram_index("keys")
+    plan = _explain_cond(store, _any_contains("keys", "mol"))
+    assert store._trigram_idx_name("keys") in plan, plan
+
+
+def test_any_contains_coarse_recheck_matches_the_reference(store):
+    """The coarse is a superset; the EXISTS recheck restores exactness."""
+    store.ensure_trigram_index("keys")
+    # substring within an element: "ol" ⊂ "mol" (row 1), "ol" itself (row 3)
+    assert _ids(store, QB["keys"].any().contains("ol")) == ["1", "3"]
+    # "4" ⊂ "m4"/"m40" (row 2) but is no element on its own
+    assert _ids(store, QB["keys"].any().contains("4")) == ["2"]
+    assert _ids(store, QB["keys"].any().contains("zzz")) == []
+
+
+def test_recheck_eliminates_a_structural_false_positive(store):
+    """The coarse can match the ``", "`` join between elements; the recheck must
+    drop such a row because no single element contains it."""
+    m = _meta("9", "pair", ["ab", "cd"])
+    store[m.resource_id] = m
+    store.ensure_trigram_index("keys")
+    # ", " is present in the serialised '["ab", "cd"]' but in no element
+    assert _ids(store, QB["keys"].any().contains(", ")) == []
+    # a bracket is structural too
+    assert _ids(store, QB["keys"].any().contains("[")) == []
+    # sanity: a real element substring still hits
+    assert _ids(store, QB["keys"].any().contains("ab")) == ["9"]
+
+
+def test_declaring_the_index_does_not_change_any_contains_results(store):
+    """Index in, index out — same rows. The coarse+recheck must equal the plain
+    EXISTS it replaces."""
+    before = _ids(store, QB["keys"].any().contains("ol"))
+    store.ensure_trigram_index("keys")
+    assert _ids(store, QB["keys"].any().contains("ol")) == before == ["1", "3"]
+
+
+def test_json_unsafe_needle_still_correct_via_the_exists_fallback(store):
+    """A needle with a backslash cannot ride the coarse (the array text escapes
+    it) — it drops to the exact EXISTS scan and must still find its row."""
+    m = _meta("9", "escaped", ["a\\b", "plain"])  # element is raw a-backslash-b
+    store[m.resource_id] = m
+    store.ensure_trigram_index("keys")
+    assert _ids(store, QB["keys"].any().contains("a\\b")) == ["9"]
+    assert _ids(store, QB["keys"].any().contains("a\\z")) == []

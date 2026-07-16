@@ -148,3 +148,85 @@ def test_any_eq_none_keeps_exists_not_a_containment_probe():
         _quant(DataSearchOperator.equals, None, DataSearchQuantifier.any)
     )
     assert "@>" not in sql
+
+
+# --- .any().contains() on a TrigramIndex field: coarse LIKE + EXISTS recheck --
+
+
+def test_any_contains_on_a_trigram_field_prepends_the_coarse_like():
+    """The coarse ``(indexed_data->>'keys') LIKE %s`` rides the gin_trgm_ops GIN;
+    the EXISTS then rechecks per-element exactness. Substring stays exact."""
+    sql, params = _builder(
+        list_fields=["keys"], trigram_indexes=["keys"]
+    )._build_condition(
+        _quant(DataSearchOperator.contains, "ol", DataSearchQuantifier.any)
+    )
+    assert sql == (
+        "((indexed_data->>'keys') LIKE %s AND "
+        "EXISTS (SELECT 1 FROM jsonb_array_elements_text("
+        "CASE WHEN jsonb_typeof(indexed_data->'keys') = 'array' "
+        "THEN indexed_data->'keys' ELSE '[]'::jsonb END) AS e(val) "
+        "WHERE strpos(val, %s) > 0))"
+    )
+    assert params == ["%ol%", "ol"]  # coarse param first, then the recheck param
+
+
+def test_any_contains_without_a_trigram_index_stays_a_plain_exists():
+    """Opt-in like SortIndex: the coarse LIKE is dead weight without the GIN, so
+    an unannotated field keeps the exact EXISTS it had before."""
+    sql, params = _builder(list_fields=["keys"])._build_condition(
+        _quant(DataSearchOperator.contains, "ol", DataSearchQuantifier.any)
+    )
+    assert sql.startswith("EXISTS (")
+    assert "LIKE" not in sql
+    assert params == ["ol"]
+
+
+def test_any_contains_escapes_like_metacharacters_in_the_coarse():
+    """``%`` / ``_`` are LIKE wildcards; the coarse must match them literally
+    (the recheck is literal, so an unescaped coarse would still be a superset —
+    but escaping keeps it tight and the GIN's trigrams accurate)."""
+    _sql, params = _builder(
+        list_fields=["keys"], trigram_indexes=["keys"]
+    )._build_condition(
+        _quant(DataSearchOperator.contains, "a%b_c", DataSearchQuantifier.any)
+    )
+    assert params[0] == r"%a\%b\_c%"
+
+
+@pytest.mark.parametrize("needle", ["a\\b", 'a"b', "a\x01b"])
+def test_any_contains_with_json_unsafe_needle_falls_back_to_exists(needle):
+    """The coarse runs over the SERIALISED array text, where ``"`` / ``\\`` /
+    control chars are JSON-escaped — so such a needle can't be coarse-matched
+    without a false negative. It must drop to the exact EXISTS scan."""
+    sql, params = _builder(
+        list_fields=["keys"], trigram_indexes=["keys"]
+    )._build_condition(
+        _quant(DataSearchOperator.contains, needle, DataSearchQuantifier.any)
+    )
+    assert sql.startswith("EXISTS (")
+    assert "LIKE" not in sql
+    assert params == [needle]
+
+
+@pytest.mark.parametrize(
+    "op", [DataSearchOperator.starts_with, DataSearchOperator.ends_with]
+)
+def test_any_starts_ends_with_share_the_same_coarse_like(op):
+    """``starts_with`` / ``ends_with`` also imply "v occurs in the array text",
+    so they ride the same coarse ``%v%`` and let the recheck pin the position."""
+    sql, params = _builder(
+        list_fields=["keys"], trigram_indexes=["keys"]
+    )._build_condition(_quant(op, "m", DataSearchQuantifier.any))
+    assert sql.startswith("((indexed_data->>'keys') LIKE %s AND EXISTS (")
+    assert params[0] == "%m%"
+
+
+def test_all_contains_never_gets_a_coarse_like():
+    """An empty array matches ``all`` vacuously but its "[]" text fails the coarse
+    ``%v%`` — so the coarse would wrongly drop it. ``all`` must stay pure EXISTS."""
+    sql, _ = _builder(list_fields=["keys"], trigram_indexes=["keys"])._build_condition(
+        _quant(DataSearchOperator.contains, "ol", DataSearchQuantifier.all)
+    )
+    assert "LIKE" not in sql
+    assert "NOT EXISTS" in sql
