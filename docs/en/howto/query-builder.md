@@ -183,6 +183,13 @@ The same index also accelerates an exact substring `.contains()` /
 > runs as a scan); the other backends have no such index and compute by scan,
 > which is fine at their scale. The default cutoff is pg_trgm's
 > `word_similarity_threshold` (0.6).
+>
+> On Postgres **without** the `pg_trgm` extension installed, `.fuzzy()` /
+> `.similarity()` don't error — they degrade to the same Python computation (with
+> a one-time `SpecStarWarning`), pushing every other condition down to SQL first
+> so only the survivors are scored in Python. Correct, just unaccelerated. Install
+> it with `CREATE EXTENSION pg_trgm;` (annotating any field with `TrigramIndex`
+> also installs it) to get the GIN-served path.
 
 ### Null and value checks
 
