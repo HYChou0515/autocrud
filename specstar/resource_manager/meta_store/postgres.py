@@ -1,12 +1,15 @@
 import logging
 import time
+import warnings
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from enum import Enum as EnumType
 from typing import Any
 
+import msgspec
 from msgspec import UNSET
 
+from specstar.errors import SpecStarWarning
 from specstar.query_types import (
     AggKeyRef,
     AggSpec,
@@ -33,6 +36,8 @@ from specstar.resource_manager.basic import (
     ISlowMetaStore,
     MsgspecSerializer,
     bad_list_string_op,
+    get_sort_fn,
+    is_match_query,
 )
 from specstar.types import ResourceMeta
 
@@ -113,6 +118,26 @@ _TRGM_COARSE_OPS = frozenset(
 
 
 logger = logging.getLogger(__name__)
+
+
+def _condition_has_trigram(cond: object) -> bool:
+    """Whether *cond* is (or, for a group, contains) a ``TrigramFuzzyCondition``."""
+    if isinstance(cond, TrigramFuzzyCondition):
+        return True
+    if isinstance(cond, DataSearchGroup):
+        return any(_condition_has_trigram(sub) for sub in cond.conditions)
+    return False
+
+
+def _query_uses_trigram(query: ResourceMetaSearchQuery) -> bool:
+    """Whether *query* filters with ``.fuzzy()`` or sorts by ``.similarity()`` —
+    the pg_trgm-backed operators. Used to route to the Python fallback when the
+    Postgres extension is absent."""
+    conds = query.conditions if query.conditions is not UNSET else []
+    if any(_condition_has_trigram(c) for c in conds):
+        return True
+    sorts = query.sorts if query.sorts is not UNSET else []
+    return any(isinstance(s, TrigramSimilaritySort) for s in sorts)
 
 
 #: Longest ``in_list`` still expanded into one GIN probe per value.
@@ -1244,7 +1269,56 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             where_clause = "WHERE " + " AND ".join(conditions)
         return where_clause, params
 
+    def _warn_no_pg_trgm(self) -> None:
+        """Warn once (per store) that a trigram query is running unaccelerated."""
+        if getattr(self, "_warned_no_pg_trgm", False):
+            return
+        self._warned_no_pg_trgm = True
+        warnings.warn(
+            "pg_trgm is not installed, so .fuzzy() / .similarity() are computed in "
+            "Python (correct, but a full scan — no GIN). Run "
+            "`CREATE EXTENSION pg_trgm;` (or annotate a field with TrigramIndex) to "
+            "accelerate them on Postgres.",
+            SpecStarWarning,
+            stacklevel=3,
+        )
+
+    def _trigram_fallback_search(
+        self, query: ResourceMetaSearchQuery
+    ) -> Generator[ResourceMeta]:
+        """Evaluate a ``.fuzzy()`` / ``.similarity()`` query WITHOUT pg_trgm.
+
+        Push every trigram-FREE top-level condition down to SQL (they are ANDed, so
+        a subset is a correct pre-filter that bounds the candidate set), then apply
+        the FULL predicate + sorts + pagination in Python with the same reference
+        helpers the memory backend uses — so the answer is identical to native
+        pg_trgm, only slower.
+        """
+        self._warn_no_pg_trgm()
+        conds = query.conditions if query.conditions is not UNSET else []
+        pushable = [c for c in conds if not _condition_has_trigram(c)]
+        # Fetch candidates: trigram-free conditions only, no sorts, unbounded — the
+        # trigram filter/sort/pagination all happen in Python below. With no trigram
+        # left, this recursion takes the ordinary SQL path (no re-entry here).
+        candidate_query = msgspec.structs.replace(
+            query,
+            conditions=pushable,
+            sorts=UNSET,
+            limit=2**63 - 1,
+            offset=0,
+        )
+        candidates = list(self.iter_search(candidate_query))
+        survivors = [m for m in candidates if is_match_query(m, query)]
+        survivors.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        # offset/offset+limit — same pagination the memory backend applies; a query
+        # reaching a store always carries both (QB.build() fills the defaults).
+        yield from survivors[query.offset : query.offset + query.limit]
+
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+        if not self._has_pg_trgm and _query_uses_trigram(query):
+            yield from self._trigram_fallback_search(query)
+            return
+
         where_clause, params = self._build_where(query)
 
         # 构建排序子句
@@ -1301,6 +1375,10 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         SIZE of a limited window does not depend on the order its rows come back
         in, so sorting for a count is pure waste (``iter_search`` pays it today).
         """
+        if not self._has_pg_trgm and _query_uses_trigram(query):
+            # No pushdown for the fuzzy count — honour the contract by counting the
+            # Python-fallback window directly.
+            return sum(1 for _ in self.iter_search(query))
         where_clause, params = self._build_where(query)
         sql = (
             f'SELECT COUNT(*) AS n FROM (SELECT 1 FROM "{self.table_name}" '
