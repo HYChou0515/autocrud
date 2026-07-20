@@ -37,7 +37,9 @@ class EmbeddingProcessor:
         model_overrides: dict | None = None,
     ) -> None:
         self._infos = [
-            info for info in extract_vector_field_infos(struct_type) if info.is_embedding
+            info
+            for info in extract_vector_field_infos(struct_type)
+            if info.is_embedding
         ]
         self._registry = registry
         self._model_overrides = model_overrides or {}
@@ -50,7 +52,9 @@ class EmbeddingProcessor:
                 continue
             if emb.vector is not UNSET:
                 continue
-            encoder = lookup_encoder(self._registry, field_info=info, model_overrides=self._model_overrides)
+            encoder = lookup_encoder(
+                self._registry, field_info=info, model_overrides=self._model_overrides
+            )
             if encoder is None:
                 continue
             new_hash = _content_hash(emb.content)
@@ -94,7 +98,9 @@ class EmbeddingProcessor:
                 continue
             if emb.vector is not UNSET:
                 continue
-            encoder = lookup_encoder(self._registry, field_info=info, model_overrides=self._model_overrides)
+            encoder = lookup_encoder(
+                self._registry, field_info=info, model_overrides=self._model_overrides
+            )
             if encoder is None:
                 continue
             new_hash = _content_hash(emb.content)

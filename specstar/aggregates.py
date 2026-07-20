@@ -38,13 +38,15 @@ class _FieldAggregate(Aggregate):
         if not isinstance(field, Field):
             raise TypeError(
                 f"{type(self).__name__} requires a QB Field "
-                f"(e.g. QB[\"size\"] or QB.created_time()); "
+                f'(e.g. QB["size"] or QB.created_time()); '
                 f"got {type(field).__name__}."
             )
         self.field = field
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.field.name!r}, source={self.field.source!r})"
+        return (
+            f"{type(self).__name__}({self.field.name!r}, source={self.field.source!r})"
+        )
 
 
 class Sum(_FieldAggregate):
@@ -100,7 +102,7 @@ class ForeignAggregate:
         if not isinstance(link, Field):
             raise TypeError(
                 f"ForeignAggregate.link must be a QB Field "
-                f"(e.g. QB[\"source_doc_id\"]); got {type(link).__name__}."
+                f'(e.g. QB["source_doc_id"]); got {type(link).__name__}.'
             )
         if not isinstance(aggregate, Aggregate):
             raise TypeError(
@@ -129,9 +131,7 @@ class GroupRow:
 
     __slots__ = ("key", "resource", "_aggregates")
 
-    def __init__(
-        self, key: Any, *, resource: Any = None, **aggregates: Any
-    ) -> None:
+    def __init__(self, key: Any, *, resource: Any = None, **aggregates: Any) -> None:
         self.key = key
         self.resource = resource
         self._aggregates = aggregates

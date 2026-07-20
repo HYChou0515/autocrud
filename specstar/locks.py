@@ -147,9 +147,7 @@ class InMemoryLockBackend:
                 raise LockNotOwnedError(handle.key)
             expires_at = time.monotonic() + ttl
             self._held[handle.key] = (handle.token, expires_at)
-            return LockHandle(
-                key=handle.key, token=handle.token, expires_at=expires_at
-            )
+            return LockHandle(key=handle.key, token=handle.token, expires_at=expires_at)
 
 
 __all__ = [

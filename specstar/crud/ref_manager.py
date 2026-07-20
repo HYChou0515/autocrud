@@ -172,9 +172,7 @@ def _make_ref_existence_validator(
                     missing.append((ref_info.source_field, rid))
         if missing:
             details = ", ".join(f"{field}={rid!r}" for field, rid in missing)
-            raise ValidationError(
-                f"Reference target(s) not found: {details}"
-            )
+            raise ValidationError(f"Reference target(s) not found: {details}")
 
     return _check
 
