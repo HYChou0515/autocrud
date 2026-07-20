@@ -19,6 +19,7 @@ from uuid import UUID
 from jsonpatch import JsonPatch
 from jsonpointer import JsonPointer
 from msgspec import UNSET, Struct, UnsetType
+from msgspec import field as _msgspec_field
 from typing_extensions import Literal
 from typing_extensions import TypeVar as TypeVarExt
 
@@ -1227,6 +1228,43 @@ class MergePatch(dict):
         return dict(self)
 
 
+class PatchManyResult(Struct):
+    """Outcome of a :meth:`IResourceManager.patch_many` fan-out (#434).
+
+    Counts, not a list of ``RevisionInfo``: a fan-out can cover a hundred
+    thousand rows, and returning one struct per row would undo the memory
+    ceiling the batching exists to hold. Only rows that went wrong are named,
+    so the report stays proportional to the trouble rather than to the work.
+
+    ``patched`` and ``unchanged`` are separate because a *re-run* of a mirror
+    fan-out is expected to be almost entirely ``unchanged`` — identical data
+    hashes to the same revision and is never written twice — while the caller
+    still wants to report how many rows it actually moved.
+    """
+
+    patched: int = 0
+    """Rows that were written; a new revision exists."""
+
+    unchanged: int = 0
+    """Rows the patch was a no-op for. No revision was created."""
+
+    conflicts: list[str] = _msgspec_field(default_factory=list)
+    """Rows whose current revision moved between selection and write.
+
+    Left untouched. Re-running the same call picks them up: a patch is
+    idempotent and a no-op costs no revision.
+    """
+
+    failures: list[tuple[str, str]] = _msgspec_field(default_factory=list)
+    """``(resource_id, reason)`` for rows that could not be patched — denied by
+    a permission checker, deleted mid-fan-out, or failed to encode."""
+
+    @property
+    def total(self) -> int:
+        """How many rows the query selected."""
+        return self.patched + self.unchanged + len(self.conflicts) + len(self.failures)
+
+
 class IResourceManager(ABC, Generic[T]):
     """Interface for managing versioned resources with full lifecycle support.
 
@@ -1827,6 +1865,53 @@ class IResourceManager(ABC, Generic[T]):
 
         This operation will fail if the resource is soft-deleted. Use restore()
         first to make soft-deleted resources accessible for patching.
+        """
+
+    @abstractmethod
+    def patch_many(
+        self,
+        query: "Any",
+        patch_data: "JsonPatch | MergePatch",
+        *,
+        max_bytes: int = ...,
+        status: "RevisionStatus | UnsetType" = UNSET,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> PatchManyResult:
+        """Apply one patch to every resource *query* selects (#434).
+
+        The bulk shape of :meth:`patch`, for fan-outs that push a derived value
+        onto many rows. The caller names the fields that change and never
+        handles the data — which is the point, because once the read belongs to
+        specstar it can be batched.
+
+        Semantically **N patches whose reads and writes go through the bulk
+        path**, not a second set of rules. Events (and therefore permission
+        checks) fire per row; a row whose revision moved since it was selected
+        is reported as a conflict instead of being overwritten; a no-op patch
+        creates no revision. Failures are collected, not raised, so one
+        unwritable row cannot strand the rest.
+
+        The selection is exactly what *query* returns — **including its
+        ``limit``**, which carries a process-wide default that a deployment can
+        configure. :attr:`PatchManyResult.total` reports how many rows were
+        selected so a truncated fan-out is visible rather than silent.
+
+        Args:
+            query: selects the rows to patch; ``None`` selects everything.
+            patch_data: an RFC 6902 ``JsonPatch`` or RFC 7386 ``MergePatch``.
+            max_bytes: ceiling on how much row data is held in memory at once.
+                Bytes rather than a row count because row size varies by orders
+                of magnitude between models. A row larger than the whole budget
+                is still processed, on its own.
+            status: status for the new revisions (default: stable).
+            user: recorded as ``updated_by`` on every row written; each row
+                keeps its own ``created_by``.
+            now: the timestamp for the write.
+
+        Returns:
+            result (PatchManyResult): counts, plus the ids that conflicted or
+            failed.
         """
 
     @abstractmethod

@@ -81,15 +81,13 @@ def test_foreign_aggregate_link_must_be_field():
 
 
 class DocWithShadow(msgspec.Struct):
-    created_by: str   # collides with ResourceMeta.created_by (the audit field)
+    created_by: str  # collides with ResourceMeta.created_by (the audit field)
 
 
 def test_qb_subscript_reads_indexed_data_even_when_name_collides_with_meta():
     sp = SpecStar()
     sp.configure(default_user="audit-bob")
-    sp.add_model(
-        DocWithShadow, name="doc_shadow", indexed_fields=[("created_by", str)]
-    )
+    sp.add_model(DocWithShadow, name="doc_shadow", indexed_fields=[("created_by", str)])
     rm = sp.get_resource_manager(DocWithShadow)
     # audit user "audit-bob" populates meta.created_by; the struct's created_by
     # populates indexed_data["created_by"] with a *different* value.

@@ -34,7 +34,9 @@ def test_qb_cosine_returns_expr_with_distance() -> None:
 # QB3: lte / gt / gte all produce VectorDistanceCondition with right operator
 def test_qb_comparison_operators_cover_all_four() -> None:
     q = [0.1, 0.2, 0.3]
-    assert _vc(QB["e"].cosine(q) <= 0.5).operator == DataSearchOperator.less_than_or_equal
+    assert (
+        _vc(QB["e"].cosine(q) <= 0.5).operator == DataSearchOperator.less_than_or_equal
+    )
     assert _vc(QB["e"].cosine(q) > 0.5).operator == DataSearchOperator.greater_than
     assert (
         _vc(QB["e"].cosine(q) >= 0.5).operator

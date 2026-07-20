@@ -52,4 +52,6 @@ def test_list_warns_when_dropping_undecodable_rows(tmp_path, caplog):
     assert any(
         "decod" in r.getMessage().lower() or "skip" in r.getMessage().lower()
         for r in caplog.records
-    ), f"expected a decode/skip warning, got: {[r.getMessage() for r in caplog.records]}"
+    ), (
+        f"expected a decode/skip warning, got: {[r.getMessage() for r in caplog.records]}"
+    )

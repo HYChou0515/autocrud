@@ -71,9 +71,7 @@ def test_validate_refs_on_update_too():
         "resource_id"
     ]
     # Update with bad ref
-    bad = c.put(
-        f"/monster/{mid}", json={"name": "Bear", "zone_id": "zone:nope"}
-    )
+    bad = c.put(f"/monster/{mid}", json={"name": "Bear", "zone_id": "zone:nope"})
     assert bad.status_code == 422
     # Update with good ref
     ok = c.put(f"/monster/{mid}", json={"name": "Bear2", "zone_id": zid})

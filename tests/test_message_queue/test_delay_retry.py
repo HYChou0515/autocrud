@@ -58,9 +58,7 @@ def rm_fixture():
         pytest.param(
             "rabbitmq",
             marks=[
-                pytest.mark.skipif(
-                    not PIKA_AVAILABLE, reason="pika not installed"
-                ),
+                pytest.mark.skipif(not PIKA_AVAILABLE, reason="pika not installed"),
                 pytest.mark.integration,
             ],
             id="rabbitmq",

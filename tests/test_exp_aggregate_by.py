@@ -267,8 +267,12 @@ def test_mixed_self_and_foreign_aggregates_in_one_call():
         {
             "self_n": Count(),
             "chunk_n": ForeignAggregate(rm_chunk, QB["source_doc_id"], Count()),
-            "chunk_total": ForeignAggregate(rm_chunk, QB["source_doc_id"], Sum(QB["size"])),
-            "chunk_biggest": ForeignAggregate(rm_chunk, QB["source_doc_id"], Max(QB["size"])),
+            "chunk_total": ForeignAggregate(
+                rm_chunk, QB["source_doc_id"], Sum(QB["size"])
+            ),
+            "chunk_biggest": ForeignAggregate(
+                rm_chunk, QB["source_doc_id"], Max(QB["size"])
+            ),
         },
     )
     by_name = {

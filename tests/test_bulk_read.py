@@ -46,9 +46,9 @@ def _info(resource_id: str, revision_id: str = "r1") -> RevisionInfo:
     )
 
 
-def _seed(store, sizes: dict[str, int]) -> list[tuple[str, str, None]]:
+def _seed(store, sizes: dict[str, int]) -> list[tuple[str, str, str | None]]:
     """Save one revision per entry of *sizes* and return the read keys."""
-    keys: list[tuple[str, str, None]] = []
+    keys: list[tuple[str, str, str | None]] = []
     for rid, size in sizes.items():
         info = _info(rid)
         store.save(info, io.BytesIO(b"x" * size))
@@ -201,15 +201,15 @@ def test_storage_exposes_the_budgeted_read(tmp_path):
         for rid in ids
     ]
 
-    everything, consumed = rm.storage.read_revisions_bulk(keys, max_bytes=1_000_000)
+    everything, consumed = rm.storage.read_revisions_bulk(keys, max_bytes=1_000_000)  # ty:ignore[unresolved-attribute]
     assert consumed == 3
     assert set(everything) == set(ids)
 
     # A budget below one row's size still makes progress — exactly one row.
-    _, consumed = rm.storage.read_revisions_bulk(keys, max_bytes=1)
+    _, consumed = rm.storage.read_revisions_bulk(keys, max_bytes=1)  # ty:ignore[unresolved-attribute]
     assert consumed == 1
 
-    assert rm.storage.read_revisions_bulk([], max_bytes=1_000) == ({}, 0)
+    assert rm.storage.read_revisions_bulk([], max_bytes=1_000) == ({}, 0)  # ty:ignore[unresolved-attribute]
 
 
 # ---------------------------------------------------------------------------

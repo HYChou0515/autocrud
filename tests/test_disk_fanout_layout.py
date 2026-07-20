@@ -298,9 +298,7 @@ def _seed_legacy_revision(store, root, rid, rev, uid, data, sv="1.0"):
     )
     symd = root / "resource" / rid / rev / p_sv
     symd.parent.mkdir(parents=True, exist_ok=True)
-    symd.symlink_to(
-        relative_walk_up(reald, symd.parent), target_is_directory=True
-    )
+    symd.symlink_to(relative_walk_up(reald, symd.parent), target_is_directory=True)
 
 
 def test_resource_save_lands_sharded_and_roundtrips(tmp_path: Path):
@@ -374,7 +372,9 @@ def test_resource_collect_orphans_across_layouts(tmp_path: Path):
     assert store.exists("live:1", "live:1:1", "1.0")
     assert not store.exists("dead:1", "dead:1:1", "1.0")
     # the orphan's real data is reclaimed too
-    assert not (sharded_dir(tmp_path / "store", str(orphan_uid)) / str(orphan_uid)).exists()
+    assert not (
+        sharded_dir(tmp_path / "store", str(orphan_uid)) / str(orphan_uid)
+    ).exists()
 
 
 def test_resource_purge_resource(tmp_path: Path):

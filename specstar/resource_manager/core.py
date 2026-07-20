@@ -128,6 +128,7 @@ from specstar.types import (
     OnDecodeError,
     OnDuplicate,
     OnUnindexedQuery,
+    PatchManyResult,
     PermissionDeniedError,
     RawResource,
     Resource,
@@ -455,6 +456,15 @@ class SimpleStorage(IStorage):
             return
         self._resource_store.save_many(items)
 
+    def read_metas_bulk(
+        self, resource_ids: "Sequence[str]"
+    ) -> "dict[str, ResourceMeta]":
+        """Bulk-read metas (#434) — the read-side twin of
+        :meth:`save_metas_bulk`. Ids with no row are omitted."""
+        if not resource_ids:
+            return {}
+        return self._meta_store.get_many(resource_ids)
+
     def read_revisions_bulk(
         self,
         items: "Sequence[tuple[str, str, str | None]]",
@@ -502,6 +512,13 @@ class _BlobEntry(Struct, kw_only=True):
 class _BuildRevInfoCreate(Struct, Generic[T]):
     data: T
     status: RevisionStatus = RevisionStatus.stable
+
+
+#: Default memory ceiling for one ``patch_many`` batch (#434). A library
+#: default has to be safe on a small machine, so it is deliberately well below
+#: what a big host could afford; a caller that knows it has the headroom raises
+#: it per call.
+DEFAULT_PATCH_MANY_MAX_BYTES = 256 * 1024 * 1024
 
 
 class _BuildRevInfoUpdate(Struct, Generic[T]):
@@ -3790,24 +3807,208 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             expected_etag=expected_etag,
         )
 
-    def _apply_patch(self, resource_id: str, patch_data: JsonPatch) -> T:
-        data = self.get(resource_id).data
+    def patch_many(
+        self,
+        query: "ResourceMetaSearchQuery | Query | None",
+        patch_data: "JsonPatch | MergePatch",
+        *,
+        max_bytes: int = DEFAULT_PATCH_MANY_MAX_BYTES,
+        status: RevisionStatus | UnsetType = UNSET,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> PatchManyResult:
+        """Apply one patch to every resource *query* selects (#434).
+
+        This is the shape a fan-out actually needs — pushing a derived mirror
+        onto every row of a collection, say. The caller describes the fields
+        that change and never touches the data, which is the point: once the
+        read belongs to specstar, specstar can batch it. Handing back
+        ``(resource_id, full_data)`` pairs instead would force the caller to
+        read and re-encode every row itself, one round-trip at a time.
+
+        Semantically this is **N patches whose reads and writes go through the
+        bulk path**, not a second set of rules:
+
+        * Events fire **per row**, including the permission check. Write ACLs
+          are per-row policies, so a batch-level check would authorize the
+          batch and not the rows — a way to write rows the caller may not
+          write. This is why ``patch_many`` is not itself wrapped in
+          ``execute_with_events``: that would arm the re-entrancy guard and
+          turn every row's check into a no-op.
+        * A row whose current revision moved since it was selected is reported
+          as a **conflict** and left alone. A patch rewrites the whole body, so
+          writing anyway would discard a concurrent edit entirely, not merely
+          the mirrored fields. This is the same guarantee ``patch`` gives with
+          ``expected_revision_id`` — no stronger: the compare and the write are
+          not atomic, so it narrows the window rather than closing it.
+        * A no-op patch creates no revision, so a caller need not pre-filter
+          rows that already hold the target value, and re-running is cheap.
+
+        Failures are **collected, not raised**: one unwritable row must not
+        strand the rest of a collection.
+
+        Memory is bounded by *max_bytes*, not by a row count — row size varies
+        by orders of magnitude between models, so rows are the wrong unit. Rows
+        are read in batches that fit the budget; a row larger than the whole
+        budget is still processed on its own.
+
+        Arguments:
+            query: selects the rows to patch. ``None`` selects everything.
+            patch_data: an RFC 6902 ``JsonPatch`` or RFC 7386 ``MergePatch``,
+                applied to every selected row.
+            max_bytes: ceiling on how much row data is held in memory at once.
+            status: status for the new revisions (default: stable).
+            user: the user performing the fan-out; recorded as ``updated_by``
+                on every row it writes, while each row keeps its own
+                ``created_by``.
+            now: timestamp for the write.
+
+        Returns:
+            result (PatchManyResult): counts plus the ids that conflicted or
+            failed.
+        """
+        status = self.default_status if status is UNSET else status
+        result = PatchManyResult()
+        with self._apply_context(user=user, now=now):
+            metas = self.search_resources(query)
+            pending = [
+                (m.resource_id, m.current_revision_id, m.schema_version) for m in metas
+            ]
+            while pending:
+                payloads, consumed = self.storage.read_revisions_bulk(
+                    pending, max_bytes=max_bytes
+                )
+                batch, pending = pending[:consumed], pending[consumed:]
+                self._patch_batch(batch, payloads, patch_data, status, result)
+        return result
+
+    def _patch_batch(
+        self,
+        batch: "list[tuple[str, str, str | None]]",
+        payloads: dict[str, bytes],
+        patch_data: "JsonPatch | MergePatch",
+        status: RevisionStatus,
+        result: PatchManyResult,
+    ) -> None:
+        """Authorize, patch and write one budget-sized batch of rows.
+
+        Ordering matters and is the whole reason this is not a loop over
+        ``patch()``: every row is authorized and announced **before** anything
+        is written, the batch is then written in one go, and only rows that
+        actually landed get their success event. Firing success first and
+        writing after would tell handlers a row was committed that might not
+        be.
+        """
+        fresh = self.storage.read_metas_bulk([rid for rid, _, _ in batch])
+        revisions: list[tuple[RevisionInfo, bytes]] = []
+        new_metas: list[ResourceMeta] = []
+        prepared: list[tuple[str, dict[str, Any], RevisionInfo]] = []
+
+        for resource_id, selected_revision_id, _schema_version in batch:
+            ctx_kw: dict[str, Any] = {
+                "user": self.user_or_unset,
+                "now": self.now_or_unset,
+                "resource_name": self.resource_name,
+                "resource_id": resource_id,
+                "patch_data": patch_data.patch,
+            }
+            try:
+                with ExitStack() as stack:
+                    stack.enter_context(self.id_ctx.ctx(resource_id))
+                    self._authorize_and_announce(BeforePatch(**ctx_kw), stack)
+
+                    raw = payloads.get(resource_id)
+                    prev_meta = fresh.get(resource_id)
+                    if raw is None or prev_meta is None:
+                        raise ResourceIDNotFoundError(resource_id)
+                    if prev_meta.current_revision_id != selected_revision_id:
+                        result.conflicts.append(resource_id)
+                        continue
+
+                    prev_data = self._data_serializer.decode(raw)
+                    data = self._patched(prev_data, patch_data)
+                    data = self._process_binary_fields(data)
+                    data = self._embedding_processor.process_sync(
+                        data, previous=prev_data
+                    )
+                    encoded = self.encode(data)
+                    # Both sides go through this encoder, so a difference in
+                    # how the row was stored (an older schema, say) cancels
+                    # out and only a real change counts. Comparing here also
+                    # saves a per-row read of the previous RevisionInfo just
+                    # to reach its hash.
+                    if encoded == self.encode(prev_data):
+                        result.unchanged += 1
+                        self._handle_event(AfterPatch(**ctx_kw))
+                        continue
+
+                    rev_info = self._rev_info(
+                        _BuildRevInfoUpdate(prev_meta, data, status)
+                    )
+                    revisions.append((rev_info, encoded))
+                    new_metas.append(
+                        self._res_meta(_BuildResMetaUpdate(prev_meta, rev_info, data))
+                    )
+                    prepared.append((resource_id, ctx_kw, rev_info))
+            except Exception as e:
+                self._announce_patch_failure(ctx_kw, e)
+                result.failures.append((resource_id, str(e)))
+
+        if not revisions:
+            return
+        try:
+            self.storage.save_revisions_bulk(revisions)
+            self.storage.save_metas_bulk(new_metas)
+        except Exception as e:
+            # The batch is written as a unit, so nothing here can be reported
+            # as committed. Every prepared row failed together.
+            for resource_id, ctx_kw, _ in prepared:
+                self._announce_patch_failure(ctx_kw, e)
+                result.failures.append((resource_id, str(e)))
+            return
+
+        for resource_id, ctx_kw, rev_info in prepared:
+            self._handle_event(OnSuccessPatch(**ctx_kw, revision_info=rev_info))
+            self._handle_event(AfterPatch(**ctx_kw))
+            result.patched += 1
+
+    def _announce_patch_failure(self, ctx_kw: dict[str, Any], error: Exception) -> None:
+        self._handle_event(
+            OnFailurePatch(
+                **ctx_kw,
+                error=str(error),
+                stack_trace="".join(
+                    traceback.format_exception(type(error), error, error.__traceback__)
+                ),
+            )
+        )
+        self._handle_event(AfterPatch(**ctx_kw))
+
+    def _patched(self, data: T, patch_data: "JsonPatch | MergePatch") -> T:
+        """Apply either patch flavour to data that is already decoded.
+
+        Split out of :meth:`_apply_patch` / :meth:`_apply_merge_patch` so a
+        bulk caller that has already read the row (:meth:`patch_many`) applies
+        the patch through the very same code the single-row path uses. Two
+        implementations of "what a patch means" would be one too many — they
+        would agree right up until the day they didn't.
+        """
         if isinstance(data, msgspec.Raw):
             d = json.loads(bytes(data))
         else:
             d = msgspec.to_builtins(data)
+        if isinstance(patch_data, MergePatch):
+            return msgspec.convert(_rfc7386_merge(d, patch_data), self.resource_type)
         patch_data.apply(d, in_place=True)
         return msgspec.convert(d, self.resource_type)
+
+    def _apply_patch(self, resource_id: str, patch_data: JsonPatch) -> T:
+        return self._patched(self.get(resource_id).data, patch_data)
 
     def _apply_merge_patch(self, resource_id: str, merge_patch: dict) -> T:
         """RFC 7386 analogue of :meth:`_apply_patch`: merge ``merge_patch`` into
         the current data and return the resulting full resource."""
-        data = self.get(resource_id).data
-        if isinstance(data, msgspec.Raw):
-            d = json.loads(bytes(data))
-        else:
-            d = msgspec.to_builtins(data)
-        return msgspec.convert(_rfc7386_merge(d, merge_patch), self.resource_type)
+        return self._patched(self.get(resource_id).data, MergePatch(merge_patch))
 
     @execute_with_events(
         (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),

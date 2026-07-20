@@ -84,8 +84,8 @@ def _info(resource_id: str) -> RevisionInfo:
     )
 
 
-def _seed(store, sizes: dict[str, int]) -> list[tuple[str, str, None]]:
-    keys: list[tuple[str, str, None]] = []
+def _seed(store, sizes: dict[str, int]) -> list[tuple[str, str, str | None]]:
+    keys: list[tuple[str, str, str | None]] = []
     for rid, size in sizes.items():
         info = _info(rid)
         store.save(info, io.BytesIO(b"x" * size))

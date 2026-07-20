@@ -2203,6 +2203,33 @@ class IStorage(ABC):
         store's :meth:`IResourceStore.save_many`.
         """
 
+    @abstractmethod
+    def read_metas_bulk(
+        self, resource_ids: "Sequence[str]"
+    ) -> "dict[str, ResourceMeta]":
+        """Bulk read resource metadata (#434).
+
+        The read-side counterpart of :meth:`save_metas_bulk`; implementations
+        should delegate to :meth:`IMetaStore.get_many`. Ids with no row are
+        omitted rather than raising — a bulk caller needs to see which members
+        of its set have gone.
+        """
+
+    @abstractmethod
+    def read_revisions_bulk(
+        self,
+        items: "Sequence[tuple[str, str, str | None]]",
+        *,
+        max_bytes: int,
+    ) -> "tuple[dict[str, bytes], int]":
+        """Bulk read revision payloads under a memory budget (#434).
+
+        The read-side counterpart of :meth:`save_revisions_bulk`; implementations
+        should delegate to :meth:`IResourceStore.read_many`, whose docstring
+        carries the budget contract — bytes rather than rows, at least one row
+        always consumed, missing rows omitted.
+        """
+
 
 # Data Search Related Classes
 

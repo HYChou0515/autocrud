@@ -264,9 +264,7 @@ def test_collect_orphans_removes_unreferenced_data(my_tmpdir: Path):
         assert not orphan_blob.exists()
         # The live resource is untouched and still readable.
         assert mgr.get(live.resource_id).data.name == "keep"
-        assert (
-            sharded_dir(res_dir / "store", str(live.uid)) / str(live.uid)
-        ).exists()
+        assert (sharded_dir(res_dir / "store", str(live.uid)) / str(live.uid)).exists()
 
 
 def test_collect_orphans_noop_when_clean(my_tmpdir: Path):

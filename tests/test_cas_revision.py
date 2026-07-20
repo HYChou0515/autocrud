@@ -79,9 +79,7 @@ def test_create_if_not_exists_raises_when_resource_id_already_exists():
     rm = _rm()
     info = rm.create(Doc(name="v1"))
     with pytest.raises(DuplicateResourceError):
-        rm.create(
-            Doc(name="loser"), resource_id=info.resource_id, if_not_exists=True
-        )
+        rm.create(Doc(name="loser"), resource_id=info.resource_id, if_not_exists=True)
 
 
 def test_create_if_not_exists_succeeds_when_resource_id_is_new():

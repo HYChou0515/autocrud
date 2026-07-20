@@ -25,9 +25,7 @@ def test_oa_x_vector_dim_injected() -> None:
     schema = app.openapi_schema
     components = schema["components"]["schemas"]
     # Find the Doc component (name may be prefixed)
-    doc_comp = next(
-        c for n, c in components.items() if n.endswith("Doc") or n == "Doc"
-    )
+    doc_comp = next(c for n, c in components.items() if n.endswith("Doc") or n == "Doc")
     prop = doc_comp["properties"]["embedding"]
     assert prop.get("x-vector-dim") == 1536
 

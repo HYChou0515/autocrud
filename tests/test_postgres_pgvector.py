@@ -54,7 +54,9 @@ def _make_meta(rid: str, *, vector: list[float], doctype: str = "abc") -> Resour
 
 
 # PV1: capability flag is True when pgvector extension is available
-def test_pv_capability_flag_true_when_pgvector_present(store: PostgresMetaStore) -> None:
+def test_pv_capability_flag_true_when_pgvector_present(
+    store: PostgresMetaStore,
+) -> None:
     assert store.supports_native_vector_search is True
 
 
