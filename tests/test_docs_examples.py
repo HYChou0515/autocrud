@@ -49,15 +49,22 @@ def test_docs_tldr_runs_end_to_end() -> None:
         Doc(title="a-near", doctype="article", summary=Embedding(content="hello world"))
     )
     mgr.create(
-        Doc(title="b-far", doctype="article", summary=Embedding(content="orthogonal text"))
+        Doc(
+            title="b-far",
+            doctype="article",
+            summary=Embedding(content="orthogonal text"),
+        )
     )
     mgr.create(
         Doc(title="c-wrong-type", doctype="memo", summary=Embedding(content="hello"))
     )
 
     query = (
-        (QB["doctype"] == "article") & (QB["summary"].cosine("near_query") < 0.3)
-    ).sort(QB["summary"].cosine("near_query")).limit(3).build()
+        ((QB["doctype"] == "article") & (QB["summary"].cosine("near_query") < 0.3))
+        .sort(QB["summary"].cosine("near_query"))
+        .limit(3)
+        .build()
+    )
 
     results = mgr.list_resources(query, returns=["data"])
     titles = [r.data.title for r in results]
@@ -246,9 +253,7 @@ def test_docs_distance_metric_alternatives() -> None:
     assert titles == ["near", "far"]
 
     # ip metric
-    r_ip = (
-        (QB["e"].ip([1.0, 1.0]) <= -1.0).sort(QB["e"].ip([1.0, 1.0])).build()
-    )
+    r_ip = (QB["e"].ip([1.0, 1.0]) <= -1.0).sort(QB["e"].ip([1.0, 1.0])).build()
     titles_ip = [r.data.title for r in mgr.list_resources(r_ip, returns=["data"])]
     # far has dot=20 → ip dist=-20; near has dot=2 → ip dist=-2. Both ≤ -1.
     # ascending → most-similar (most-negative) first

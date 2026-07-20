@@ -56,9 +56,7 @@ def test_q_str_condition_resolved_via_encoder() -> None:
         ],
     )
     metas = mgr.search_resources(q)
-    titles = sorted(
-        mgr.get(m.resource_id).data.title for m in metas
-    )
+    titles = sorted(mgr.get(m.resource_id).data.title for m in metas)
     assert "aligned" in titles
     assert "close" in titles
     assert "opposed" not in titles

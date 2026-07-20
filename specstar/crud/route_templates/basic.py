@@ -135,9 +135,7 @@ def reject_resource_id_in_patch(body) -> None:
         return
     for op in body:
         if isinstance(op, dict) and op.get("path") == "/resource_id":
-            raise HTTPException(
-                status_code=422, detail=RESOURCE_ID_IN_BODY_DETAIL
-            )
+            raise HTTPException(status_code=422, detail=RESOURCE_ID_IN_BODY_DETAIL)
 
 
 class IRouteTemplate(ABC):

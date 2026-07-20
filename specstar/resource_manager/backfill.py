@@ -53,12 +53,8 @@ def backfill_vectors(
         if emb is None:
             summary.skipped += 1
             continue
-        needs_encode = (
-            emb.vector is UNSET
-            or (
-                current_encoder_id is not None
-                and emb.encoder_id != current_encoder_id
-            )
+        needs_encode = emb.vector is UNSET or (
+            current_encoder_id is not None and emb.encoder_id != current_encoder_id
         )
         if not needs_encode:
             summary.skipped += 1

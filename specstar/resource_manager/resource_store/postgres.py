@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import io
 import time
-from collections.abc import Generator, Iterable
+from collections.abc import Generator, Iterable, Sequence
 from contextlib import contextmanager
 from typing import IO, Any
 
@@ -70,9 +70,7 @@ class PostgresResourceStore(IResourceStore):
 
         # Share one process-global pool per DSN (#380). The pool is owned by
         # the registry for the process lifetime; this store never closes it.
-        self._conn_pool = _pg_pool.get_pool(
-            pg_dsn, minconn=minconn, maxconn=maxconn
-        )
+        self._conn_pool = _pg_pool.get_pool(pg_dsn, minconn=minconn, maxconn=maxconn)
 
         self._data_table = f"{table_prefix}resource_data"
         self._index_table = f"{table_prefix}resource_index"
@@ -298,6 +296,56 @@ class PostgresResourceStore(IResourceStore):
                     uid,
                 ),
             )
+
+    # -- Bulk read (#434) -------------------------------------------------
+
+    def _key_tuples(
+        self, items: "Sequence[tuple[str, str, str | None]]"
+    ) -> tuple[tuple[str, str, str], ...]:
+        return tuple((rid, rev, self._sv(sv)) for rid, rev, sv in items)
+
+    def payload_sizes(
+        self, items: "Sequence[tuple[str, str, str | None]]"
+    ) -> list[int]:
+        """Size the batch with ``octet_length`` — one query, no bytes moved.
+
+        This is why the memory budget can be honoured *exactly* here rather
+        than overshooting: Postgres reports how big each payload is without
+        sending it, so the packing decision is made before the transfer.
+
+        Rows that are absent size as 0; ``read_payloads`` then omits them.
+        """
+        if not items:
+            return []
+        keys = self._key_tuples(items)
+        with self._transaction() as cur:
+            cur.execute(
+                f"SELECT i.resource_id, i.revision_id, i.schema_version, "
+                f"octet_length(d.data) "
+                f'FROM "{self._data_table}" d '
+                f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                f"WHERE (i.resource_id, i.revision_id, i.schema_version) IN %s",
+                (keys,),
+            )
+            found = {(r[0], r[1], r[2]): r[3] for r in cur.fetchall()}
+        return [found.get(key, 0) for key in keys]
+
+    def read_payloads(
+        self, items: "Sequence[tuple[str, str, str | None]]"
+    ) -> dict[str, bytes]:
+        """Fetch the whole batch in one query instead of one per row."""
+        if not items:
+            return {}
+        keys = self._key_tuples(items)
+        with self._transaction() as cur:
+            cur.execute(
+                f"SELECT i.resource_id, d.data "
+                f'FROM "{self._data_table}" d '
+                f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                f"WHERE (i.resource_id, i.revision_id, i.schema_version) IN %s",
+                (keys,),
+            )
+            return {row[0]: bytes(row[1]) for row in cur.fetchall()}
 
     def save_many(
         self, items: Iterable[tuple[RevisionInfo, bytes | IO[bytes]]]

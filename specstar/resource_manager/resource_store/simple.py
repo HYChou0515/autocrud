@@ -1,7 +1,7 @@
 import io
 import os
 import uuid as uuid_module
-from collections.abc import Generator, Iterable
+from collections.abc import Generator, Iterable, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import IO
@@ -107,6 +107,22 @@ class MemoryResourceStore(IResourceStore):
             )[info.schema_version] = info.uid
             self._raw_data_store[info.uid] = raw
             self._raw_info_store[info.uid] = self._info_serializer.encode(info)
+
+    def payload_sizes(
+        self, items: "Sequence[tuple[ResourceID, RevisionID, SchemaVersion | None]]"
+    ) -> list[int]:
+        """Sizes are free here — every payload is already in memory (#434).
+
+        A row that has gone missing costs nothing to skip, so it sizes as 0
+        and ``read_payloads`` simply omits it.
+        """
+        sizes: list[int] = []
+        for rid, rev, sv in items:
+            try:
+                sizes.append(len(self._raw_data_store[self._store[rid][rev][sv]]))
+            except KeyError:
+                sizes.append(0)
+        return sizes
 
     def purge_resource(self, resource_id: str) -> None:
         """Hard-delete all revision data for a resource."""
@@ -302,9 +318,7 @@ class DiskResourceStore(IResourceStore):
     ) -> bool:
         return any(
             c.exists()
-            for c in self._symdir_candidates(
-                resource_id, revision_id, schema_version
-            )
+            for c in self._symdir_candidates(resource_id, revision_id, schema_version)
         )
 
     def _resolve_symdir(
@@ -356,6 +370,24 @@ class DiskResourceStore(IResourceStore):
                 return f.read()
 
         return self._info_serializer.decode(retry_on_estale(_read))
+
+    def payload_sizes(
+        self, items: "Sequence[tuple[ResourceID, RevisionID, SchemaVersion | None]]"
+    ) -> list[int]:
+        """``stat`` the data file — no read, no transfer (#434)."""
+        sizes: list[int] = []
+        for resource_id, revision_id, schema_version in items:
+            data_path = (
+                self._resolve_symdir(resource_id, revision_id, schema_version) / "data"
+            )
+            # Same ESTALE exposure as get_data_bytes — see #352.
+            try:
+                sizes.append(retry_on_estale(data_path.stat).st_size)
+            except FileNotFoundError:
+                # Deleted since selection — sizes as 0 and read_payloads omits
+                # it, so one dead row cannot fail the whole batch.
+                sizes.append(0)
+        return sizes
 
     def save(self, info: RevisionInfo, data: DataIO) -> None:
         symd = self._get_uid_store_symdir(
@@ -569,9 +601,7 @@ class DiskResourceStore(IResourceStore):
                 rev = rev_dir.name
                 for ver_link in list(rev_dir.iterdir()):
                     ver = ver_link.name
-                    new_symdir = (
-                        sharded_dir(resource_root, rid) / rid / rev / ver
-                    )
+                    new_symdir = sharded_dir(resource_root, rid) / rid / rev / ver
                     if new_symdir.exists():
                         continue
                     # ``resolve().name`` yields the uid even if the legacy

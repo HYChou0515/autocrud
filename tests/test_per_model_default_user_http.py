@@ -58,7 +58,8 @@ def test_add_model_default_now_overrides_configure_default_now():
     per_model = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
     sp = SpecStar()
     sp.configure(
-        default_user="t", default_now=lambda: dt.datetime(2020, 1, 1, tzinfo=dt.timezone.utc)
+        default_user="t",
+        default_now=lambda: dt.datetime(2020, 1, 1, tzinfo=dt.timezone.utc),
     )
     sp.add_model(Schema(Item, "v1"), default_now=lambda: per_model)
     mgr = sp.get_resource_manager(Item)

@@ -75,9 +75,7 @@ def test_put_accepts_quoted_if_match_header(client_and_resource):
 def test_put_with_stale_if_match_header_returns_412(client_and_resource):
     c, rid, rev1 = client_and_resource
     c.put(f"/note/{rid}", json={"title": "b"})
-    r = c.put(
-        f"/note/{rid}", json={"title": "c"}, headers={"If-Match": rev1}
-    )
+    r = c.put(f"/note/{rid}", json={"title": "c"}, headers={"If-Match": rev1})
     assert r.status_code == 412
 
 

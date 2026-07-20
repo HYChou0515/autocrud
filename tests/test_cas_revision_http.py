@@ -61,9 +61,7 @@ def test_put_with_if_none_match_star_on_existing_returns_412():
     c = _client()
     r1 = c.post("/widget", json={"name": "v1"})
     rid = r1.json()["resource_id"]
-    r2 = c.put(
-        f"/widget/{rid}", json={"name": "v2"}, headers={"If-None-Match": "*"}
-    )
+    r2 = c.put(f"/widget/{rid}", json={"name": "v2"}, headers={"If-None-Match": "*"})
     assert r2.status_code == 412
 
 

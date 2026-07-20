@@ -21,9 +21,7 @@ class Item(msgspec.Struct):
 
 def _mgr():
     sp = SpecStar()
-    sp.configure(
-        default_user="t", default_now=lambda: dt.datetime.now(dt.timezone.utc)
-    )
+    sp.configure(default_user="t", default_now=lambda: dt.datetime.now(dt.timezone.utc))
     sp.add_model(Schema(Item, "v1"))
     return sp.get_resource_manager(Item)
 

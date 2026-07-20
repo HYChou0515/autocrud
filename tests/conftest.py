@@ -22,7 +22,7 @@ INTEGRATION_FILE_PATTERNS = (
     # S3 / MinIO dependent
     "test_advanced_cached_s3.py",
     "test_cached_s3.py",
-    "test_s3_storage_factory.py",
+    "test_s3_*.py",
     "test_blob_store_s3_*.py",
     # End-to-end wizard / wizard integration
     "test_wizard_integration.py",

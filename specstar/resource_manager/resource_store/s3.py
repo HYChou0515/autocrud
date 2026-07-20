@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Generator, Iterable
+from collections.abc import Generator, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import IO
@@ -225,6 +225,97 @@ class S3ResourceStore(IResourceStore):
             if error_code in ("NoSuchKey", "404"):
                 raise KeyError(f"Revision info not found: {uid}")
             raise
+
+    # -- Bulk read (#434) -------------------------------------------------
+
+    @staticmethod
+    def _is_missing(e: "Exception") -> bool:
+        return e.response["Error"]["Code"] in ("NoSuchKey", "404")  # ty: ignore[unresolved-attribute]
+
+    def _resolve_uid(self, item: tuple[str, str, str | None]) -> str | None:
+        """GET the uid index object; ``None`` when the revision is gone."""
+        key = self._get_resource_key(*item)
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            return response["Body"].read().decode("utf-8")
+        except _ClientError as e:
+            if self._is_missing(e):
+                return None
+            raise
+
+    def _head_size(self, uid: str | None) -> int:
+        """``ContentLength`` without transferring the body."""
+        if uid is None:
+            return 0
+        try:
+            response = self.client.head_object(
+                Bucket=self.bucket, Key=self._get_raw_data_key(uid)
+            )
+            return response["ContentLength"]
+        except _ClientError as e:
+            if self._is_missing(e):
+                return 0
+            raise
+
+    def _get_payload(self, uid: str) -> bytes | None:
+        try:
+            response = self.client.get_object(
+                Bucket=self.bucket, Key=self._get_raw_data_key(uid)
+            )
+            return response["Body"].read()
+        except _ClientError as e:
+            if self._is_missing(e):
+                return None
+            raise
+
+    def read_many(
+        self,
+        items: "Sequence[tuple[str, str, str | None]]",
+        *,
+        max_bytes: int,
+        max_workers: int = 20,
+    ) -> "tuple[dict[str, bytes], int]":
+        """Resolve uids, size with ``head_object``, then fetch only what fits.
+
+        This overrides ``read_many`` wholesale instead of the
+        ``payload_sizes`` / ``read_payloads`` hooks because reaching a payload
+        on S3 takes two calls — GET the uid index, then GET the object — and
+        the two hooks would resolve the same uids twice.
+
+        Every stage fans out over a thread pool. That is where the win is: S3
+        cost is dominated by per-call latency, so N sequential round-trips is
+        precisely the thing worth avoiding. ``head_object`` reports the size
+        without sending the body, so the budget is packed exactly rather than
+        overshooting by a row.
+        """
+        items = list(items)
+        if not items:
+            return {}, 0
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            uids = list(pool.map(self._resolve_uid, items))
+            sizes = list(pool.map(self._head_size, uids))
+
+            total = 0
+            consumed = 0
+            for size in sizes:
+                if consumed and total + size > max_bytes:
+                    break
+                total += size
+                consumed += 1
+
+            selected = [
+                (item[0], uid)
+                for item, uid in zip(items[:consumed], uids[:consumed])
+                if uid is not None
+            ]
+            payloads = list(pool.map(lambda pair: self._get_payload(pair[1]), selected))
+
+        return {
+            resource_id: raw
+            for (resource_id, _), raw in zip(selected, payloads)
+            if raw is not None
+        }, consumed
 
     def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
         # 保存實際數據和資訊到 UID-based 位置

@@ -6,6 +6,7 @@ Guards against the doc/reality drift found while evaluating SpecStar 0.11:
   * migrate routes are NOT registered by default (opt-in via MigrateRouteTemplate)
   * the documented migrate -> rollback flow works for a breaking change
 """
+
 import datetime as dt
 from typing import Literal
 
@@ -67,7 +68,9 @@ def test_migrate_routes_are_opt_in(tmp_path):
     app2 = FastAPI()
     sp2.add_model(Schema(User, "v1"))
     sp2.apply(app2)
-    migrate_paths = {r.path for r in app2.routes if hasattr(r, "path") and "migrate" in r.path}
+    migrate_paths = {
+        r.path for r in app2.routes if hasattr(r, "path") and "migrate" in r.path
+    }
     assert "/user/migrate/execute" in migrate_paths
     assert "/user/migrate/single/{resource_id}" in migrate_paths
 
@@ -82,7 +85,9 @@ def test_breaking_migration_then_rollback(tmp_path):
     sp.add_model(Schema(User, "v1"))
     sp.apply(app)
     c = TestClient(app)
-    rid = c.post("/user", json={"name": "Bob", "email": "a@x.com"}).json()["resource_id"]
+    rid = c.post("/user", json={"name": "Bob", "email": "a@x.com"}).json()[
+        "resource_id"
+    ]
     c.put(f"/user/{rid}", json={"name": "Bob", "email": "b@x.com"})
 
     class UserV1(Struct):
@@ -140,9 +145,7 @@ def test_get_old_revision_after_soft_delete_with_include_deleted(tmp_path):
     rm.update(info.resource_id, _Doc(title="Onboarding", body="v2"))
     rm.delete(info.resource_id)
 
-    old = rm.get(
-        info.resource_id, revision_id=info.revision_id, include_deleted=True
-    )
+    old = rm.get(info.resource_id, revision_id=info.revision_id, include_deleted=True)
     assert old.data.body == "v1"
 
 
@@ -267,8 +270,7 @@ def test_prune_union_is_conservative(tmp_path):
     )
     assert len(pruned) == 4
     survivors = {
-        mgr_b.get(rid_b, revision_id=r).data.value
-        for r in mgr_b.list_revisions(rid_b)
+        mgr_b.get(rid_b, revision_id=r).data.value for r in mgr_b.list_revisions(rid_b)
     }
     assert survivors == {"v4", "v5", "v6", "v7"}
 

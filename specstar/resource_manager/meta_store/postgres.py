@@ -1,7 +1,7 @@
 import logging
 import time
 import warnings
-from collections.abc import Generator, Iterable
+from collections.abc import Generator, Iterable, Sequence
 from contextlib import contextmanager
 from enum import Enum as EnumType
 from typing import Any
@@ -1136,6 +1136,27 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             if row is None:
                 raise KeyError(pk)
             return self._serializer.decode(row["data"])
+
+    def get_many(self, pks: "Sequence[str]") -> "dict[str, ResourceMeta]":
+        """Bulk read in one ``WHERE resource_id = ANY(...)`` (#434).
+
+        The inherited default loops ``__getitem__``, which on a remote
+        database is one round-trip per row — the very cost a fan-out batches
+        to avoid. Missing ids are simply absent from the result.
+        """
+        pk_list = list(pks)
+        if not pk_list:
+            return {}
+        with self.stream_cursor() as cur:
+            cur.execute(
+                f'SELECT resource_id, data FROM "{self.table_name}" '
+                f"WHERE resource_id = ANY(%s)",
+                (pk_list,),
+            )
+            return {
+                row["resource_id"]: self._serializer.decode(row["data"])
+                for row in cur.fetchall()
+            }
 
     def __setitem__(self, pk: str, meta: ResourceMeta) -> None:  # ty:ignore[invalid-method-override]
         # 直接寫入 PostgreSQL — honour caller-supplied ``pk`` even if it

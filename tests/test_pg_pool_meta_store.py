@@ -166,9 +166,7 @@ class TestGetConnConnectionLeak:
 
         store = _make_store_with_mock_pool(pool_mock)
 
-        with patch(
-            "specstar.resource_manager.meta_store.postgres.time.sleep"
-        ):
+        with patch("specstar.resource_manager.meta_store.postgres.time.sleep"):
             conn = store.get_conn()
 
         assert conn is good_conn
@@ -183,8 +181,6 @@ class TestGetConnConnectionLeak:
 
         store = _make_store_with_mock_pool(pool_mock)
 
-        with patch(
-            "specstar.resource_manager.meta_store.postgres.time.sleep"
-        ):
+        with patch("specstar.resource_manager.meta_store.postgres.time.sleep"):
             with pytest.raises((psycopg2.pool.PoolError, ConnectionError)):
                 store.get_conn()

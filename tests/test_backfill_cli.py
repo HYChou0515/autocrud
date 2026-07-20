@@ -61,9 +61,11 @@ def test_bfl_cli_runs_backfill_and_prints_summary(monkeypatch) -> None:
 
     # Confirm initial state: vectors UNSET
     mgr = spec.get_resource_manager(_Doc)
-    metas = mgr.search_resources(__import__(
-        "specstar.query_types", fromlist=["ResourceMetaSearchQuery"]
-    ).ResourceMetaSearchQuery())
+    metas = mgr.search_resources(
+        __import__(
+            "specstar.query_types", fromlist=["ResourceMetaSearchQuery"]
+        ).ResourceMetaSearchQuery()
+    )
     rids = [m.resource_id for m in metas]
     for rid in rids:
         assert mgr.get(rid).data.summary.vector is UNSET

@@ -51,8 +51,7 @@ pytestmark = pytest.mark.skipif(
 def _count_pool_connections(monitor) -> int:
     with monitor.cursor() as cur:
         cur.execute(
-            "SELECT count(*) FROM pg_stat_activity "
-            "WHERE application_name = %s",
+            "SELECT count(*) FROM pg_stat_activity WHERE application_name = %s",
             (_APP_NAME,),
         )
         return cur.fetchone()[0]

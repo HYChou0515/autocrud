@@ -2,7 +2,7 @@ import datetime as dt
 import functools
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Generator, Iterable, MutableMapping
+from collections.abc import Callable, Generator, Iterable, MutableMapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Flag, StrEnum
@@ -858,6 +858,26 @@ class IMetaStore(MutableMapping[str, ResourceMeta]):
         for m in metas:
             self[m.resource_id] = m
 
+    def get_many(self, pks: "Sequence[str]") -> "dict[str, ResourceMeta]":
+        """Optional bulk read — the read-side twin of :meth:`save_many` (#434).
+
+        A fan-out re-reads every row's meta right before writing it, both to
+        build the new revision and to notice a concurrent writer. Without a
+        bulk path that is one round-trip per row, which is exactly the cost
+        batching set out to remove.
+
+        Missing keys are **omitted** rather than raised: the caller is
+        reconciling a set and needs to see which members are gone, not to be
+        stopped by the first one.
+        """
+        out: dict[str, ResourceMeta] = {}
+        for pk in pks:
+            try:
+                out[pk] = self[pk]
+            except KeyError:
+                continue
+        return out
+
     @property
     def supports_native_vector_search(self) -> bool:
         """Whether this meta store can run vector searches natively (vs brute-force).
@@ -1608,6 +1628,125 @@ class IResourceStore(ABC):
             stream = _io.BytesIO(raw) if isinstance(raw, (bytes, bytearray)) else raw
             self.save(info, stream)
 
+    # -- Bulk read (#434) -------------------------------------------------
+    #
+    # ``dump_all_revisions`` below is an *export* primitive: it pulls every
+    # revision of every resource. A read-modify-write fan-out needs the
+    # opposite shape — the *current* revision only, for a named set of
+    # resources, bounded by how much memory the caller can spare. That is
+    # what ``read_many`` is for.
+
+    #: How a store signals "this payload is gone". Backends disagree
+    #: (``KeyError`` for the keyed stores, ``FileNotFoundError`` for the
+    #: filesystem one) and a bulk read has to treat them alike: a row can be
+    #: deleted between being selected and being read, and one dead row must
+    #: not take the whole batch down. See :meth:`read_many`.
+    MISSING_PAYLOAD: "tuple[type[BaseException], ...]" = (KeyError, FileNotFoundError)
+
+    def payload_sizes(
+        self, items: "Sequence[tuple[str, str, str | None]]"
+    ) -> "list[int] | None":
+        """Byte size of each item's payload, *without* transferring it.
+
+        Returns ``None`` when the backend cannot answer cheaply, which makes
+        :meth:`read_many` fall back to measuring payloads as it reads them.
+
+        Size is deliberately **derived, never stored**. A ``size`` field on
+        :class:`RevisionInfo` would need a backfill, and every revision
+        written before it existed would read as ``UNSET`` — a budget that
+        silently mis-packs exactly the oldest data. ``stat`` /
+        ``octet_length`` / ``head_object`` cost a little time and are always
+        right; a missing column costs correctness and says nothing.
+        """
+        return None
+
+    def read_payloads(
+        self, items: "Sequence[tuple[str, str, str | None]]"
+    ) -> "dict[str, bytes]":
+        """Fetch every item's raw payload, keyed by ``resource_id``.
+
+        *items* holds ``(resource_id, revision_id, schema_version)`` triples,
+        at most one per ``resource_id``. The default reads them one by one;
+        backends with concurrent or set-based fetches override it.
+
+        Items whose payload has gone missing are **omitted** rather than
+        raised — see :attr:`MISSING_PAYLOAD`.
+        """
+        out: dict[str, bytes] = {}
+        for resource_id, revision_id, schema_version in items:
+            try:
+                with self.get_data_bytes(
+                    resource_id, revision_id, schema_version
+                ) as fh:
+                    out[resource_id] = fh.read()
+            except self.MISSING_PAYLOAD:
+                continue
+        return out
+
+    def read_many(
+        self,
+        items: "Sequence[tuple[str, str, str | None]]",
+        *,
+        max_bytes: int,
+    ) -> "tuple[dict[str, bytes], int]":
+        """Read a prefix of *items* that fits in *max_bytes*.
+
+        Returns ``(payloads_by_resource_id, consumed)`` where *consumed* is
+        how many leading entries of *items* were read, so a caller drains the
+        set with ``items = items[consumed:]``.
+
+        The budget is in **bytes rather than rows** because row size varies by
+        orders of magnitude between models — a batch size tuned for a flat
+        derived table will exhaust memory on documents carrying their whole
+        extracted text, and vice versa.
+
+        **At least one entry is always consumed**, even if it alone exceeds
+        *max_bytes*. A row bigger than the budget must still make progress;
+        refusing it would leave the caller asking for the same prefix forever.
+
+        When :meth:`payload_sizes` cannot size cheaply the fallback measures
+        payloads as it reads them, so it may overshoot the budget by at most
+        one entry — the one that crossed the line has already been fetched.
+
+        Entries whose payload vanished between selection and read are counted
+        as consumed but absent from the returned mapping; a long fan-out has
+        to survive a row being deleted underneath it.
+        """
+        items = list(items)
+        if not items:
+            return {}, 0
+
+        sizes = self.payload_sizes(items)
+        if sizes is not None:
+            total = 0
+            consumed = 0
+            for size in sizes:
+                if consumed and total + size > max_bytes:
+                    break
+                total += size
+                consumed += 1
+            return self.read_payloads(items[:consumed]), consumed
+
+        # No cheap size probe: read until the running total reaches the
+        # budget. Bounded overshoot of one entry — see the docstring.
+        out: dict[str, bytes] = {}
+        total = 0
+        consumed = 0
+        for resource_id, revision_id, schema_version in items:
+            consumed += 1
+            try:
+                with self.get_data_bytes(
+                    resource_id, revision_id, schema_version
+                ) as fh:
+                    raw = fh.read()
+            except self.MISSING_PAYLOAD:
+                continue
+            out[resource_id] = raw
+            total += len(raw)
+            if total >= max_bytes:
+                break
+        return out, consumed
+
     def dump_all_revisions(
         self, *, resource_ids: "frozenset[str] | None" = None
     ) -> "dict[str, list[tuple[RevisionInfo, bytes]]] | None":
@@ -2062,6 +2201,33 @@ class IStorage(ABC):
 
         Implementations should delegate to the underlying resource
         store's :meth:`IResourceStore.save_many`.
+        """
+
+    @abstractmethod
+    def read_metas_bulk(
+        self, resource_ids: "Sequence[str]"
+    ) -> "dict[str, ResourceMeta]":
+        """Bulk read resource metadata (#434).
+
+        The read-side counterpart of :meth:`save_metas_bulk`; implementations
+        should delegate to :meth:`IMetaStore.get_many`. Ids with no row are
+        omitted rather than raising — a bulk caller needs to see which members
+        of its set have gone.
+        """
+
+    @abstractmethod
+    def read_revisions_bulk(
+        self,
+        items: "Sequence[tuple[str, str, str | None]]",
+        *,
+        max_bytes: int,
+    ) -> "tuple[dict[str, bytes], int]":
+        """Bulk read revision payloads under a memory budget (#434).
+
+        The read-side counterpart of :meth:`save_revisions_bulk`; implementations
+        should delegate to :meth:`IResourceStore.read_many`, whose docstring
+        carries the budget contract — bytes rather than rows, at least one row
+        always consumed, missing rows omitted.
         """
 
 

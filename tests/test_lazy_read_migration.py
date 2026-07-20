@@ -39,9 +39,11 @@ def _write_v1(tmp_path) -> str:
     app = FastAPI()
     sp.add_model(Schema(ItemV1, "v1"), name="item")
     sp.apply(app)
-    return TestClient(app).post("/item", json={"name": "widget", "qty": 7}).json()[
-        "resource_id"
-    ]
+    return (
+        TestClient(app)
+        .post("/item", json={"name": "widget", "qty": 7})
+        .json()["resource_id"]
+    )
 
 
 def _reader_v2(tmp_path):
@@ -66,9 +68,9 @@ def test_lazy_read_migration_applies_registered_step(tmp_path, caplog):
     # honest: storage is untouched, revision_info still reports the stored version
     assert results[0].info.schema_version == "v1"
     # the "looks migrated but isn't persisted" gap is surfaced
-    assert any(
-        "migration on read" in r.getMessage() for r in caplog.records
-    ), [r.getMessage() for r in caplog.records]
+    assert any("migration on read" in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records
+    ]
 
 
 def test_lazy_read_migration_single_get(tmp_path):

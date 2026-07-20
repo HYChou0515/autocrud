@@ -246,7 +246,9 @@ def test_int_pg_e2e_embedding_with_str_query() -> None:
 
     try:
         mgr.create(Doc(title="hello-row", summary=Embedding(content="hello world")))
-        mgr.create(Doc(title="orthogonal-row", summary=Embedding(content="orthogonal text")))
+        mgr.create(
+            Doc(title="orthogonal-row", summary=Embedding(content="orthogonal text"))
+        )
 
         # Query via str, runs through encoder, dispatched to pgvector SQL
         q = (QB["summary"].cosine("near_query") < 0.3).build()
