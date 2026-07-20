@@ -1616,6 +1616,13 @@ class IResourceStore(ABC):
     # resources, bounded by how much memory the caller can spare. That is
     # what ``read_many`` is for.
 
+    #: How a store signals "this payload is gone". Backends disagree
+    #: (``KeyError`` for the keyed stores, ``FileNotFoundError`` for the
+    #: filesystem one) and a bulk read has to treat them alike: a row can be
+    #: deleted between being selected and being read, and one dead row must
+    #: not take the whole batch down. See :meth:`read_many`.
+    MISSING_PAYLOAD: "tuple[type[BaseException], ...]" = (KeyError, FileNotFoundError)
+
     def payload_sizes(
         self, items: "Sequence[tuple[str, str, str | None]]"
     ) -> "list[int] | None":
@@ -1641,11 +1648,19 @@ class IResourceStore(ABC):
         *items* holds ``(resource_id, revision_id, schema_version)`` triples,
         at most one per ``resource_id``. The default reads them one by one;
         backends with concurrent or set-based fetches override it.
+
+        Items whose payload has gone missing are **omitted** rather than
+        raised — see :attr:`MISSING_PAYLOAD`.
         """
         out: dict[str, bytes] = {}
         for resource_id, revision_id, schema_version in items:
-            with self.get_data_bytes(resource_id, revision_id, schema_version) as fh:
-                out[resource_id] = fh.read()
+            try:
+                with self.get_data_bytes(
+                    resource_id, revision_id, schema_version
+                ) as fh:
+                    out[resource_id] = fh.read()
+            except self.MISSING_PAYLOAD:
+                continue
         return out
 
     def read_many(
@@ -1672,6 +1687,10 @@ class IResourceStore(ABC):
         When :meth:`payload_sizes` cannot size cheaply the fallback measures
         payloads as it reads them, so it may overshoot the budget by at most
         one entry — the one that crossed the line has already been fetched.
+
+        Entries whose payload vanished between selection and read are counted
+        as consumed but absent from the returned mapping; a long fan-out has
+        to survive a row being deleted underneath it.
         """
         items = list(items)
         if not items:
@@ -1694,11 +1713,16 @@ class IResourceStore(ABC):
         total = 0
         consumed = 0
         for resource_id, revision_id, schema_version in items:
-            with self.get_data_bytes(resource_id, revision_id, schema_version) as fh:
-                raw = fh.read()
+            consumed += 1
+            try:
+                with self.get_data_bytes(
+                    resource_id, revision_id, schema_version
+                ) as fh:
+                    raw = fh.read()
+            except self.MISSING_PAYLOAD:
+                continue
             out[resource_id] = raw
             total += len(raw)
-            consumed += 1
             if total >= max_bytes:
                 break
         return out, consumed

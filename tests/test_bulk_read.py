@@ -152,6 +152,22 @@ def test_read_many_without_a_size_probe_overshoots_by_at_most_one_row():
     assert set(data) == {"a", "b", "c"}
 
 
+def test_read_many_skips_rows_that_vanished_since_selection(store):
+    """A fan-out selects rows, then reads them — a row can die in between.
+
+    The read must not take the whole batch down with it: the surviving rows
+    are returned, the dead one is simply absent, and the caller (which is
+    collecting per-row failures anyway) decides what that means.
+    """
+    keys = _seed(store, {"a": 10, "gone": 10, "c": 10})
+    store.purge_resource("gone")
+
+    data, consumed = store.read_many(keys, max_bytes=10_000)
+
+    assert consumed == 3  # the whole prefix was accounted for
+    assert set(data) == {"a", "c"}
+
+
 def test_read_many_without_a_size_probe_still_makes_progress():
     store = _UnsizeableStore()
     keys = _seed(store, {"huge": 5_000})

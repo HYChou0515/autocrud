@@ -111,11 +111,18 @@ class MemoryResourceStore(IResourceStore):
     def payload_sizes(
         self, items: "Sequence[tuple[ResourceID, RevisionID, SchemaVersion | None]]"
     ) -> list[int]:
-        """Sizes are free here — every payload is already in memory (#434)."""
-        return [
-            len(self._raw_data_store[self._store[rid][rev][sv]])
-            for rid, rev, sv in items
-        ]
+        """Sizes are free here — every payload is already in memory (#434).
+
+        A row that has gone missing costs nothing to skip, so it sizes as 0
+        and ``read_payloads`` simply omits it.
+        """
+        sizes: list[int] = []
+        for rid, rev, sv in items:
+            try:
+                sizes.append(len(self._raw_data_store[self._store[rid][rev][sv]]))
+            except KeyError:
+                sizes.append(0)
+        return sizes
 
     def purge_resource(self, resource_id: str) -> None:
         """Hard-delete all revision data for a resource."""
@@ -374,7 +381,12 @@ class DiskResourceStore(IResourceStore):
                 self._resolve_symdir(resource_id, revision_id, schema_version) / "data"
             )
             # Same ESTALE exposure as get_data_bytes — see #352.
-            sizes.append(retry_on_estale(data_path.stat).st_size)
+            try:
+                sizes.append(retry_on_estale(data_path.stat).st_size)
+            except FileNotFoundError:
+                # Deleted since selection — sizes as 0 and read_payloads omits
+                # it, so one dead row cannot fail the whole batch.
+                sizes.append(0)
         return sizes
 
     def save(self, info: RevisionInfo, data: DataIO) -> None:
