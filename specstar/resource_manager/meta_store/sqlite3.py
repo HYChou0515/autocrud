@@ -487,9 +487,9 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         # ResourceManager into Sum+Count and never reaches a store). The RM's
         # dispatch predicate only sends eligible specs, so the assert is a
         # defensive guard, not control flow.
-        assert all(a.op in ("count", "sum", "min", "max") for a in aggregates), (
-            "SqliteMetaStore.aggregate_by supports count/sum/min/max"
-        )
+        assert all(
+            a.op in ("count", "sum", "min", "max", "count_distinct") for a in aggregates
+        ), "SqliteMetaStore.aggregate_by supports count/sum/min/max/count_distinct"
         if by.source == "meta":
             key_expr = by.name  # a real resource_meta column
         else:
@@ -536,6 +536,8 @@ class SqliteMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             val = ref.name
         else:
             val = f"json_extract(indexed_data, '$.\"{ref.name}\"')"
+        if a.op == "count_distinct":
+            return f"COUNT(DISTINCT {val})"
         return f"{a.op.upper()}({val})"
 
     def _scalar_element_sql(

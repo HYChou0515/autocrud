@@ -2726,6 +2726,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             Aggregate,
             Avg,
             Count,
+            CountDistinct,
             ForeignAggregate,
             GroupRow,
             Max,
@@ -2779,7 +2780,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         #    its declared source (foreign fields are checked by the foreign rm).
         #    Reuse the same on_unindexed_query policy as filter conditions.
         agg_field_specs: list[_Field] = [
-            a.field for a in self_aggs.values() if isinstance(a, (Sum, Min, Max, Avg))
+            a.field
+            for a in self_aggs.values()
+            if isinstance(a, (Sum, Min, Max, Avg, CountDistinct))
         ]
         bad = [
             f.name for f in (by, *agg_field_specs) if not self._is_field_queryable(f)
@@ -2805,6 +2808,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         def _init(agg: Aggregate):
             if isinstance(agg, Count):
                 return 0
+            if isinstance(agg, CountDistinct):
+                return set()
             if isinstance(agg, Avg):
                 return [0.0, 0]  # [running_sum, n]
             return None  # Sum / Min / Max
@@ -2813,6 +2818,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             if isinstance(agg, Count):
                 return state + 1
             if val is None:
+                return state
+            if isinstance(agg, CountDistinct):
+                state.add(val)  # distinct non-None values; None already skipped above
                 return state
             if isinstance(agg, (Sum, Avg)) and not isinstance(val, (int, float)):
                 raise TypeError(
@@ -2833,6 +2841,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         def _finalize(agg: Aggregate, state):
             if isinstance(agg, Avg):
                 return state[0] / state[1] if state[1] > 0 else None
+            if isinstance(agg, CountDistinct):
+                # reduce path accumulates a set → its size; the pushed path
+                # (COUNT(DISTINCT …)) already delivered the int via to_state.
+                return len(state) if isinstance(state, set) else int(state)
             return state
 
         # 3) Reduce self-aggregates.
@@ -3098,12 +3110,31 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         **data-source** field with a declared numeric (``int``/``float``) type.
         Everything else — ``str``/undeclared fields, meta columns — returns
         ``None``."""
-        from specstar.aggregates import Avg, Count, Max, Min, Sum
+        from specstar.aggregates import Avg, Count, CountDistinct, Max, Min, Sum
         from specstar.query_types import AggKeyRef, AggSpec
 
         if isinstance(agg, Count):
             return (
                 [AggSpec(result_name=result_name, op="count")],
+                lambda st, _n=result_name: int(st[_n]),
+            )
+
+        # CountDistinct pushes for any DATA-source field (distinctness needs no
+        # numeric type — unlike Sum/Min/Max); a meta-source field keeps the
+        # Python reduction. The store returns the int directly; ``_finalize``
+        # takes it as-is (it only ``len()``s the reduce path's set).
+        if isinstance(agg, CountDistinct):
+            field = agg.field
+            if field.source != "data":
+                return None
+            return (
+                [
+                    AggSpec(
+                        result_name=result_name,
+                        op="count_distinct",
+                        field=AggKeyRef(source="data", name=field.name),
+                    )
+                ],
                 lambda st, _n=result_name: int(st[_n]),
             )
 

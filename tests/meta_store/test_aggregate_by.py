@@ -14,7 +14,7 @@ covered by ``tests/test_exp_aggregate_by.py`` (memory) until they push down too.
 import msgspec
 import pytest
 
-from specstar.aggregates import Count
+from specstar.aggregates import Count, CountDistinct
 from specstar.errors import SpecStarWarning
 from specstar.query import QB
 from specstar.resource_manager.core import ResourceManager, SimpleStorage
@@ -538,6 +538,58 @@ class TestAggregateByOrderAndPaginate:
             mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, offset=-1)
         with pytest.raises(ValueError, match="non-negative"):
             mgr.exp_aggregate_by(QB["bucket"], {"n": Count()}, limit=-1)
+
+
+class Measurement(msgspec.Struct):
+    period: str
+    value: int
+
+
+@pytest.mark.parametrize("meta_store_type", ALL_META_STORE_TYPES)
+class TestAggregateByCountDistinctParity:
+    """``CountDistinct(field)`` — distinct values per group — identical across
+    backends (pushed COUNT(DISTINCT ...) vs the Python reference reduction)."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, meta_store_type, my_tmpdir):
+        self._meta_store_type = meta_store_type
+        self._tmpdir = my_tmpdir
+        yield
+
+    def _mgr(self):
+        meta_store = get_meta_store(self._meta_store_type, tmpdir=self._tmpdir)
+        storage = SimpleStorage(
+            meta_store=meta_store,
+            resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+        )
+        return ResourceManager(
+            Measurement,
+            storage=storage,
+            name="measurement",
+            default_user="t",
+            indexed_fields=[
+                IndexableField(field_path="period", field_type=str),
+                IndexableField(field_path="value", field_type=int),
+            ],
+        )
+
+    def _seed(self, mgr, rows):
+        for period, value in rows:
+            mgr.create(Measurement(period=period, value=value))
+
+    def test_counts_distinct_values_per_group(self):
+        mgr = self._mgr()
+        # Q3: values 1,1,2 → 2 distinct; Q4: 5,5 → 1 distinct
+        self._seed(mgr, [("Q3", 1), ("Q3", 1), ("Q3", 2), ("Q4", 5), ("Q4", 5)])
+        rows = mgr.exp_aggregate_by(QB["period"], {"n": CountDistinct(QB["value"])})
+        assert {r.key: r.n for r in rows} == {"Q3": 2, "Q4": 1}
+
+    def test_count_distinct_is_the_contradiction_primitive(self):
+        # The motivating use case: a group with >1 distinct value is a conflict.
+        mgr = self._mgr()
+        self._seed(mgr, [("Q3", 1), ("Q3", 2), ("Q4", 5), ("Q4", 5)])
+        rows = mgr.exp_aggregate_by(QB["period"], {"n": CountDistinct(QB["value"])})
+        assert {r.key for r in rows if r.n > 1} == {"Q3"}
 
 
 @pytest.fixture

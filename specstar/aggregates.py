@@ -38,13 +38,15 @@ class _FieldAggregate(Aggregate):
         if not isinstance(field, Field):
             raise TypeError(
                 f"{type(self).__name__} requires a QB Field "
-                f"(e.g. QB[\"size\"] or QB.created_time()); "
+                f'(e.g. QB["size"] or QB.created_time()); '
                 f"got {type(field).__name__}."
             )
         self.field = field
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.field.name!r}, source={self.field.source!r})"
+        return (
+            f"{type(self).__name__}({self.field.name!r}, source={self.field.source!r})"
+        )
 
 
 class Sum(_FieldAggregate):
@@ -83,6 +85,19 @@ class Avg(_FieldAggregate):
     __slots__ = ()
 
 
+class CountDistinct(_FieldAggregate):
+    """Count the DISTINCT non-``None`` values of a field across the group —
+    SQL ``COUNT(DISTINCT f)``. Unlike ``Sum``/``Min``/``Max``/``Avg`` the field
+    need not be numeric (distinctness is defined for any type).
+
+    Returns an ``int`` (``0`` for a group whose values are all ``None``). This is
+    the natural primitive for disagreement detection: group a fact table by a key
+    and a group with ``CountDistinct(value) > 1`` holds conflicting values.
+    """
+
+    __slots__ = ()
+
+
 class ForeignAggregate:
     """Aggregate over another resource's rows, linked back to this resource.
 
@@ -100,7 +115,7 @@ class ForeignAggregate:
         if not isinstance(link, Field):
             raise TypeError(
                 f"ForeignAggregate.link must be a QB Field "
-                f"(e.g. QB[\"source_doc_id\"]); got {type(link).__name__}."
+                f'(e.g. QB["source_doc_id"]); got {type(link).__name__}.'
             )
         if not isinstance(aggregate, Aggregate):
             raise TypeError(
@@ -129,9 +144,7 @@ class GroupRow:
 
     __slots__ = ("key", "resource", "_aggregates")
 
-    def __init__(
-        self, key: Any, *, resource: Any = None, **aggregates: Any
-    ) -> None:
+    def __init__(self, key: Any, *, resource: Any = None, **aggregates: Any) -> None:
         self.key = key
         self.resource = resource
         self._aggregates = aggregates
@@ -155,6 +168,7 @@ __all__ = [
     "Aggregate",
     "Avg",
     "Count",
+    "CountDistinct",
     "ForeignAggregate",
     "GroupRow",
     "Max",

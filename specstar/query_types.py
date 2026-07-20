@@ -329,7 +329,8 @@ class AggSpec(Struct, frozen=True):
 
     ``op`` is the reducer and ``result_name`` is the caller's label (echoed
     back per group). ``field`` is unused for ``count`` and required for the
-    value reducers (``sum``/``min``/``max``) — ``avg`` never reaches a store,
+    value reducers (``sum``/``min``/``max``) and ``count_distinct`` (which counts
+    the group's distinct non-null field values) — ``avg`` never reaches a store,
     the ResourceManager decomposes it into pushed ``sum`` + ``count`` and
     divides in Python (byte-parity with the reference path).
 
@@ -342,7 +343,7 @@ class AggSpec(Struct, frozen=True):
     """
 
     result_name: str
-    op: Literal["count", "sum", "min", "max"]
+    op: Literal["count", "sum", "min", "max", "count_distinct"]
     field: AggKeyRef | None = None
     value_type: Literal["numeric", "datetime"] | None = None
 

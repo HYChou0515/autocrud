@@ -1425,9 +1425,9 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         # ResourceManager into Sum+Count and never reaches a store). The RM's
         # dispatch predicate only sends eligible specs, so the assert is a
         # defensive guard, not control flow.
-        assert all(a.op in ("count", "sum", "min", "max") for a in aggregates), (
-            "PostgresMetaStore.aggregate_by supports count/sum/min/max"
-        )
+        assert all(
+            a.op in ("count", "sum", "min", "max", "count_distinct") for a in aggregates
+        ), "PostgresMetaStore.aggregate_by supports count/sum/min/max/count_distinct"
         if by.source == "meta":
             key_expr = by.name  # a real column
         else:
@@ -1478,6 +1478,15 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                 else f"(indexed_data->>'{ref.name}')"
             )
             return f"COUNT({base})"
+        if a.op == "count_distinct":
+            # Distinct count over the raw value (JSONB text / meta column) — no
+            # numeric cast, so it works for any type.
+            base = (
+                f'"{ref.name}"'
+                if ref.source == "meta"
+                else f"(indexed_data->>'{ref.name}')"
+            )
+            return f"COUNT(DISTINCT {base})"
         if a.value_type == "datetime":
             # Reduce a TIMESTAMP meta column and return an absolute Unix epoch:
             # interpret the naive column AS UTC (writes go through a UTC session —

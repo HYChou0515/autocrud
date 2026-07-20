@@ -14,7 +14,15 @@ Python path instead of pushing an incorrect result.
 import msgspec
 import pytest
 
-from specstar.aggregates import Avg, Count, ForeignAggregate, Max, Min, Sum
+from specstar.aggregates import (
+    Avg,
+    Count,
+    CountDistinct,
+    ForeignAggregate,
+    Max,
+    Min,
+    Sum,
+)
 from specstar.query import QB
 from specstar.resource_manager.core import ResourceManager, SimpleStorage
 from specstar.resource_manager.meta_store.simple import MemoryMetaStore
@@ -116,6 +124,18 @@ def test_avg_push_down_returns_float_via_sum_over_count():
     assert result == {"a": 7.5, "b": 2.0}
     assert all(type(v) is float for v in result.values())
     assert spy.walked is False, "Avg did not push down — walked iter_all"
+
+
+def test_count_distinct_pushes_down_over_a_data_field():
+    mgr = _sqlite_mgr()
+    # a: sizes {10, 10, 5} → 2 distinct; b: {2} → 1 distinct
+    _seed(mgr, [("a", 10, 1.0), ("a", 10, 1.0), ("a", 5, 1.0), ("b", 2, 1.0)])
+    with _IterSpy(mgr) as spy:
+        rows = mgr.exp_aggregate_by(QB["bucket"], {"n": CountDistinct(QB["size"])})
+    result = {r.key: r.n for r in rows}
+    assert result == {"a": 2, "b": 1}
+    assert all(type(v) is int for v in result.values())
+    assert spy.walked is False, "CountDistinct did not push down — walked iter_all"
 
 
 def test_datetime_max_over_meta_column_pushes_down_as_aware_utc():
