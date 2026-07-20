@@ -2,7 +2,7 @@ import datetime as dt
 import functools
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Generator, Iterable, MutableMapping
+from collections.abc import Callable, Generator, Iterable, MutableMapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Flag, StrEnum
@@ -1607,6 +1607,101 @@ class IResourceStore(ABC):
         for info, raw in items:
             stream = _io.BytesIO(raw) if isinstance(raw, (bytes, bytearray)) else raw
             self.save(info, stream)
+
+    # -- Bulk read (#434) -------------------------------------------------
+    #
+    # ``dump_all_revisions`` below is an *export* primitive: it pulls every
+    # revision of every resource. A read-modify-write fan-out needs the
+    # opposite shape — the *current* revision only, for a named set of
+    # resources, bounded by how much memory the caller can spare. That is
+    # what ``read_many`` is for.
+
+    def payload_sizes(
+        self, items: "Sequence[tuple[str, str, str | None]]"
+    ) -> "list[int] | None":
+        """Byte size of each item's payload, *without* transferring it.
+
+        Returns ``None`` when the backend cannot answer cheaply, which makes
+        :meth:`read_many` fall back to measuring payloads as it reads them.
+
+        Size is deliberately **derived, never stored**. A ``size`` field on
+        :class:`RevisionInfo` would need a backfill, and every revision
+        written before it existed would read as ``UNSET`` — a budget that
+        silently mis-packs exactly the oldest data. ``stat`` /
+        ``octet_length`` / ``head_object`` cost a little time and are always
+        right; a missing column costs correctness and says nothing.
+        """
+        return None
+
+    def read_payloads(
+        self, items: "Sequence[tuple[str, str, str | None]]"
+    ) -> "dict[str, bytes]":
+        """Fetch every item's raw payload, keyed by ``resource_id``.
+
+        *items* holds ``(resource_id, revision_id, schema_version)`` triples,
+        at most one per ``resource_id``. The default reads them one by one;
+        backends with concurrent or set-based fetches override it.
+        """
+        out: dict[str, bytes] = {}
+        for resource_id, revision_id, schema_version in items:
+            with self.get_data_bytes(resource_id, revision_id, schema_version) as fh:
+                out[resource_id] = fh.read()
+        return out
+
+    def read_many(
+        self,
+        items: "Sequence[tuple[str, str, str | None]]",
+        *,
+        max_bytes: int,
+    ) -> "tuple[dict[str, bytes], int]":
+        """Read a prefix of *items* that fits in *max_bytes*.
+
+        Returns ``(payloads_by_resource_id, consumed)`` where *consumed* is
+        how many leading entries of *items* were read, so a caller drains the
+        set with ``items = items[consumed:]``.
+
+        The budget is in **bytes rather than rows** because row size varies by
+        orders of magnitude between models — a batch size tuned for a flat
+        derived table will exhaust memory on documents carrying their whole
+        extracted text, and vice versa.
+
+        **At least one entry is always consumed**, even if it alone exceeds
+        *max_bytes*. A row bigger than the budget must still make progress;
+        refusing it would leave the caller asking for the same prefix forever.
+
+        When :meth:`payload_sizes` cannot size cheaply the fallback measures
+        payloads as it reads them, so it may overshoot the budget by at most
+        one entry — the one that crossed the line has already been fetched.
+        """
+        items = list(items)
+        if not items:
+            return {}, 0
+
+        sizes = self.payload_sizes(items)
+        if sizes is not None:
+            total = 0
+            consumed = 0
+            for size in sizes:
+                if consumed and total + size > max_bytes:
+                    break
+                total += size
+                consumed += 1
+            return self.read_payloads(items[:consumed]), consumed
+
+        # No cheap size probe: read until the running total reaches the
+        # budget. Bounded overshoot of one entry — see the docstring.
+        out: dict[str, bytes] = {}
+        total = 0
+        consumed = 0
+        for resource_id, revision_id, schema_version in items:
+            with self.get_data_bytes(resource_id, revision_id, schema_version) as fh:
+                raw = fh.read()
+            out[resource_id] = raw
+            total += len(raw)
+            consumed += 1
+            if total >= max_bytes:
+                break
+        return out, consumed
 
     def dump_all_revisions(
         self, *, resource_ids: "frozenset[str] | None" = None
