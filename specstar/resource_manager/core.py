@@ -455,6 +455,24 @@ class SimpleStorage(IStorage):
             return
         self._resource_store.save_many(items)
 
+    def read_revisions_bulk(
+        self,
+        items: "Sequence[tuple[str, str, str | None]]",
+        *,
+        max_bytes: int,
+    ) -> "tuple[dict[str, bytes], int]":
+        """Bulk-read revision payloads under a memory budget (#434).
+
+        The read-side counterpart of :meth:`save_revisions_bulk`. Returns
+        ``(payloads_by_resource_id, consumed)``; the caller drains a large set
+        with ``items = items[consumed:]``. See
+        :meth:`IResourceStore.read_many` for the budget contract — bytes not
+        rows, at least one row always consumed, missing rows omitted.
+        """
+        if not items:
+            return {}, 0
+        return self._resource_store.read_many(items, max_bytes=max_bytes)
+
     def collect_orphans(self) -> int:
         """Reclaim resource/blob data left by interrupted ``create()`` calls.
 

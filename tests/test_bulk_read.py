@@ -124,6 +124,46 @@ def test_read_many_with_no_items_reads_nothing(store):
 
 
 # ---------------------------------------------------------------------------
+# SimpleStorage passthrough
+# ---------------------------------------------------------------------------
+
+
+def test_storage_exposes_the_budgeted_read(tmp_path):
+    """`read_revisions_bulk` is the read-side twin of `save_revisions_bulk`.
+
+    Storage is the seam every ResourceManager talks to, so the budget has to
+    survive the trip through it rather than only existing on the store.
+    """
+    from msgspec import Struct
+
+    from specstar.crud.core import SpecStar
+
+    class Item(Struct):
+        name: str
+
+    spec = SpecStar()
+    spec.configure(default_user="tester", default_now=lambda: _NOW)
+    spec.add_model(Item)
+    rm = spec.get_resource_manager(Item)
+
+    ids = [rm.create(Item(name="n" * 50)).resource_id for _ in range(3)]
+    keys = [
+        (rid, rm.get_meta(rid).current_revision_id, rm.get_meta(rid).schema_version)
+        for rid in ids
+    ]
+
+    everything, consumed = rm.storage.read_revisions_bulk(keys, max_bytes=1_000_000)
+    assert consumed == 3
+    assert set(everything) == set(ids)
+
+    # A budget below one row's size still makes progress — exactly one row.
+    _, consumed = rm.storage.read_revisions_bulk(keys, max_bytes=1)
+    assert consumed == 1
+
+    assert rm.storage.read_revisions_bulk([], max_bytes=1_000) == ({}, 0)
+
+
+# ---------------------------------------------------------------------------
 # Backends that cannot size a payload without transferring it
 # ---------------------------------------------------------------------------
 
