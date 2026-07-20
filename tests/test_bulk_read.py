@@ -124,6 +124,55 @@ def test_read_many_with_no_items_reads_nothing(store):
 
 
 # ---------------------------------------------------------------------------
+# Meta store bulk read
+# ---------------------------------------------------------------------------
+
+
+def _meta_spec():
+    from msgspec import Struct
+
+    from specstar.crud.core import SpecStar
+
+    class Item(Struct):
+        name: str
+
+    spec = SpecStar()
+    spec.configure(default_user="tester", default_now=lambda: _NOW)
+    spec.add_model(Item)
+    return spec, Item
+
+
+def test_meta_store_get_many_returns_what_it_finds():
+    spec, Item = _meta_spec()
+    rm = spec.get_resource_manager(Item)
+    ids = [rm.create(Item(name=f"n{i}")).resource_id for i in range(3)]
+
+    found = rm.storage.meta_store.get_many(ids)
+
+    assert set(found) == set(ids)
+    assert {m.resource_id for m in found.values()} == set(ids)
+
+
+def test_meta_store_get_many_omits_unknown_ids():
+    """A bulk caller is reconciling a set — it needs to see which members are
+    gone, not to be stopped by the first missing one."""
+    spec, Item = _meta_spec()
+    rm = spec.get_resource_manager(Item)
+    known = rm.create(Item(name="here")).resource_id
+
+    found = rm.storage.meta_store.get_many([known, "does-not-exist"])
+
+    assert set(found) == {known}
+
+
+def test_meta_store_get_many_with_no_ids():
+    spec, Item = _meta_spec()
+    rm = spec.get_resource_manager(Item)
+
+    assert rm.storage.meta_store.get_many([]) == {}
+
+
+# ---------------------------------------------------------------------------
 # SimpleStorage passthrough
 # ---------------------------------------------------------------------------
 

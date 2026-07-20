@@ -144,3 +144,60 @@ def test_read_many_omits_rows_that_are_not_there(store):
 
 def test_read_many_with_no_items_touches_the_database_not_at_all(store):
     assert store.read_many([], max_bytes=1_000) == ({}, 0)
+
+
+# ---------------------------------------------------------------------------
+# Meta store bulk read — one ANY(...) instead of N queries
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def meta_store():
+    from specstar.resource_manager.meta_store.postgres import PostgresMetaStore
+
+    table = f"t{uuid.uuid4().hex[:12]}_resource_meta"
+    st = PostgresMetaStore(pg_dsn=PG_DSN, table_name=table)
+    yield st
+    conn = psycopg2.connect(PG_DSN)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f'DROP TABLE IF EXISTS "{table}"')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _meta(resource_id: str):
+    from specstar.types import ResourceMeta
+
+    return ResourceMeta(
+        resource_id=resource_id,
+        current_revision_id="r1",
+        total_revision_count=1,
+        created_time=_NOW,
+        updated_time=_NOW,
+        created_by="tester",
+        updated_by="tester",
+        is_deleted=False,
+        schema_version=None,
+    )
+
+
+def test_meta_get_many_reads_the_whole_set(meta_store):
+    for rid in ("a", "b", "c"):
+        meta_store[rid] = _meta(rid)
+
+    found = meta_store.get_many(["a", "b", "c"])
+
+    assert set(found) == {"a", "b", "c"}
+    assert found["b"].resource_id == "b"
+
+
+def test_meta_get_many_omits_unknown_ids(meta_store):
+    meta_store["a"] = _meta("a")
+
+    assert set(meta_store.get_many(["a", "ghost"])) == {"a"}
+
+
+def test_meta_get_many_with_no_ids_issues_no_query(meta_store):
+    assert meta_store.get_many([]) == {}

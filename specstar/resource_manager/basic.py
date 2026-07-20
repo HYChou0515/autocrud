@@ -858,6 +858,26 @@ class IMetaStore(MutableMapping[str, ResourceMeta]):
         for m in metas:
             self[m.resource_id] = m
 
+    def get_many(self, pks: "Sequence[str]") -> "dict[str, ResourceMeta]":
+        """Optional bulk read — the read-side twin of :meth:`save_many` (#434).
+
+        A fan-out re-reads every row's meta right before writing it, both to
+        build the new revision and to notice a concurrent writer. Without a
+        bulk path that is one round-trip per row, which is exactly the cost
+        batching set out to remove.
+
+        Missing keys are **omitted** rather than raised: the caller is
+        reconciling a set and needs to see which members are gone, not to be
+        stopped by the first one.
+        """
+        out: dict[str, ResourceMeta] = {}
+        for pk in pks:
+            try:
+                out[pk] = self[pk]
+            except KeyError:
+                continue
+        return out
+
     @property
     def supports_native_vector_search(self) -> bool:
         """Whether this meta store can run vector searches natively (vs brute-force).
