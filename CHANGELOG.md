@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.13.0a2] — 2026-07-21
+
+
+### Added
+
+- patch_many — apply one patch to every row a query selects, batching the
+  reads and writes a per-row loop cannot (#434)
+- IResourceStore.read_many — bulk revision read under a byte budget, with
+  native size probes on Postgres (octet_length) and S3 (head_object)
+- IMetaStore.get_many — bulk meta read, one ANY(...) on Postgres
+
+### Fixed
+
+- A revision deleted between selection and read no longer fails a whole
+  bulk read batch
+
 ## [0.13.0a1] — 2026-07-20
 
 
