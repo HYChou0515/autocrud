@@ -2735,14 +2735,20 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         from specstar.query import Field as _Field
 
-        # 0) ``by`` must be a QB Field — no string-by-convention guessing.
-        if not isinstance(by, _Field):
+        # 0) ``by`` must be a QB Field, or a non-empty list/tuple of Fields for a
+        #    COMPOSITE group-by — no string-by-convention guessing. A composite
+        #    ``by`` yields a TUPLE group key (in field order); a single Field keeps
+        #    the scalar key (backward compatible).
+        by_fields = list(by) if isinstance(by, (list, tuple)) else [by]
+        if not by_fields or not all(isinstance(f, _Field) for f in by_fields):
             raise TypeError(
-                "exp_aggregate_by: ``by`` must be a QB Field "
-                '(e.g. QB["source_doc_id"] for indexed data or '
-                "QB.resource_id() / QB.created_by() for ResourceMeta); "
+                "exp_aggregate_by: ``by`` must be a QB Field, or a non-empty "
+                "list of QB Fields for a composite group-by "
+                '(e.g. QB["source_doc_id"], or [QB["metric"], QB["period"]]); '
                 f"got {type(by).__name__}."
             )
+        is_composite = len(by_fields) > 1
+        by = by_fields[0]  # single-field paths (per-row mode / push) use this
 
         # 0b) Parse the #412 group order + guard the page bounds up front. The
         #     negative-bound check MUST be here: on the pushed path a negative
@@ -2785,7 +2791,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             if isinstance(a, (Sum, Min, Max, Avg, CountDistinct))
         ]
         bad = [
-            f.name for f in (by, *agg_field_specs) if not self._is_field_queryable(f)
+            f.name
+            for f in (*by_fields, *agg_field_specs)
+            if not self._is_field_queryable(f)
         ]
         if bad:
             from specstar.types import OnUnindexedQuery, UnindexedQueryError
@@ -2855,7 +2863,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         #    bucket per key.
         groups: dict[object, dict[str, object]] = {}
         resource_by_key: dict[object, object] = {}
-        per_row_mode = by.name == "resource_id" and by.source == "meta"
+        per_row_mode = (
+            not is_composite and by.name == "resource_id" and by.source == "meta"
+        )
         # Set only when the store's engine did the group ORDER BY / LIMIT /
         # OFFSET (#412) — then step 6 returns ``out`` as-is instead of
         # re-ordering + re-slicing it (which would double-apply the offset).
@@ -2887,6 +2897,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             pushable = bool(
                 self_aggs
                 and not foreign_aggs
+                and not is_composite  # composite group-by: Python reduce (Phase 1)
                 and by.source in ("meta", "data")
                 and isinstance(ms, IMetaWithAgg)
             )
@@ -2951,7 +2962,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 }
             else:
                 for meta in self.iter_all(query):
-                    key = self._read_field(meta, by)
+                    key = (
+                        tuple(self._read_field(meta, f) for f in by_fields)
+                        if is_composite
+                        else self._read_field(meta, by)
+                    )
                     state = groups.get(key)
                     if state is None:
                         state = groups[key] = {

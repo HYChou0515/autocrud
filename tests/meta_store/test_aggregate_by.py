@@ -592,6 +592,71 @@ class TestAggregateByCountDistinctParity:
         assert {r.key for r in rows if r.n > 1} == {"Q3"}
 
 
+class Sale(msgspec.Struct):
+    region: str
+    period: str
+    amount: int
+
+
+@pytest.mark.parametrize("meta_store_type", ALL_META_STORE_TYPES)
+class TestAggregateByCompositeGroupByParity:
+    """Composite group-by (``by`` = a list of Fields → tuple key), identical
+    across backends."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, meta_store_type, my_tmpdir):
+        self._meta_store_type = meta_store_type
+        self._tmpdir = my_tmpdir
+        yield
+
+    def _mgr(self):
+        meta_store = get_meta_store(self._meta_store_type, tmpdir=self._tmpdir)
+        storage = SimpleStorage(
+            meta_store=meta_store,
+            resource_store=MemoryResourceStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+        )
+        return ResourceManager(
+            Sale,
+            storage=storage,
+            name="sale",
+            default_user="t",
+            indexed_fields=[
+                IndexableField(field_path="region", field_type=str),
+                IndexableField(field_path="period", field_type=str),
+                IndexableField(field_path="amount", field_type=int),
+            ],
+        )
+
+    def _seed(self, mgr, rows):
+        for region, period, amount in rows:
+            mgr.create(Sale(region=region, period=period, amount=amount))
+
+    def test_composite_key_is_a_tuple_in_field_order(self):
+        mgr = self._mgr()
+        self._seed(
+            mgr,
+            [("US", "Q3", 10), ("US", "Q3", 20), ("US", "Q4", 5), ("EU", "Q3", 7)],
+        )
+        rows = mgr.exp_aggregate_by([QB["region"], QB["period"]], {"n": Count()})
+        assert {r.key: r.n for r in rows} == {
+            ("US", "Q3"): 2,
+            ("US", "Q4"): 1,
+            ("EU", "Q3"): 1,
+        }
+
+    def test_composite_with_count_distinct(self):
+        mgr = self._mgr()
+        # (US, Q3): amounts 10,10,20 → 2 distinct
+        self._seed(
+            mgr,
+            [("US", "Q3", 10), ("US", "Q3", 10), ("US", "Q3", 20), ("EU", "Q3", 7)],
+        )
+        rows = mgr.exp_aggregate_by(
+            [QB["region"], QB["period"]], {"n": CountDistinct(QB["amount"])}
+        )
+        assert {r.key: r.n for r in rows} == {("US", "Q3"): 2, ("EU", "Q3"): 1}
+
+
 @pytest.fixture
 def my_tmpdir():
     import tempfile
