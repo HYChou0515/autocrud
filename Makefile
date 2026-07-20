@@ -31,6 +31,13 @@ help:
 	@echo "  clean        清理所有暫存和構建文件 (clean-dev + clean-docs)"
 	@echo "  clean-dev    清理開發暫存檔案"
 	@echo ""
+	@echo "釋出："
+	@echo "  changelog-preview  預覽尚未釋出的變更紀錄"
+	@echo "  release <step>     bump 版本 + 生成 CHANGELOG + commit"
+	@echo "                     step = alpha|beta|rc|final|patch|minor|major"
+	@echo "                     或 make release VERSION=X.Y.Z"
+	@echo "  release-publish    打 tag + build + 上傳 PyPI（不可逆）"
+	@echo ""
 	@echo "文檔工具："
 	@echo "  docs         構建 MkDocs HTML 文檔"
 	@echo "  serve        啟動本地文檔服務器（http://127.0.0.1:8000）"
@@ -158,30 +165,65 @@ changelog-preview:
 	uv run git-cliff --unreleased
 
 # 釋出第一步:bump 版本 → 生成 CHANGELOG 區段 → commit "bump vX.Y.Z"。
-# 用法:  make release patch        # 0.11.1 → 0.11.2
+# 用法:  make release alpha        # 0.13.0a1 → 0.13.0a2(0.12.3 → 0.13.0a1)
+#        make release beta         # 0.13.0a2 → 0.13.0b1
+#        make release rc           # 0.13.0b1 → 0.13.0rc1
+#        make release final        # 0.13.0rc1 → 0.13.0(結束預覽期)
+#        make release patch        # 0.11.1 → 0.11.2
 #        make release minor        # 0.11.1 → 0.12.0
 #        make release major        # 0.11.1 → 1.0.0
 #        make release VERSION=1.2.3 # 指定明確版本
-# 版本由 git-cliff 依語意化規則算出;之後接原本流程(打 tag → build → PyPI)。
-.PHONY: release patch minor major
-# patch/minor/major 是 release 的參數,被當成 no-op goal 消化掉
-patch minor major:
+#
+# 版本由 scripts/next_version.py 依 PEP 440 算出,**不是** git-cliff。
+# git-cliff 把 tag 當 SemVer 解析,而我們發的是 PEP 440(0.13.0a1,而非
+# 0.13.0-alpha.1),所以 v0.13.0a1 一被打上去,--bumped-version 就整個報
+# Semver error —— patch/minor/major 也一起靜默壞掉。版號算術因此留在
+# repo 內(有測試:tests/test_next_version.py),git-cliff 只負責它擅長的
+# 事:把 commit 變成 CHANGELOG 文字。
+#
+# 之後接原本流程(打 tag → build → PyPI)。
+.PHONY: release alpha beta rc final patch minor major
+# 這些是 release 的參數,被當成 no-op goal 消化掉
+alpha beta rc final patch minor major:
 	@:
 release:
 	@git diff --quiet && git diff --cached --quiet || { \
 		echo "工作區不乾淨,請先 commit 或 stash 再 release"; exit 1; }; \
-	bump="$(filter patch minor major,$(MAKECMDGOALS))"; \
+	step="$(filter alpha beta rc final patch minor major,$(MAKECMDGOALS))"; \
 	if [ -n "$(VERSION)" ]; then new="$(VERSION)"; \
-	elif [ -n "$$bump" ]; then \
-		new="$$(uv run git-cliff --bumped-version --bump $$bump 2>/dev/null | tail -1 | sed 's/^v//')"; \
-	else echo "用法: make release patch|minor|major  或  make release VERSION=X.Y.Z"; exit 1; fi; \
+	elif [ -n "$$step" ]; then \
+		cur="$$(sed -n 's/^__version__ = "\(.*\)"/\1/p' specstar/__init__.py)"; \
+		new="$$(uv run python scripts/next_version.py "$$cur" "$$step")" || exit 1; \
+	else echo "用法: make release alpha|beta|rc|final|patch|minor|major  或  make release VERSION=X.Y.Z"; exit 1; fi; \
 	[ -n "$$new" ] || { echo "無法決定版本"; exit 1; }; \
+	git rev-parse -q --verify "refs/tags/v$$new" >/dev/null && { \
+		echo "tag v$$new 已存在 —— 該版可能已發佈,PyPI 不接受重傳"; exit 1; }; \
 	echo "release → v$$new"; \
 	sed -i "s/^__version__ = .*/__version__ = \"$$new\"/" specstar/__init__.py; \
-	uv run git-cliff --unreleased --tag "v$$new" --prepend CHANGELOG.md; \
+	uv run git-cliff --unreleased --tag "v$$new" --prepend CHANGELOG.md || { \
+		echo "git-cliff 失敗 —— 已回復 __version__。不留下「版號有動、CHANGELOG 沒動」的半套 bump"; \
+		git checkout -- specstar/__init__.py; exit 1; }; \
 	git add specstar/__init__.py CHANGELOG.md; \
 	git commit -m "bump v$$new"; \
-	echo "✅ 已 commit \"bump v$$new\"。接著:git tag v$$new → build → 發佈。"
+	echo "✅ 已 commit \"bump v$$new\"。接著:make release-publish"
+
+# 釋出第二步:打 tag → build → 上傳 PyPI。
+# 從 specstar/__init__.py 讀版號,所以一定跟上一步 commit 的內容一致。
+# tag 是 lightweight(與既有 v0.12.x 慣例一致),必須明確 push。
+.PHONY: release-publish
+release-publish:
+	@git diff --quiet && git diff --cached --quiet || { \
+		echo "工作區不乾淨,請先 commit 再發佈"; exit 1; }; \
+	v="$$(sed -n 's/^__version__ = "\(.*\)"/\1/p' specstar/__init__.py)"; \
+	[ -n "$$v" ] || { echo "讀不到 __version__"; exit 1; }; \
+	echo "publish → v$$v"; \
+	rm -rf dist; \
+	uv build || exit 1; \
+	uv run twine check dist/* || exit 1; \
+	git rev-parse -q --verify "refs/tags/v$$v" >/dev/null || git tag "v$$v"; \
+	git push origin "v$$v"; \
+	uv run twine upload dist/*; \
+	echo "✅ v$$v 已發佈"
 
 # 清理所有暫存和構建文件
 .PHONY: clean
