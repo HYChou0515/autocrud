@@ -720,30 +720,7 @@ def execute_with_events(
                         else:
                             inputs_[k] = get_from_path(func_inputs, v)
                 before_ctx = contexts.before(**inputs_)
-                # Permission re-entrancy guard (#402): authorize once, at the
-                # outermost operation. The first event-emitting op in this call
-                # stack arms the flag for its whole extent; any nested op (a
-                # patch's internal get/update, a get's internal get_meta, …)
-                # observes it and skips ONLY its permission check — every other
-                # event handler still fires. ``check_permission`` is False for
-                # such nested ops.
-                check_permission = not self._perm_checked_ctx.get()
-                if check_permission:
-                    stack.enter_context(self._perm_checked_ctx.ctx(True))
-                # Read access-scope is a precondition for request-originated
-                # writes: a resource outside the caller's scope is hidden as
-                # not-found (→ 404) *before* the permission checker (→ 403) and
-                # before any current_resource load, so writes never leak
-                # existence. The remainder then runs unscoped — the resource is
-                # confirmed in-scope, and the operation's own (and nested
-                # get/get_meta) reads must not re-probe.
-                if self._maybe_assert_write_scope(before_ctx):
-                    stack.enter_context(self.apply_scope_ctx.ctx(False))
-                # current_resource is loaded solely for the permission check, so
-                # skip the extra storage read when this nested op won't check.
-                if check_permission:
-                    self._maybe_load_current_resource(before_ctx)
-                self._handle_event(before_ctx, check_permission=check_permission)
+                self._authorize_and_announce(before_ctx, stack)
                 try:
                     result = func(self, *args, **kwargs)
                     built_result = _build_result(result)
@@ -1866,6 +1843,44 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             ) as fh:
                 current.data = self._data_serializer.decode(fh.read())
         return current
+
+    def _authorize_and_announce(self, before_ctx: Any, stack: ExitStack) -> None:
+        """Authorize one operation and fire its before-context.
+
+        This is *the* permission gate, in one place. ``execute_with_events``
+        calls it for the operation it wraps; a bulk operation that has to
+        authorize row by row (:meth:`patch_many`) calls it once per row. It
+        stays a single function deliberately — a second copy of this sequence
+        would drift from the decorator, and what would drift is the
+        authorization path, which fails silently and open.
+
+        *stack* must stay open for the rest of the operation: it holds the
+        re-entrancy guard and the unscoped window opened by the write-scope
+        probe.
+
+        Permission re-entrancy guard (#402): authorize once, at the outermost
+        operation. The first event-emitting op in this call stack arms the flag
+        for its whole extent; any nested op (a patch's internal get/update, a
+        get's internal get_meta, …) observes it and skips ONLY its permission
+        check — every other event handler still fires.
+
+        Read access-scope (#398) is a precondition for request-originated
+        writes: a resource outside the caller's scope is hidden as not-found
+        (→ 404) *before* the permission checker (→ 403) and before any
+        current_resource load, so writes never leak existence. The remainder
+        then runs unscoped — the resource is confirmed in-scope, and the
+        operation's own (and nested get/get_meta) reads must not re-probe.
+        """
+        check_permission = not self._perm_checked_ctx.get()
+        if check_permission:
+            stack.enter_context(self._perm_checked_ctx.ctx(True))
+        if self._maybe_assert_write_scope(before_ctx):
+            stack.enter_context(self.apply_scope_ctx.ctx(False))
+        # current_resource is loaded solely for the permission check, so skip
+        # the extra storage read when this nested op won't check.
+        if check_permission:
+            self._maybe_load_current_resource(before_ctx)
+        self._handle_event(before_ctx, check_permission=check_permission)
 
     def _maybe_load_current_resource(self, before_ctx: Any) -> None:
         """Populate ``before_ctx.current_resource`` for a write before-context
