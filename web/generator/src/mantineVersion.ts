@@ -25,8 +25,18 @@ export interface VersionDeps {
   pnpmOverrides?: Record<string, string>;
 }
 
-export interface AutocrudRc {
+/**
+ * `.specstarrc.json` — the project's hand-edited generator config.
+ *
+ * Every field is optional on read: the file is written by `init`/`integrate`
+ * but developers edit it afterwards, so treat anything missing as unset.
+ */
+export interface SpecStarRc {
   mantineVersion: MantineVersion;
+  /** Display name for the admin console. Defaults to the OpenAPI `info.title`. */
+  title: string;
+  /** Path to the logo asset, served from the app's `public/` directory. */
+  logo: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,11 +195,34 @@ export async function patchSourceFiles(srcDir: string, version: MantineVersion):
 const RC_FILENAME = '.specstarrc.json';
 
 /**
+ * Read the whole .specstarrc.json.
+ *
+ * Returns an empty config when the file is absent, unparseable, or not a JSON
+ * object — a broken config should degrade to defaults, not abort a generate.
+ */
+export async function readRc(projectDir: string): Promise<Partial<SpecStarRc>> {
+  const rcPath = path.join(projectDir, RC_FILENAME);
+  try {
+    const parsed: unknown = JSON.parse(await fs.readFile(rcPath, 'utf-8'));
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Partial<SpecStarRc>;
+    }
+  } catch {
+    // File doesn't exist or is invalid
+  }
+  return {};
+}
+
+/**
  * Write the Mantine version choice to .specstarrc.json in the project root.
+ *
+ * Merges into the existing config rather than replacing it: `integrate` runs
+ * against an established project, and a whole-file rewrite would silently drop
+ * branding the developer had already configured.
  */
 export async function writeVersionConfig(projectDir: string, version: MantineVersion): Promise<void> {
   const rcPath = path.join(projectDir, RC_FILENAME);
-  const config: AutocrudRc = { mantineVersion: version };
+  const config: Partial<SpecStarRc> = { ...(await readRc(projectDir)), mantineVersion: version };
   await fs.writeFile(rcPath, JSON.stringify(config, null, 2) + '\n');
 }
 
@@ -201,7 +234,7 @@ export async function readVersionConfig(projectDir: string): Promise<MantineVers
   const rcPath = path.join(projectDir, RC_FILENAME);
   try {
     const content = await fs.readFile(rcPath, 'utf-8');
-    const config = JSON.parse(content) as Partial<AutocrudRc>;
+    const config = JSON.parse(content) as Partial<SpecStarRc>;
     if (config.mantineVersion === '7' || config.mantineVersion === '8') {
       return config.mantineVersion;
     }
