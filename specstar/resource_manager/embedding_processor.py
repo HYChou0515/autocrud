@@ -19,7 +19,7 @@ from specstar.resource_manager.encoder_registry import (
     EncoderRegistry,
     lookup_encoder,
 )
-from specstar.types import Embedding, extract_vector_field_infos
+from specstar.types import extract_vector_field_infos
 
 
 def _content_hash(content: str) -> str:

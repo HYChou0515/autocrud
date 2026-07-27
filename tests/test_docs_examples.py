@@ -9,7 +9,7 @@ import datetime as dt
 from typing import Annotated
 
 import pytest
-from msgspec import UNSET, Struct
+from msgspec import Struct
 
 from specstar import Embedding, SpecStar, ValidationError, Vector
 from specstar.query import QB
