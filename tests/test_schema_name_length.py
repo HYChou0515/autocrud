@@ -28,6 +28,7 @@ import pytest
 from fastapi import FastAPI
 
 from specstar.crud.core import SpecStar
+from specstar.crud.core import _MAX_DERIVED_RESOURCE_NAME
 from specstar.crud.route_templates.responses import (
     _MAX_SCHEMA_NAME_LENGTH,
     _sanitize_schema_names,
@@ -206,3 +207,63 @@ class TestUnionModelEndToEnd:
         import yaml
 
         yaml.safe_load(json.dumps(schema))
+
+
+class TestDerivedResourceNameTooLong:
+    """A union's auto-derived name becomes the URL path, so it has a ceiling.
+
+    Shortening it silently would rewrite a live URL, so this is refused up
+    front instead — and the refusal has to say exactly what to change.
+    """
+
+    @staticmethod
+    def _spec() -> SpecStar:
+        return SpecStar(default_user="tester", default_now=dt.datetime.now)
+
+    def test_registering_an_oversized_union_is_refused(self):
+        union = TestUnionModelEndToEnd._union_of(40)
+        with pytest.raises(ValueError):
+            self._spec().add_model(union)
+
+    def test_an_explicit_name_is_accepted(self):
+        """The fix the message tells you to apply has to actually work."""
+        union = TestUnionModelEndToEnd._union_of(40)
+        self._spec().add_model(union, name="animal")
+
+    def test_a_small_union_still_derives_its_name(self):
+        """Only names that would break the document are refused."""
+        spec = self._spec()
+        spec.add_model(TestUnionModelEndToEnd._union_of(2))
+        assert spec.resource_managers
+
+    # --- the message itself -------------------------------------------------
+
+    @pytest.fixture
+    def message(self) -> str:
+        union = TestUnionModelEndToEnd._union_of(40)
+        with pytest.raises(ValueError) as excinfo:
+            self._spec().add_model(union)
+        return str(excinfo.value)
+
+    def test_message_shows_the_exact_call_to_write(self, message):
+        assert "spec.add_model(" in message
+        assert 'name="' in message
+
+    def test_message_reports_the_measured_length_and_the_limit(self, message):
+        assert str(_MAX_DERIVED_RESOURCE_NAME) in message
+        assert "1516" in message  # the derived kebab name for 40 members
+
+    def test_message_names_the_union_as_the_cause(self, message):
+        assert "union" in message.lower()
+        assert "40" in message  # the member count
+
+    def test_message_explains_why_the_limit_exists(self, message):
+        assert "1024" in message
+        assert "yaml" in message.lower()
+
+    def test_message_quotes_the_start_of_the_derived_name(self, message):
+        assert "create-new-character00-job-payload" in message
+
+    def test_message_does_not_dump_the_whole_derived_name(self, message):
+        """A 1516-character name in a traceback buries the instruction."""
+        assert len(message) < 1000
