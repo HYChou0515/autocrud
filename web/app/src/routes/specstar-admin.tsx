@@ -9,6 +9,7 @@ import {
   getAsyncUpdateJobChildren,
   getStandaloneJobNames,
 } from '@/specstar/lib/resources';
+import { APP_TITLE, APP_LOGO } from '@/specstar/generated/branding';
 import {
   IconHome,
   IconDatabase,
@@ -33,8 +34,9 @@ function SpecStarLayout() {
     <AppShell header={{ height: 60 }} navbar={{ width: 240, breakpoint: 'sm' }} padding="md">
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
-          <Group>
-            <Title order={3}>⚡ SpecStar Admin</Title>
+          <Group gap="xs">
+            <img src={APP_LOGO} alt="" width={28} height={28} />
+            <Title order={3}>{APP_TITLE}</Title>
             <Text size="xs" c="dimmed">
               Management Console
             </Text>
