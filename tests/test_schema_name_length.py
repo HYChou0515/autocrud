@@ -32,6 +32,7 @@ from specstar.crud.route_templates.responses import (
     _MAX_SCHEMA_NAME_LENGTH,
     _sanitize_schema_names,
 )
+from specstar.schema import Schema
 
 # PyYAML's hard limit on a simple key.
 PYYAML_SIMPLE_KEY_LIMIT = 1024
@@ -228,6 +229,16 @@ class TestDerivedResourceNameTooLong:
         """The fix the message tells you to apply has to actually work."""
         union = TestUnionModelEndToEnd._union_of(40)
         self._spec().add_model(union, name="animal")
+
+    def test_a_schema_wrapped_union_is_refused_too(self):
+        """add_model(X) and add_model(Schema(X)) derive the same name."""
+        union = TestUnionModelEndToEnd._union_of(40)
+        with pytest.raises(ValueError):
+            self._spec().add_model(Schema(union, "v1"))
+
+    def test_an_explicit_name_is_accepted_for_a_schema_too(self):
+        union = TestUnionModelEndToEnd._union_of(40)
+        self._spec().add_model(Schema(union, "v1"), name="animal")
 
     def test_a_small_union_still_derives_its_name(self):
         """Only names that would break the document are refused."""
