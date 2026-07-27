@@ -83,6 +83,35 @@ VITE_API_URL=/api
 API_PROXY_TARGET=http://localhost:8000
 ```
 
+`generate` also resolves the app's **branding** — see below.
+
+## Branding
+
+The generated app is *your* admin console, so it carries your name and logo. On every `generate`, the title and logo are resolved from the first source that is set:
+
+1. `title` / `logo` in `.specstarrc.json`
+2. the backend's OpenAPI `info.title`
+3. `SpecStar Admin` and `/specstar-mark.svg`
+
+```json
+// .specstarrc.json
+{
+  "mantineVersion": "8",
+  "title": "Northwind Console",
+  "logo": "/northwind.svg"
+}
+```
+
+`logo` is a path served from `public/`, so `/northwind.svg` means `public/northwind.svg`.
+
+The resolved values are written to `src/specstar/generated/branding.ts` (imported by the landing page and admin header) and stamped into `index.html`, which is where the browser reads the tab title and favicon before React boots.
+
+Notes:
+
+- A backend that never set a title reports the stock `FastAPI`, which is ignored so it cannot become your app's name.
+- `index.html` is only rewritten if it already has a `<title>` / icon link, so `integrate` won't add tags to a project that dropped them.
+- Re-run `generate` after editing `.specstarrc.json`.
+
 ### `specstar-web integrate`
 
 Integrate SpecStar generated code into an **existing** React project without overwriting your `package.json`, `tsconfig`, `vite.config.ts`, etc.
@@ -99,11 +128,14 @@ See [INTEGRATION.md](INTEGRATION.md) for a detailed step-by-step guide.
 
 ```
 my-app/
+├── public/                      # Static assets
+│   └── specstar-mark.svg        # Default logo / favicon
 ├── src/
 │   ├── specstar/
 │   │   ├── generated/           # Auto-generated (gitignored)
 │   │   │   ├── types.ts         # TypeScript interfaces
 │   │   │   ├── resources.ts     # Resource registry
+│   │   │   ├── branding.ts      # APP_TITLE + APP_LOGO
 │   │   │   └── api/
 │   │   │       ├── characterApi.ts
 │   │   │       ├── guildApi.ts
