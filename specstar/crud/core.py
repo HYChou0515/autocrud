@@ -116,12 +116,58 @@ from specstar.types import (
 from specstar.util.naming import NameConverter
 from specstar.util.type_utils import (
     get_type_name,
+    get_union_args,
     is_generic_subclass,
+    is_union_type,
     unwrap_annotated,
 )
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
+
+
+def _derived_name_too_long_message(model: Any, derived: str) -> str:
+    """Explain the refusal and hand the caller the exact line to write.
+
+    The derived name itself is quoted only as a short prefix: pasting 1500
+    characters into a traceback buries the one instruction that matters.
+    """
+    if is_union_type(model):
+        members = [a for a in get_union_args(model) if a is not type(None)]
+        cause = (
+            f"A union's name is every member name joined with 'Or', so with "
+            f"{len(members)} members it grows past what a URL can carry."
+        )
+    else:
+        cause = f"The name is derived from {model!r}."
+
+    return (
+        f"Refusing to derive a resource name that is {len(derived)} characters "
+        f"long (limit {_MAX_DERIVED_RESOURCE_NAME}).\n"
+        f"\n"
+        f"{cause}\n"
+        f"The derived name becomes the URL path, and an OpenAPI path over 1024 "
+        f"characters cannot be parsed by PyYAML -- which is how "
+        f"datamodel-code-generator and most OpenAPI tooling read the document.\n"
+        f"\n"
+        f"Name the model explicitly instead:\n"
+        f"\n"
+        f'    spec.add_model(YourModel, name="your-resource-name")\n'
+        f"\n"
+        f"Derived name started: {derived[:80]}..."
+    )
+
+
+# A derived resource name becomes the first segment of every URL path for that
+# model, and a path is a mapping key in the OpenAPI document -- which PyYAML
+# refuses past 1024 characters.  The longest route suffix today is
+# "/{resource_id}/switch/{revision_id}" (35 characters); the rest of the budget
+# is headroom for custom actions with longer suffixes.
+#
+# Only auto-derived names are checked.  Truncating one would silently rewrite a
+# live URL, so an over-long name is refused and the caller is told to name the
+# model themselves.
+_MAX_DERIVED_RESOURCE_NAME = 900
 
 
 def _flatten_event_handlers(handlers):
@@ -923,7 +969,10 @@ class SpecStar:
             )
 
         # 使用 NameConverter 進行轉換
-        return NameConverter(original_name).to(self.model_naming)
+        name = NameConverter(original_name).to(self.model_naming)
+        if len(name) > _MAX_DERIVED_RESOURCE_NAME:
+            raise ValueError(_derived_name_too_long_message(model, name))
+        return name
 
     def add_route_template(self, template: IRouteTemplate) -> None:
         """Add a custom route template to extend the API with additional endpoints.

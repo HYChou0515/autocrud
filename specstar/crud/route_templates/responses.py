@@ -8,6 +8,7 @@ into something safe to embed in an OpenAPI document.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Generic, TypeVar
 
 import msgspec
@@ -35,20 +36,55 @@ class MsgspecResponse(Response):
         return msgspec.json.encode(content)
 
 
+# PyYAML refuses a "simple key" longer than 1024 characters, and an OpenAPI
+# component name is exactly that — a mapping key.  Cross the line and the whole
+# document stops parsing for every consumer that routes through PyYAML, which
+# includes ``datamodel-code-generator`` for any input whose file name does not
+# end in ``.json``.  Budget below the cliff rather than on it.
+_MAX_SCHEMA_NAME_LENGTH = 960
+
+# A name that has to be replaced should come back readable, not merely legal —
+# it becomes a class name in every generated client.
+_SHORTENED_NAME_HEAD = 96
+
+
+def _shorten_schema_name(name: str) -> str:
+    """Return a short, deterministic stand-in for an over-long component name.
+
+    The digest is taken over the *whole* original name so two names sharing a
+    prefix stay distinct where plain truncation would merge them, and so the
+    result is stable across runs — a regenerated client must not churn just
+    because it was generated twice.
+    """
+    digest = hashlib.sha256(name.encode()).hexdigest()[:8]
+    return f"{name[:_SHORTENED_NAME_HEAD].rstrip('_')}_{digest}"
+
+
 def _sanitize_schema_names(
     schemas: list[dict], components: dict[str, dict]
 ) -> tuple[list[dict], dict[str, dict]]:
-    """Replace dots in OpenAPI component schema names and update all ``$ref`` pointers.
+    """Normalise OpenAPI component schema names and update all ``$ref`` pointers.
 
-    ``msgspec`` may produce schema names containing dots when a generic type
-    parameter is a union (e.g. ``FullResourceResponse[A | B]``) because it
-    falls back to module-qualified names like ``mymod.A``.  Dots in component
-    names are problematic for code generators, so we replace them with ``_``.
+    Two problems, both created by ``msgspec`` naming a generic whose parameter
+    is a union (e.g. ``FullResourceResponse[A | B]``): it falls back to
+    module-qualified member names like ``mymod.A``, so the name both contains
+    dots *and* grows with the number of members times the length of their
+    module path.
+
+    * Dots are replaced with ``_`` — code generators choke on them.
+    * Names past :data:`_MAX_SCHEMA_NAME_LENGTH` are replaced with a short
+      deterministic name, because past 1024 characters PyYAML cannot read the
+      document at all.
+
+    Names already within budget are left exactly as they are: renaming one
+    would break the generated client code that imports it by name.
     """
     rename_map: dict[str, str] = {}
     for name in list(components):
-        if "." in name:
-            new_name = name.replace(".", "_")
+        new_name = name.replace(".", "_")
+        if len(new_name) > _MAX_SCHEMA_NAME_LENGTH:
+            new_name = _shorten_schema_name(new_name)
+        if new_name != name:
             while new_name in components and new_name not in rename_map.values():
                 new_name += "_"
             rename_map[name] = new_name

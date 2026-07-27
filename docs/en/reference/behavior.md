@@ -82,5 +82,6 @@ If your app behaves unexpectedly, the most common causes are:
 - mutating routes or templates after `apply()`
 - confusing initialization issues with revision lifecycle issues
 - mixing the global instance pattern with ad-hoc manual instances without realizing which one owns the routes
+- registering a large union without a name — `spec.add_model(A | B | ...)` derives the resource name by joining every member name, so past a point the URL path grows longer than an OpenAPI document can carry and registration is refused. Pass `name=` for union-backed models: `spec.add_model(MyUnion, name="my-resource")`
 
 For symptom-to-fix guidance, see the [troubleshooting guide](/specstar/howto/troubleshooting).
