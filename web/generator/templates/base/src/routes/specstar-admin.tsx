@@ -35,7 +35,7 @@ function SpecStarLayout() {
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group gap="xs">
-            <img src={APP_LOGO} alt="" width={28} height={28} />
+            <img src={APP_LOGO} alt="" width={32} height={32} />
             <Title order={3}>{APP_TITLE}</Title>
             <Text size="xs" c="dimmed">
               Management Console

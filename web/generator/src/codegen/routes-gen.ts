@@ -236,7 +236,7 @@ function HomePage() {
         <Paper shadow="md" p="xl" radius="md">
           <Stack gap="lg">
             <Group gap="xs">
-              <img src={APP_LOGO} alt="" width={32} height={32} />
+              <img src={APP_LOGO} alt="" width={48} height={48} />
               <Title order={1}>{APP_TITLE}</Title>
             </Group>
 
