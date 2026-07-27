@@ -32,7 +32,7 @@ Use Google-style docstrings with these sections when they apply:
 Do not list generated endpoints in docstrings. Put route behavior under `docs/howto/routes.md` and related guide pages.
 
 ## AI skill set for contributors
-If you want to create or maintain AI skills for this project, see [docs/en/contributing/ai-skills.md](docs/en/contributing/ai-skills.md). That page explains how to author skills under [skills/](skills/) and how they relate to [.github/skills/](.github/skills/) for repo-local use.
+If you want to create or maintain AI skills for this project, see [AI skills](ai-skills.md). That page explains how to author skills under `skills/` in the repository root.
 
 ## Verification before submitting
 Before merging doc changes, build the site locally:
