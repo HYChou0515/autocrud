@@ -179,6 +179,43 @@ See also:
 
 ---
 
+## 9. Client generation fails on a union-backed model
+
+### Symptoms
+
+- `datamodel-codegen` aborts with `yaml.parser.ParserError: while parsing a flow mapping`, `did not find expected ',' or '}'`
+- the same document succeeds when the file is named `spec.json` and fails when it is named `spec.yaml`
+- SpecStar refuses `add_model` with *"Refusing to derive a resource name that is N characters long"*
+
+### What is happening
+
+PyYAML refuses a mapping key longer than 1024 characters. Both an OpenAPI
+component name and a URL path are mapping keys, so once either crosses that
+line the document stops parsing — and `datamodel-code-generator` only bypasses
+PyYAML for inputs whose file name ends in `.json`.
+
+Unions are what push a name over the line. A union's resource name is every
+member name joined with `Or`, and `msgspec` names a generic parameterised by a
+union using *module-qualified* member names — `Wrap[A]` is `Wrap_A_`, but
+`Wrap[A | B]` is `Wrap___main__.A_____main__.B_`. Both grow with the number of
+members, and the second also grows with the length of their module path.
+
+### What to check
+
+- give a union-backed model an explicit name, which keeps the URL path short:
+
+```python
+spec.add_model(MyUnion, name="my-resource")
+```
+
+- component names are shortened automatically once they would break the
+  document, so no action is needed there
+- watch the URL path length independently of code generation: a path that grows
+  with union size will eventually exceed the request-line limit of whatever
+  proxy sits in front of the app, and the endpoint becomes unreachable
+
+---
+
 ## General debugging advice
 
 When diagnosing SpecStar issues, start by narrowing the problem to one layer:
