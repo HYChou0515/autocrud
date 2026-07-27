@@ -27,8 +27,7 @@ import msgspec
 import pytest
 from fastapi import FastAPI
 
-from specstar.crud.core import SpecStar
-from specstar.crud.core import _MAX_DERIVED_RESOURCE_NAME
+from specstar.crud.core import _MAX_DERIVED_RESOURCE_NAME, SpecStar
 from specstar.crud.route_templates.responses import (
     _MAX_SCHEMA_NAME_LENGTH,
     _sanitize_schema_names,

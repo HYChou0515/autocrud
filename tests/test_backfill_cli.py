@@ -7,7 +7,6 @@ import io
 import sys
 from typing import Annotated
 
-import pytest
 from msgspec import UNSET, Struct
 
 from specstar import Embedding, SpecStar, Vector

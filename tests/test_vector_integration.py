@@ -205,8 +205,9 @@ def test_int_add_model_creates_pgvector_column() -> None:
 
 # INT6: e2e on pg — create rows with Embedding, query with QB cosine via str
 def test_int_pg_e2e_embedding_with_str_query() -> None:
-    import psycopg2
     import uuid as _uuid
+
+    import psycopg2
 
     from specstar import BackendBinding, BackendConfig
     from specstar.query import QB

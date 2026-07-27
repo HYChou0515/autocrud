@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from specstar.query import QB, Query
 from specstar.query_types import (
     DataSearchOperator,
