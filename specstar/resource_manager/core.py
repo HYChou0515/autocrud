@@ -350,6 +350,20 @@ class SimpleStorage(IStorage):
             resource_id, revision_id, schema_version
         )
 
+    def get_revision_bundle(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None | UnsetType = UNSET,
+    ) -> "tuple[RevisionInfo, bytes]":
+        """Info and data together — see `IResourceStore.get_revision_bundle`."""
+        if schema_version is UNSET:
+            meta = self.get_meta(resource_id)
+            schema_version = meta.schema_version
+        return self._resource_store.get_revision_bundle(
+            resource_id, revision_id, schema_version
+        )
+
     def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
         self._resource_store.save(info, data)
 
@@ -3484,13 +3498,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Returns:
             resource (Resource[T]): The resource object.
         """
-        info = self.storage.get_resource_revision_info(
+        # One store round-trip: `info` and `data` are two columns of the same
+        # joined row, and reading a resource always needs both.
+        info, raw = self.storage.get_revision_bundle(
             resource_id, revision_id, schema_version
         )
-        with self.storage.get_data_bytes(
-            resource_id, revision_id, schema_version
-        ) as data_io:
-            raw = data_io.read()
         if self._migration is not None and info.schema_version != self._schema_version:
             # Lazy read-time migration: the row is stored at an older version,
             # so apply the registered migration to present it as the current

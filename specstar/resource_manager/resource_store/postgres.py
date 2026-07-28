@@ -272,6 +272,33 @@ class PostgresResourceStore(IResourceStore):
                 )
             yield io.BytesIO(bytes(row[0]))
 
+    def get_revision_bundle(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None,
+    ) -> "tuple[RevisionInfo, bytes]":
+        """Both columns of the same joined row, in one round-trip.
+
+        `info` and `data` live side by side in the data table and were fetched by
+        two identical queries differing only in the column list — two connection
+        checkouts, each with its own health check, for one row.
+        """
+        with self._read() as cur:
+            cur.execute(
+                f'SELECT d.info, d.data FROM "{self._data_table}" d '
+                f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                f"WHERE i.resource_id = %s AND i.revision_id = %s "
+                f"AND i.schema_version = %s",
+                (resource_id, revision_id, self._sv(schema_version)),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise KeyError(
+                    f"Resource not found: {resource_id}/{revision_id}/{schema_version}"
+                )
+            return self._info_serializer.decode(bytes(row[0])), bytes(row[1])
+
     def get_revision_info(
         self,
         resource_id: str,
