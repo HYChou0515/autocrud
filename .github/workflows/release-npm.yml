@@ -143,7 +143,7 @@ jobs:
             exit 1
           fi
           echo "repository:  ${{ github.repository }}"
-          echo "workflow:    $(basename "${{ github.workflow_ref }}" | cut -d@ -f1)"
+          echo "workflow:    $(basename "$(echo '${{ github.workflow_ref }}' | cut -d@ -f1)")"
           echo "environment: npm"
           echo "These three must match the trusted publisher on npmjs.com exactly."
 
