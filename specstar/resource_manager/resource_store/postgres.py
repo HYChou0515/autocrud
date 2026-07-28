@@ -342,6 +342,32 @@ class PostgresResourceStore(IResourceStore):
             )
         return out
 
+    def get_all_revision_infos(
+        self,
+        resource_id: str,
+    ) -> "dict[str, RevisionInfo]":
+        """All of a resource's revision infos in one statement.
+
+        The per-revision version of this was two queries each — resolve the
+        schema version, then read the info — so pruning cost statements
+        proportional to the revision count.
+        """
+        with self._read() as cur:
+            cur.execute(
+                f"SELECT i.revision_id, d.info "
+                f'FROM "{self._data_table}" d '
+                f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                f"WHERE i.resource_id = %s",
+                (resource_id,),
+            )
+            rows = cur.fetchall()
+        out: dict[str, RevisionInfo] = {}
+        for revision_id, info in rows:
+            # A revision can be stored at several schema versions; their
+            # created_time / parent_revision_id agree, so the first wins.
+            out.setdefault(revision_id, self._info_serializer.decode(bytes(info)))
+        return out
+
     def get_revision_bundles(
         self,
         keys: "Sequence[tuple[str, str, str | None]]",

@@ -374,6 +374,10 @@ class SimpleStorage(IStorage):
         """A page's worth at once — see `IResourceStore.get_revision_bundles`."""
         return self._resource_store.get_revision_bundles(keys)
 
+    def get_all_revision_infos(self, resource_id: str) -> "dict[str, RevisionInfo]":
+        """Every revision's info — see `IResourceStore.get_all_revision_infos`."""
+        return self._resource_store.get_all_revision_infos(resource_id)
+
     def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
         self._resource_store.save(info, data)
 
@@ -4301,17 +4305,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # Gather revision info for every revision that has retrievable data.
         # created_time / parent_revision_id are identical across a revision's
         # schema versions, so any stored version's info will do.
-        infos: dict[str, RevisionInfo] = {}
-        for rid in self.storage.list_revisions(resource_id):
-            sv = self.storage.find_revision_schema_version(resource_id, rid)
-            if sv is UNSET:
-                continue
-            try:
-                infos[rid] = self.storage.get_resource_revision_info(
-                    resource_id, rid, sv
-                )
-            except (KeyError, FileNotFoundError):
-                continue
+        # One read for all of them: resolving the schema version and reading the
+        # info per revision made pruning cost statements proportional to the
+        # revision count — the thing being pruned.
+        infos: dict[str, RevisionInfo] = self.storage.get_all_revision_infos(resource_id)
         if len(infos) <= 1:
             return []
 

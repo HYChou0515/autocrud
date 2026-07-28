@@ -1594,6 +1594,30 @@ class IResourceStore(ABC):
         with self.get_data_bytes(resource_id, revision_id, schema_version) as fh:
             return info, fh.read()
 
+    def get_all_revision_infos(
+        self,
+        resource_id: str,
+    ) -> "dict[str, RevisionInfo]":
+        """Every stored revision's info for one resource, keyed by revision id.
+
+        Pruning has to see all of them to decide what to keep, and did so one
+        revision at a time — a schema-version lookup and an info read each. The
+        default here IS that loop, so a store without a bulk read is unchanged.
+
+        Only `info` is needed: the payload is what pruning is about to delete.
+        """
+        out: dict[str, RevisionInfo] = {}
+        for revision_id in self.list_revisions(resource_id):
+            for schema_version in self.list_schema_versions(resource_id, revision_id):
+                try:
+                    out[revision_id] = self.get_revision_info(
+                        resource_id, revision_id, schema_version
+                    )
+                except (KeyError, FileNotFoundError):
+                    continue
+                break
+        return out
+
     def get_revision_bundles(
         self,
         keys: "Sequence[tuple[str, str, str | None]]",
