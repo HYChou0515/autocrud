@@ -435,6 +435,18 @@ class SimpleStorage(IStorage):
     def dump_resource(
         self, resource_id: str
     ) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
+        # One read for the whole resource where the store offers it. Walking
+        # revisions and schema versions to fetch each info and payload
+        # separately made a single-resource dump cost statements proportional to
+        # its history — six per revision, measured. A store without a bulk read
+        # returns None and the per-revision walk below still serves it.
+        bulk = self._resource_store.dump_all_revisions(
+            resource_ids=frozenset({resource_id})
+        )
+        if bulk is not None:
+            for info, raw in bulk.get(resource_id, []):
+                yield info, io.BytesIO(raw)
+            return
         for revision_id in self._resource_store.list_revisions(resource_id):
             for schema_version in self._resource_store.list_schema_versions(
                 resource_id, revision_id
