@@ -249,10 +249,21 @@ release: check-templates
 #
 # 這不是 `make release` 的替代路徑，是它的前置條件；bootstrap 完成後不該
 # 再用。
+#
+# 帳號開了 2FA 的話，npm 會擋下來（E403「Two-factor authentication or
+# granular access token with bypass 2fa enabled is required」）。兩種解：
+#
+#   make bootstrap-publish OTP=123456     # authenticator 的六位數
+#   # 或在 ~/.npmrc 放一個勾了 "Bypass two-factor authentication" 的
+#   # granular access token，然後照常 make bootstrap-publish
+#
+# OTP 只有 30 秒有效，而上面那串前置（style → sync-templates → build →
+# check → test）跑起來可能比一個 OTP 週期還久，中途過期就白跑一趟。真的要
+# 用 OTP 就先跑一次讓前置都變成 no-op，第二次再帶 OTP。
 .PHONY: bootstrap-publish
 bootstrap-publish: style sync-templates build-gen
 	@echo "🚀 首次發布 generator 到 npm（bootstrap，只做一次）..."
 	cd generator && pnpm check
 	cd generator && pnpm test
-	cd generator && npm publish
+	cd generator && npm publish $(if $(OTP),--otp=$(OTP))
 	@echo "✅ 已發布。接著到 npmjs.com 開 trusted publisher，往後用 make release"
