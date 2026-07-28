@@ -44,6 +44,16 @@ class EmbeddingProcessor:
         self._registry = registry
         self._model_overrides = model_overrides or {}
 
+    @property
+    def reuses_previous(self) -> bool:
+        """Whether `previous=` is ever consulted.
+
+        False when the model declares no embedding field — `process_sync` then
+        loops over an empty list, so a caller that would have to READ the
+        previous revision to supply it can skip that work entirely.
+        """
+        return bool(self._infos)
+
     def process_sync(self, data: Any, *, previous: Any | None = None) -> Any:
         """Synchronous variant — raises if any required encoder is async."""
         for info in self._infos:

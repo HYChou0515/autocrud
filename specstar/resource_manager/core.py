@@ -3645,9 +3645,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 expected_revision_id=expected_revision_id,
                 actual_revision_id=prev_res_meta.current_revision_id,
             )
+        # Pass the schema version we already hold. Omitting it makes the storage
+        # facade re-read this very meta to resolve it — the same
+        # `SELECT ... WHERE resource_id = ...`, plus its own connection checkout,
+        # from a caller standing on the answer.
         prev_info = self.storage.get_resource_revision_info(
             resource_id,
             prev_res_meta.current_revision_id,
+            schema_version=prev_res_meta.schema_version,
         )
         if expected_etag is not UNSET and prev_info.etag != expected_etag:
             from specstar.types import PreconditionFailedError as _PFE
@@ -3657,15 +3662,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 expected_revision_id=expected_etag,
                 actual_revision_id=prev_info.etag,
             )
-        # Pass previous data for Embedding cache reuse (bypass events: raw decode)
+        # Pass previous data for Embedding cache reuse (bypass events: raw decode).
+        # Only worth fetching when something will actually read it: a model with
+        # no Embedding field makes `process_sync` an empty loop, and this read —
+        # plus the decode of the whole previous row — would produce an argument
+        # nobody looks at, on every update.
         prev_data = None
-        try:
-            with self.storage.get_data_bytes(
-                resource_id, prev_res_meta.current_revision_id
-            ) as fh:
-                prev_data = self._data_serializer.decode(fh.read())
-        except Exception:
-            pass
+        if self._embedding_processor.reuses_previous:
+            try:
+                with self.storage.get_data_bytes(
+                    resource_id,
+                    prev_res_meta.current_revision_id,
+                    prev_res_meta.schema_version,
+                ) as fh:
+                    prev_data = self._data_serializer.decode(fh.read())
+            except Exception:
+                pass
         data = self._embedding_processor.process_sync(data, previous=prev_data)
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data, status))
         if prev_info.data_hash == rev_info.data_hash:
