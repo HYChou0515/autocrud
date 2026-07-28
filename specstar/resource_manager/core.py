@@ -284,8 +284,11 @@ class SimpleStorage(IStorage):
         return resource_id in self._meta_store
 
     def revision_exists(self, resource_id: str, revision_id: str) -> bool:
+        # `get_meta` raises for an unknown id, so reaching the next line already
+        # proves the resource exists — the `exists()` that used to guard it asked
+        # the meta store the same question a second time, over its own connection.
         meta = self.get_meta(resource_id)
-        return self.exists(resource_id) and self._resource_store.exists(
+        return self._resource_store.exists(
             resource_id,
             revision_id,
             meta.schema_version,
@@ -350,6 +353,31 @@ class SimpleStorage(IStorage):
             resource_id, revision_id, schema_version
         )
 
+    def get_revision_bundle(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None | UnsetType = UNSET,
+    ) -> "tuple[RevisionInfo, bytes]":
+        """Info and data together — see `IResourceStore.get_revision_bundle`."""
+        if schema_version is UNSET:
+            meta = self.get_meta(resource_id)
+            schema_version = meta.schema_version
+        return self._resource_store.get_revision_bundle(
+            resource_id, revision_id, schema_version
+        )
+
+    def get_revision_bundles(
+        self,
+        keys: "Sequence[tuple[str, str, str | None]]",
+    ) -> "dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]]":
+        """A page's worth at once — see `IResourceStore.get_revision_bundles`."""
+        return self._resource_store.get_revision_bundles(keys)
+
+    def get_all_revision_infos(self, resource_id: str) -> "dict[str, RevisionInfo]":
+        """Every revision's info — see `IResourceStore.get_all_revision_infos`."""
+        return self._resource_store.get_all_revision_infos(resource_id)
+
     def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
         self._resource_store.save(info, data)
 
@@ -407,6 +435,18 @@ class SimpleStorage(IStorage):
     def dump_resource(
         self, resource_id: str
     ) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
+        # One read for the whole resource where the store offers it. Walking
+        # revisions and schema versions to fetch each info and payload
+        # separately made a single-resource dump cost statements proportional to
+        # its history — six per revision, measured. A store without a bulk read
+        # returns None and the per-revision walk below still serves it.
+        bulk = self._resource_store.dump_all_revisions(
+            resource_ids=frozenset({resource_id})
+        )
+        if bulk is not None:
+            for info, raw in bulk.get(resource_id, []):
+                yield info, io.BytesIO(raw)
+            return
         for revision_id in self._resource_store.list_revisions(resource_id):
             for schema_version in self._resource_store.list_schema_versions(
                 resource_id, revision_id
@@ -1420,7 +1460,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             if actual_sv is UNSET:
                 raise RevisionIDNotFoundError(resource_id, target_rev)
 
-        info = self.storage.get_resource_revision_info(
+        # Info and payload are two columns of the same joined row, and a
+        # migration that proceeds needs both. Fetching them separately cost an
+        # extra query and an extra connection checkout PER RESOURCE — and a
+        # migration runs once per resource in the store.
+        info, raw = self.storage.get_revision_bundle(
             resource_id, target_rev, schema_version=actual_sv
         )
 
@@ -1429,10 +1473,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return meta
 
         # 執行數據遷移
-        with self.storage.get_data_bytes(
-            resource_id, target_rev, schema_version=actual_sv
-        ) as data_io:
-            migrated_data = self._migration.migrate(data_io, info.schema_version)
+        migrated_data = self._migration.migrate(io.BytesIO(raw), info.schema_version)
 
         # 更新 resource info 的 schema_version
         info.parent_schema_version = info.schema_version
@@ -2583,6 +2624,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # 3. Classify partial fields
         spec = classify_partial_fields(partial, default_category="data")
 
+        # 3b. Fetch the whole page's rows in one go. Per-item reads made a
+        # listing cost grow with its length — the same query repeated once per
+        # row, each on its own pooled connection. Only the full-data path
+        # qualifies: a partial read projects columns per item, and a listing
+        # that wants no data has nothing to prefetch. Backends without a bulk
+        # read fall back to the same per-row loop inside `get_revision_bundles`,
+        # so this is a speed-up where it exists and a no-op where it does not.
+        prefetched: dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]] = {}
+        if "data" in returns and not spec.data_fields:
+            prefetched = self.storage.get_revision_bundles(
+                [
+                    (m.resource_id, m.current_revision_id, m.schema_version)
+                    for m in metas
+                ]
+            )
+
         # 4. Define per-item fetch function
         def _fetch_one(meta: ResourceMeta) -> SearchedResource[T] | None:
             try:
@@ -2600,10 +2657,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     else:
                         # low-level read (no policy) — list applies the
                         # on_decode_error policy itself in the except below.
-                        resource = self.get_resource_revision(
-                            meta.resource_id,
-                            meta.current_revision_id,
-                            schema_version=meta.schema_version,
+                        pre = prefetched.get(
+                            (
+                                meta.resource_id,
+                                meta.current_revision_id,
+                                meta.schema_version,
+                            )
+                        )
+                        resource = (
+                            self._resource_from_bundle(*pre)
+                            if pre is not None
+                            else self.get_resource_revision(
+                                meta.resource_id,
+                                meta.current_revision_id,
+                                schema_version=meta.schema_version,
+                            )
                         )
                         data = resource.data
                         if "info" in returns:
@@ -3484,13 +3552,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Returns:
             resource (Resource[T]): The resource object.
         """
-        info = self.storage.get_resource_revision_info(
+        # One store round-trip: `info` and `data` are two columns of the same
+        # joined row, and reading a resource always needs both.
+        info, raw = self.storage.get_revision_bundle(
             resource_id, revision_id, schema_version
         )
-        with self.storage.get_data_bytes(
-            resource_id, revision_id, schema_version
-        ) as data_io:
-            raw = data_io.read()
+        return self._resource_from_bundle(info, raw)
+
+    def _resource_from_bundle(self, info: RevisionInfo, raw: bytes) -> Resource[T]:
+        """Turn a fetched row into a `Resource` — decode, lazy migration, and the
+        warning that goes with it.
+
+        Split out so a caller that already holds the row (a listing that fetched
+        its whole page in one query) reuses this instead of restating it beside a
+        loop. It is not a parameter on `get_resource_revision` because that method
+        is wrapped by the event machinery, which validates its keyword arguments.
+        """
         if self._migration is not None and info.schema_version != self._schema_version:
             # Lazy read-time migration: the row is stored at an older version,
             # so apply the registered migration to present it as the current
@@ -3588,9 +3665,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 expected_revision_id=expected_revision_id,
                 actual_revision_id=prev_res_meta.current_revision_id,
             )
+        # Pass the schema version we already hold. Omitting it makes the storage
+        # facade re-read this very meta to resolve it — the same
+        # `SELECT ... WHERE resource_id = ...`, plus its own connection checkout,
+        # from a caller standing on the answer.
         prev_info = self.storage.get_resource_revision_info(
             resource_id,
             prev_res_meta.current_revision_id,
+            schema_version=prev_res_meta.schema_version,
         )
         if expected_etag is not UNSET and prev_info.etag != expected_etag:
             from specstar.types import PreconditionFailedError as _PFE
@@ -3600,15 +3682,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 expected_revision_id=expected_etag,
                 actual_revision_id=prev_info.etag,
             )
-        # Pass previous data for Embedding cache reuse (bypass events: raw decode)
+        # Pass previous data for Embedding cache reuse (bypass events: raw decode).
+        # Only worth fetching when something will actually read it: a model with
+        # no Embedding field makes `process_sync` an empty loop, and this read —
+        # plus the decode of the whole previous row — would produce an argument
+        # nobody looks at, on every update.
         prev_data = None
-        try:
-            with self.storage.get_data_bytes(
-                resource_id, prev_res_meta.current_revision_id
-            ) as fh:
-                prev_data = self._data_serializer.decode(fh.read())
-        except Exception:
-            pass
+        if self._embedding_processor.reuses_previous:
+            try:
+                with self.storage.get_data_bytes(
+                    resource_id,
+                    prev_res_meta.current_revision_id,
+                    prev_res_meta.schema_version,
+                ) as fh:
+                    prev_data = self._data_serializer.decode(fh.read())
+            except Exception:
+                pass
         data = self._embedding_processor.process_sync(data, previous=prev_data)
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data, status))
         if prev_info.data_hash == rev_info.data_hash:
@@ -4229,17 +4318,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # Gather revision info for every revision that has retrievable data.
         # created_time / parent_revision_id are identical across a revision's
         # schema versions, so any stored version's info will do.
-        infos: dict[str, RevisionInfo] = {}
-        for rid in self.storage.list_revisions(resource_id):
-            sv = self.storage.find_revision_schema_version(resource_id, rid)
-            if sv is UNSET:
-                continue
-            try:
-                infos[rid] = self.storage.get_resource_revision_info(
-                    resource_id, rid, sv
-                )
-            except (KeyError, FileNotFoundError):
-                continue
+        # One read for all of them: resolving the schema version and reading the
+        # info per revision made pruning cost statements proportional to the
+        # revision count — the thing being pruned.
+        infos: dict[str, RevisionInfo] = self.storage.get_all_revision_infos(resource_id)
         if len(infos) <= 1:
             return []
 

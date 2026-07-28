@@ -187,9 +187,16 @@ class TestSchemaResourceManagerIntegration:
         mock_storage.exists.return_value = True
         mock_storage.get_meta.return_value = meta
         mock_storage.get_resource_revision_info.return_value = revision_info
+        raw = msgspec.json.encode(legacy_data)
         mock_storage.get_data_bytes.return_value.__enter__.return_value = io.BytesIO(
-            msgspec.json.encode(legacy_data)
+            raw
         )
+        # Reading a row's info and payload together is one call on a store, and
+        # a bare MagicMock answers it with an empty iterable — which no store
+        # does. State it, derived from the two reads above rather than invented,
+        # so the double keeps describing the contract instead of whichever
+        # calls the code happens to make today.
+        mock_storage.get_revision_bundle.return_value = (revision_info, raw)
 
         result = rm.migrate("item:1")
 

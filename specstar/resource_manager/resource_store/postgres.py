@@ -97,8 +97,13 @@ class PostgresResourceStore(IResourceStore):
                 time.sleep(min(0.5 * (attempt + 1), 3))
                 continue
 
-            conn.autocommit = False
+            # Health-check OUTSIDE a transaction. With autocommit off the
+            # probe's own `SELECT 1` opens one, and psycopg2 then refuses
+            # any later `autocommit` change on this connection — which is
+            # what a read-only caller needs to do to skip BEGIN/COMMIT.
+            conn.autocommit = True
             if self._test_query(conn):
+                conn.autocommit = False  # writers are the default
                 return conn
 
             try:
@@ -135,6 +140,25 @@ class PostgresResourceStore(IResourceStore):
             conn.rollback()
             raise
         finally:
+            self._put_conn(conn)
+
+    @contextmanager
+    def _read(self) -> Generator[Any, None, None]:
+        """A read that runs outside a transaction.
+
+        `BEGIN` and `COMMIT` are two round-trips, and a single-statement SELECT
+        has nothing to make atomic. `_get_conn` turns autocommit off because most
+        callers write; a read turns it back on for its own duration and restores
+        it before the connection returns to the pool.
+        """
+        conn = self._get_conn()
+        previous = conn.autocommit
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                yield cur
+        finally:
+            conn.autocommit = previous
             self._put_conn(conn)
 
     # ------------------------------------------------------------------
@@ -184,13 +208,13 @@ class PostgresResourceStore(IResourceStore):
     # ------------------------------------------------------------------
 
     def list_resources(self) -> Generator[str]:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(f'SELECT DISTINCT resource_id FROM "{self._index_table}"')
             for row in cur.fetchall():
                 yield row[0]
 
     def list_revisions(self, resource_id: str) -> Generator[str]:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT DISTINCT revision_id FROM "{self._index_table}" '
                 f"WHERE resource_id = %s",
@@ -202,7 +226,7 @@ class PostgresResourceStore(IResourceStore):
     def list_schema_versions(
         self, resource_id: str, revision_id: str
     ) -> Generator[str | None]:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT schema_version FROM "{self._index_table}" '
                 f"WHERE resource_id = %s AND revision_id = %s",
@@ -217,7 +241,7 @@ class PostgresResourceStore(IResourceStore):
         revision_id: str,
         schema_version: str | None,
     ) -> bool:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT 1 FROM "{self._index_table}" '
                 f"WHERE resource_id = %s AND revision_id = %s "
@@ -233,7 +257,7 @@ class PostgresResourceStore(IResourceStore):
         revision_id: str,
         schema_version: str | None,
     ) -> Generator[IO[bytes], None, None]:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT d.data FROM "{self._data_table}" d '
                 f'JOIN "{self._index_table}" i ON d.uid = i.uid '
@@ -248,13 +272,143 @@ class PostgresResourceStore(IResourceStore):
                 )
             yield io.BytesIO(bytes(row[0]))
 
+    def get_revision_bundle(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None,
+    ) -> "tuple[RevisionInfo, bytes]":
+        """Both columns of the same joined row, in one round-trip.
+
+        `info` and `data` live side by side in the data table and were fetched by
+        two identical queries differing only in the column list — two connection
+        checkouts, each with its own health check, for one row.
+        """
+        with self._read() as cur:
+            cur.execute(
+                f'SELECT d.info, d.data FROM "{self._data_table}" d '
+                f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                f"WHERE i.resource_id = %s AND i.revision_id = %s "
+                f"AND i.schema_version = %s",
+                (resource_id, revision_id, self._sv(schema_version)),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise KeyError(
+                    f"Resource not found: {resource_id}/{revision_id}/{schema_version}"
+                )
+            return self._info_serializer.decode(bytes(row[0])), bytes(row[1])
+
+    def dump_all_revisions(
+        self,
+        *,
+        resource_ids: "frozenset[str] | None" = None,
+        max_workers: int = 10,
+    ) -> "dict[str, list[tuple[RevisionInfo, bytes]]] | None":
+        """Every revision of every requested resource, in one statement.
+
+        `dump` already prefers a bulk path and falls back to reading each
+        resource in turn when the store returns None — which Postgres did, so an
+        export cost statements proportional to the number of resources (measured:
+        322 for 40). The per-resource query is a join on the same two tables, so
+        the whole export is that join without the per-resource `WHERE`.
+
+        `max_workers` is part of the interface for stores that fetch payloads
+        over a network (S3); a single SQL statement has nothing to parallelise.
+        """
+        del max_workers
+        with self._read() as cur:
+            if resource_ids is None:
+                cur.execute(
+                    f"SELECT i.resource_id, d.info, d.data "
+                    f'FROM "{self._data_table}" d '
+                    f'JOIN "{self._index_table}" i ON d.uid = i.uid'
+                )
+            else:
+                if not resource_ids:
+                    return {}
+                cur.execute(
+                    f"SELECT i.resource_id, d.info, d.data "
+                    f'FROM "{self._data_table}" d '
+                    f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                    f"WHERE i.resource_id = ANY(%s)",
+                    (list(resource_ids),),
+                )
+            rows = cur.fetchall()
+        out: dict[str, list[tuple[RevisionInfo, bytes]]] = {}
+        for resource_id, info, data in rows:
+            out.setdefault(resource_id, []).append(
+                (self._info_serializer.decode(bytes(info)), bytes(data))
+            )
+        return out
+
+    def get_all_revision_infos(
+        self,
+        resource_id: str,
+    ) -> "dict[str, RevisionInfo]":
+        """All of a resource's revision infos in one statement.
+
+        The per-revision version of this was two queries each — resolve the
+        schema version, then read the info — so pruning cost statements
+        proportional to the revision count.
+        """
+        with self._read() as cur:
+            cur.execute(
+                f"SELECT i.revision_id, d.info "
+                f'FROM "{self._data_table}" d '
+                f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                f"WHERE i.resource_id = %s",
+                (resource_id,),
+            )
+            rows = cur.fetchall()
+        out: dict[str, RevisionInfo] = {}
+        for revision_id, info in rows:
+            # A revision can be stored at several schema versions; their
+            # created_time / parent_revision_id agree, so the first wins.
+            out.setdefault(revision_id, self._info_serializer.decode(bytes(info)))
+        return out
+
+    def get_revision_bundles(
+        self,
+        keys: "Sequence[tuple[str, str, str | None]]",
+    ) -> "dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]]":
+        """A whole page in one statement.
+
+        The per-row query is already a join keyed on the same three columns, so
+        the page is one `IN` over their tuples — the page's cost stops growing
+        with its size.
+        """
+        wanted = [(r, v, self._sv(sv)) for r, v, sv in keys]
+        if not wanted:
+            return {}
+        with self._read() as cur:
+            cur.execute(
+                f"SELECT i.resource_id, i.revision_id, i.schema_version, d.info, d.data "
+                f'FROM "{self._data_table}" d '
+                f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                f"WHERE (i.resource_id, i.revision_id, i.schema_version) IN %s",
+                (tuple(wanted),),
+            )
+            rows = cur.fetchall()
+        by_normalised = {
+            (r, v, sv): (self._info_serializer.decode(bytes(info)), bytes(data))
+            for r, v, sv, info, data in rows
+        }
+        # Hand back the caller's own key shape, not the normalised one.
+        out: dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]] = {}
+        for key in keys:
+            hit = by_normalised.get((key[0], key[1], self._sv(key[2])))
+            if hit is not None:
+                out[key] = hit
+        return out
+
     def get_revision_info(
         self,
         resource_id: str,
         revision_id: str,
         schema_version: str | None,
     ) -> RevisionInfo:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT d.info FROM "{self._data_table}" d '
                 f'JOIN "{self._index_table}" i ON d.uid = i.uid '
@@ -318,7 +472,7 @@ class PostgresResourceStore(IResourceStore):
         if not items:
             return []
         keys = self._key_tuples(items)
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f"SELECT i.resource_id, i.revision_id, i.schema_version, "
                 f"octet_length(d.data) "
@@ -337,7 +491,7 @@ class PostgresResourceStore(IResourceStore):
         if not items:
             return {}
         keys = self._key_tuples(items)
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f"SELECT i.resource_id, d.data "
                 f'FROM "{self._data_table}" d '
@@ -391,7 +545,7 @@ class PostgresResourceStore(IResourceStore):
 
     def purge_resource(self, resource_id: str) -> None:
         """Hard-delete all revision data for a resource."""
-        with self._transaction() as cur:
+        with self._read() as cur:
             # Collect UIDs that belong exclusively to this resource
             # (in case of UID deduplication across resources we must not
             # remove data rows still referenced by other resources)
@@ -408,17 +562,18 @@ class PostgresResourceStore(IResourceStore):
                 (resource_id,),
             )
 
-            # Remove data rows only if no other index references them
-            for uid in uids:
+            # Remove data rows only if no other index references them. As one
+            # statement: per-uid this was two round-trips each (ask, then maybe
+            # delete), so the cost grew with the revision count — and it raced,
+            # since another writer can add a reference between the ask and the
+            # delete. NOT EXISTS decides and deletes in the same breath.
+            if uids:
                 cur.execute(
-                    f'SELECT 1 FROM "{self._index_table}" WHERE uid = %s LIMIT 1',
-                    (uid,),
+                    f'DELETE FROM "{self._data_table}" d '
+                    f"WHERE d.uid = ANY(%s) AND NOT EXISTS ("
+                    f'SELECT 1 FROM "{self._index_table}" i WHERE i.uid = d.uid)',
+                    (list(uids),),
                 )
-                if cur.fetchone() is None:
-                    cur.execute(
-                        f'DELETE FROM "{self._data_table}" WHERE uid = %s',
-                        (uid,),
-                    )
 
     def delete_revisions(self, resource_id: str, revision_ids: list[str]) -> None:
         """Hard-delete specific revisions, ref-counting shared uids.
@@ -431,7 +586,7 @@ class PostgresResourceStore(IResourceStore):
         if not revision_ids:
             return
         rev_list = list(revision_ids)
-        with self._transaction() as cur:
+        with self._read() as cur:
             # UIDs referenced by the revisions we're about to drop.
             cur.execute(
                 f'SELECT DISTINCT uid FROM "{self._index_table}" '
@@ -449,17 +604,18 @@ class PostgresResourceStore(IResourceStore):
                 (resource_id, rev_list),
             )
 
-            # Remove data rows only if no other index references them.
-            for uid in uids:
+            # Remove data rows only if no other index references them. As one
+            # statement: per-uid this was two round-trips each (ask, then maybe
+            # delete), so the cost grew with the revision count — and it raced,
+            # since another writer can add a reference between the ask and the
+            # delete. NOT EXISTS decides and deletes in the same breath.
+            if uids:
                 cur.execute(
-                    f'SELECT 1 FROM "{self._index_table}" WHERE uid = %s LIMIT 1',
-                    (uid,),
+                    f'DELETE FROM "{self._data_table}" d '
+                    f"WHERE d.uid = ANY(%s) AND NOT EXISTS ("
+                    f'SELECT 1 FROM "{self._index_table}" i WHERE i.uid = d.uid)',
+                    (list(uids),),
                 )
-                if cur.fetchone() is None:
-                    cur.execute(
-                        f'DELETE FROM "{self._data_table}" WHERE uid = %s',
-                        (uid,),
-                    )
 
     def cleanup(self) -> None:
         """Remove all data (both tables). Useful for test teardown."""

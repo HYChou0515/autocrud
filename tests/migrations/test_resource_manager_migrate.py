@@ -54,8 +54,26 @@ class TestResourceManagerMigrate:
 
     @pytest.fixture
     def mock_storage(self) -> MagicMock:
-        """創建模擬的 storage"""
+        """創建模擬的 storage.
+
+        `get_revision_bundle` is derived from the two reads a test configures,
+        so the double stays consistent with the real storage: reading a revision
+        returns that revision's info AND payload, whether the caller asks for
+        them together or one at a time. Left unconfigured it would return a bare
+        MagicMock and every caller would see an empty unpack.
+        """
         storage = MagicMock()
+
+        def _bundle(resource_id, revision_id, schema_version=None, *a, **k):
+            info = storage.get_resource_revision_info(
+                resource_id, revision_id, schema_version=schema_version
+            )
+            with storage.get_data_bytes(
+                resource_id, revision_id, schema_version=schema_version
+            ) as fh:
+                return info, fh.read()
+
+        storage.get_revision_bundle.side_effect = _bundle
         return storage
 
     @pytest.fixture

@@ -1575,6 +1575,71 @@ class IResourceStore(ABC):
         remain valid until closed or the method is called again.
         """
 
+    def get_revision_bundle(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None,
+    ) -> "tuple[RevisionInfo, bytes]":
+        """A revision's info AND its data.
+
+        Reading a resource needs both, and every caller asked for them
+        separately — two store round-trips for one row. Concrete because the
+        answer is derivable: this default is exactly the two calls it replaces,
+        so a store gains nothing and loses nothing by ignoring it. A backend that
+        can return both in one round-trip should override (the SQL stores select
+        two columns of the same joined row).
+        """
+        info = self.get_revision_info(resource_id, revision_id, schema_version)
+        with self.get_data_bytes(resource_id, revision_id, schema_version) as fh:
+            return info, fh.read()
+
+    def get_all_revision_infos(
+        self,
+        resource_id: str,
+    ) -> "dict[str, RevisionInfo]":
+        """Every stored revision's info for one resource, keyed by revision id.
+
+        Pruning has to see all of them to decide what to keep, and did so one
+        revision at a time — a schema-version lookup and an info read each. The
+        default here IS that loop, so a store without a bulk read is unchanged.
+
+        Only `info` is needed: the payload is what pruning is about to delete.
+        """
+        out: dict[str, RevisionInfo] = {}
+        for revision_id in self.list_revisions(resource_id):
+            for schema_version in self.list_schema_versions(resource_id, revision_id):
+                try:
+                    out[revision_id] = self.get_revision_info(
+                        resource_id, revision_id, schema_version
+                    )
+                except (KeyError, FileNotFoundError):
+                    continue
+                break
+        return out
+
+    def get_revision_bundles(
+        self,
+        keys: "Sequence[tuple[str, str, str | None]]",
+    ) -> "dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]]":
+        """Many revisions' info+data at once, keyed by ``(resource_id,
+        revision_id, schema_version)``.
+
+        A listing needs every row on the page, and fetching them one at a time
+        makes the page cost proportional to its size. Concrete for the same
+        reason as `get_revision_bundle`: this default IS the loop it replaces, so
+        a store without a bulk read keeps working unchanged. Missing keys are
+        simply absent from the result — the caller decides whether that is an
+        error, exactly as it does today.
+        """
+        out: dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]] = {}
+        for key in keys:
+            try:
+                out[key] = self.get_revision_bundle(*key)
+            except KeyError:
+                continue
+        return out
+
     @abstractmethod
     def get_revision_info(
         self,

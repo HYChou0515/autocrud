@@ -174,6 +174,12 @@ except ImportError:  # pragma: no cover
     execute_batch = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
 
 
+# psycopg2 fetches a named cursor in batches of this many rows (its `itersize`
+# default). A result that fits in one batch is materialised whole regardless of
+# which cursor asked for it.
+_STREAM_BATCH_ROWS = 2000
+
+
 class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
     """PostgreSQL-backed metadata store.
 
@@ -811,8 +817,13 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                 time.sleep(min(0.5 * (attempt + 1), 3))
                 continue
 
-            conn.autocommit = False
+            # Health-check OUTSIDE a transaction. With autocommit off the
+            # probe's own `SELECT 1` opens one, and psycopg2 then refuses any
+            # later `autocommit` change on this connection — which is what a
+            # read-only caller needs to do to skip BEGIN/COMMIT.
+            conn.autocommit = True
             if self.test_query(conn):
+                conn.autocommit = False  # writers are the default
                 return conn
 
             # test_query 失敗：歸還壞連線並標記關閉，避免洩漏
@@ -853,6 +864,14 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
     @contextmanager
     def stream_cursor(self):
+        """A server-side (named) cursor, for reads whose result set is unbounded.
+
+        Naming the cursor is what lets postgres stream instead of materialising
+        the whole answer, and it costs `DECLARE` / `FETCH` / `CLOSE` — three
+        round-trips where an ordinary cursor needs one. Worth it per table scan;
+        pure loss per row. A caller that has already bounded its result (a point
+        read, a COUNT, a fixed set of keys) wants `row_cursor` instead.
+        """
         conn = self.get_conn()
         try:
             # 建立 server-side cursor (named cursor)
@@ -866,6 +885,27 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             conn.rollback()
             raise
         finally:
+            self.put_conn(conn)
+
+    @contextmanager
+    def row_cursor(self):
+        """An ordinary client-side cursor with dict rows, outside a transaction.
+
+        `stream_cursor` without the `DECLARE`/`FETCH`/`CLOSE` a bounded read
+        cannot use, and without the `BEGIN`/`COMMIT` it has nothing to make
+        atomic either. `get_conn` turns autocommit off because most callers
+        write; a single-statement read turns it back on for its own duration and
+        restores it before the connection returns to the pool, so a writer that
+        checks the same connection out next is unaffected.
+        """
+        conn = self.get_conn()
+        previous = conn.autocommit
+        conn.autocommit = True
+        try:
+            with conn.cursor(cursor_factory=DictCursor) as cur:
+                yield cur
+        finally:
+            conn.autocommit = previous
             self.put_conn(conn)
 
     def _init_postgres_table(self):
@@ -1121,14 +1161,14 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
     def values(self):
         """Streaming bulk read — single ``SELECT data`` instead of N+1 queries."""
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(f'SELECT data FROM "{self.table_name}"')
             for row in cur:
                 yield self._serializer.decode(row["data"])
 
     def __getitem__(self, pk: str) -> ResourceMeta:
         # 直接從 PostgreSQL 查詢
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(
                 f'SELECT data FROM "{self.table_name}" WHERE resource_id = %s', (pk,)
             )
@@ -1147,7 +1187,7 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         pk_list = list(pks)
         if not pk_list:
             return {}
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(
                 f'SELECT resource_id, data FROM "{self.table_name}" '
                 f"WHERE resource_id = ANY(%s)",
@@ -1176,14 +1216,14 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
     def __iter__(self) -> Generator[str]:
         # 從 PostgreSQL 查询所有 resource_id
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(f'SELECT resource_id FROM "{self.table_name}"')
             for row in cur:
                 yield row["resource_id"]
 
     def __len__(self) -> int:
         # 從 PostgreSQL 计算总数
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(f'SELECT COUNT(*) FROM "{self.table_name}"')
             return cur.fetchone()[0]
 
@@ -1382,6 +1422,23 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         params.append(query.limit)
         params.append(query.offset)
 
+        # A named cursor is what keeps an unbounded search from pulling the whole
+        # table into memory, and psycopg2 drains one in batches of `itersize`. So
+        # a search whose LIMIT is no larger than a single batch would be
+        # materialised in one FETCH either way: the cursor buys nothing there and
+        # costs DECLARE + a trailing empty FETCH + CLOSE, inside a transaction.
+        #
+        # The threshold is the batch size rather than a number picked to look
+        # safe — above it the cursor is load-bearing. Note the DEFAULT limit is a
+        # sentinel (~4.29e9), not a page size, so the default search still
+        # streams.
+        if query.limit is not UNSET and query.limit <= _STREAM_BATCH_ROWS:
+            with self.row_cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+            for row in rows:
+                yield self._serializer.decode(row["data"])
+            return
         with self.stream_cursor() as cur:
             cur.execute(sql, params)
             for row in cur:
@@ -1408,7 +1465,7 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         params.append(query.limit)
         params.append(query.offset)
 
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(sql, params)
             row = cur.fetchone()
             return int(row["n"])
@@ -1472,12 +1529,23 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                 # Postgres: ``LIMIT NULL`` = no limit (offset still applies).
                 sql += " LIMIT %s OFFSET %s"
                 params = [*params, limit, offset]
-        with self.stream_cursor() as cur:
-            cur.execute(sql, params)
+        # Same rule as `iter_search`, for the same reason. A GROUP BY is not
+        # inherently small — grouping by a high-cardinality key returns a row per
+        # group, which can be a row per resource — so what bounds it is the
+        # caller's LIMIT, not the fact that it aggregates.
+        def _rows(cur):
             return [
                 (row[0], {a.result_name: row[i + 1] for i, a in enumerate(aggregates)})
                 for row in cur
             ]
+
+        if limit is not None and limit <= _STREAM_BATCH_ROWS:
+            with self.row_cursor() as cur:
+                cur.execute(sql, params)
+                return _rows(cur.fetchall())
+        with self.stream_cursor() as cur:
+            cur.execute(sql, params)
+            return _rows(cur)
 
     def _agg_expr(self, a: AggSpec) -> str:
         """SQL for one aggregate's value (not the GROUP BY key). A field-less
