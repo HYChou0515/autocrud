@@ -149,7 +149,8 @@ make changelog-preview          # 預覽尚未釋出的紀錄(從 commit 生成)
 釋出時由維護者執行 `make release patch|minor|major`(版本由 git-cliff 依語意化
 規則自動算出),或 `make release VERSION=X.Y.Z` 指定明確版本。它會:bump
 `__version__` → 把尚未釋出的 commit 收成 `## [X.Y.Z]` 區段(插到既有歷史之前)
-→ commit `bump vX.Y.Z`。接著照原本流程打上 `vX.Y.Z` tag 並發佈。
+→ commit `bump vX.Y.Z`。接著 `make release-publish` 打上 `vX.Y.Z` tag 並
+push,由 CI 完成上傳(見「發布流程」)。
 
 ## 開發工作流程
 
@@ -251,17 +252,53 @@ specstar/
 
 （僅供維護者參考）
 
+**推 tag 就是發布動作。** 上傳一律由 GitHub Actions 執行，用 OIDC trusted
+publishing，本機不再持有 PyPI／npm 的長期 token，也沒有第二條上傳路徑。
+
+本專案有**兩個各自獨立**的產出與版號流：
+
+| tag | 版號來源 | 版號規則 | registry | workflow |
+| --- | --- | --- | --- | --- |
+| `vX.Y.Z` | `specstar/__init__.py` | PEP 440 | PyPI | `release-pypi.yml` |
+| `web-vX.Y.Z` | `web/generator/package.json` | SemVer | npm | `release-npm.yml` |
+
+兩者刻意不統一版號：PEP 440 的預發行版寫作 `0.13.0a2`、SemVer 寫作
+`0.13.0-alpha.2`，互不相通（`scripts/next_version.py` 的註解記著上次硬要
+互通的後果）。
+
+### Python 套件 → PyPI
+
 ```bash
-# 更新版本號
-# 編輯 pyproject.toml
-
-# 建立並上傳套件
-uv run python scripts/publish.py
-
-# 標記版本
-git tag v0.x.x
-git push origin v0.x.x
+make release alpha|beta|rc|final|patch|minor|major   # bump + CHANGELOG + commit
+# 或 make release VERSION=X.Y.Z
+make release-publish                                  # build/twine check(pre-flight) + 打 tag + push
 ```
+
+`release-publish` 只負責推 tag；CI 收到 tag 後會**重新驗證 tag 與
+`__version__` 一致**（`scripts/release_tag.py`）→ build → 上傳。
+
+### npm generator → npm
+
+```bash
+make -C web sync-templates      # 若改過 web/app 才需要，改完要 commit
+make -C web release             # 打 web-vX.Y.Z tag + push
+```
+
+CI 會先擋兩件事才發布：tag 與 `package.json` 版號必須一致，且
+`generator/templates/base` 必須已經跟 `web/app` 同步
+（`make -C web check-templates`）—— 本機舊流程會在打包前自動 sync，CI 只發
+tag 指到的 commit，所以這道檢查是把那個步驟換成一個會紅的守衛。預發行版
+（`0.4.0-rc.1`）會發到 npm 的 `next` dist-tag，不會搶走 `latest`。
+
+### 一次性設定
+
+- **PyPI**：在專案設定新增 Trusted Publisher（repo `HYChou0515/specstar`、
+  workflow `release-pypi.yml`、environment `pypi`）。
+- **npm**：npm **不能用 OIDC 發套件的第一版**（trusted publisher 要在套件設
+  定頁設定，而設定頁得等套件存在，見 npm/cli#8544）。首次請執行
+  `make -C web bootstrap-publish`（需先 `npm login`），發完再到 npmjs.com 開
+  trusted publisher（repo、workflow `release-npm.yml`、environment `npm`），
+  之後就只走 `make -C web release`。
 
 ## 授權
 

@@ -14,7 +14,7 @@ else
   INIT_TEST_FLAG :=
 endif
 
-.PHONY: help build-gen gen dev dev-app dev-gen install clean test clean-app gen-app reset-app regen-app style publish
+.PHONY: help build-gen gen dev dev-app dev-gen install clean test clean-app gen-app reset-app regen-app style
 
 # 預設目標：顯示幫助
 help:
@@ -37,6 +37,12 @@ help:
 	@echo "組合指令："
 	@echo "  make rebuild      - 重新編譯 generator + 重新生成代碼"
 	@echo "  make reset        - 清理 + 安裝 + 編譯 + 生成"
+	@echo ""
+	@echo "釋出："
+	@echo "  make sync-templates    - 把 app/ 同步進 generator/templates/base"
+	@echo "  make check-templates   - 驗證 templates 已同步（不寫入）"
+	@echo "  make release           - 打 web-vX.Y.Z tag + push；上傳由 CI 執行"
+	@echo "  make bootstrap-publish - 一次性：首發到 npm（OIDC 發不了第一版）"
 	@echo ""
 	@echo "其他："
 	@echo "  make clean        - 清理生成的檔案"
@@ -103,26 +109,48 @@ build: build-gen
 	cd app && pnpm build
 	@echo "✅ 生產版本編譯完成"
 
+# app → generator/templates/base 的同步範圍（排除自動生成的檔案）。
+# sync-templates（寫入）與 check-templates（唯讀驗證）共用同一份，兩邊各抄
+# 一份的話遲早會漂移，而漂移的後果是「檢查通過但發出去的 template 是舊的」。
+TEMPLATE_EXCLUDES := \
+	--exclude='node_modules' \
+	--exclude='.vite' \
+	--exclude='.tanstack' \
+	--exclude='dist' \
+	--exclude='.env' \
+	--exclude='.mantine-version' \
+	--exclude='coverage' \
+	--exclude='pnpm-lock.yaml' \
+	--exclude='src/specstar/generated' \
+	--exclude='src/routes/specstar-admin' \
+	--exclude='src/routeTree.gen.ts'
+
 # 同步 app → generator/templates/base（排除自動生成的檔案）
 # 先在 app 端跑 style（prettier + eslint --fix）確保格式統一
 sync-templates:
 	@echo "🎨 先格式化 app 程式碼..."
 	cd app && make style
 	@echo "📋 同步 app → generator/templates/base..."
-	rsync -av --delete \
-		--exclude='node_modules' \
-		--exclude='.vite' \
-		--exclude='.tanstack' \
-		--exclude='dist' \
-		--exclude='.env' \
-		--exclude='.mantine-version' \
-		--exclude='coverage' \
-		--exclude='pnpm-lock.yaml' \
-		--exclude='src/specstar/generated' \
-		--exclude='src/routes/specstar-admin' \
-		--exclude='src/routeTree.gen.ts' \
-		app/ generator/templates/base/
+	rsync -av --delete $(TEMPLATE_EXCLUDES) app/ generator/templates/base/
 	@echo "✅ Templates 同步完成"
+
+# 驗證 templates 已經跟 app 同步（不寫入）。
+#
+# 舊的本機發布路徑會先跑 sync-templates 再打包，CI 不會 —— 它只發 tag 指到
+# 的那個 commit。少了這道檢查，「忘記 sync」就會變成一個安靜發出去的舊
+# template 版本。release 與 CI 都呼叫這個 target，規則只有一份。
+#
+# 用 checksum（-c）比對：全新 checkout 的 mtime 是隨機的，rsync 預設的
+# size+time 快速檢查會把每個檔案都判成不同。
+.PHONY: check-templates
+check-templates:
+	@drift="$$(rsync -rcin --delete $(TEMPLATE_EXCLUDES) app/ generator/templates/base/)"; \
+	if [ -n "$$drift" ]; then \
+		echo "❌ generator/templates/base 與 app/ 不同步 —— 請執行 make sync-templates 並 commit"; \
+		echo "$$drift"; \
+		exit 1; \
+	fi; \
+	echo "✅ Templates 與 app/ 一致"
 
 # ============================================================================
 # App 管理指令
@@ -188,9 +216,43 @@ style:
 	@if [ -d "app" ]; then cd app && make style; else echo "⚠️  app 目錄不存在，跳過"; fi
 	@echo "✅ Style 完成"
 
-# 發布 generator 到 npm（style + build + sync templates + publish）
-publish: style sync-templates build-gen
-	@echo "🚀 發布 generator 到 npm..."
+# ============================================================================
+# 釋出
+# ============================================================================
+
+# 釋出 generator：打 web-vX.Y.Z tag → push。**上傳由 CI 執行**
+# （.github/workflows/release-npm.yml）。
+#
+# 版號從 generator/package.json 讀，所以 tag 一定跟 commit 的內容一致；CI
+# 會用 scripts/release_tag.py 再驗一次。tag 前綴 `web-` 讓它跟 Python 套件
+# 的 `v*` 分流 —— 兩者版號各走各的，PEP 440 與 SemVer 本來就不互通。
+.PHONY: release
+release: check-templates
+	@git diff --quiet && git diff --cached --quiet || { \
+		echo "❌ 工作區不乾淨，請先 commit 再釋出"; exit 1; }; \
+	v="$$(node -p "require('./generator/package.json').version")"; \
+	[ -n "$$v" ] || { echo "❌ 讀不到 generator/package.json 的 version"; exit 1; }; \
+	git rev-parse -q --verify "refs/tags/web-v$$v" >/dev/null && { \
+		echo "❌ tag web-v$$v 已存在 —— 該版可能已發佈，npm 不接受重傳"; exit 1; }; \
+	echo "release → web-v$$v（上傳由 CI 執行）"; \
+	git tag "web-v$$v"; \
+	git push origin "web-v$$v"; \
+	echo "✅ 已 push tag web-v$$v"; \
+	echo "   追蹤：https://github.com/HYChou0515/specstar/actions/workflows/release-npm.yml"
+
+# 一次性的 bootstrap：把 generator 的「第一版」發到 npm。
+#
+# npm 不能用 OIDC 發套件的第一版 —— trusted publisher 是在套件設定頁設定
+# 的，而設定頁要等套件存在才有（npm/cli#8544）。所以 0.3.4 必須從工作站手
+# 動發一次，之後到 npmjs.com 開 trusted publisher，往後就只走 `make
+# release` 推 tag → CI。需要先 `npm login`。
+#
+# 這不是 `make release` 的替代路徑，是它的前置條件；bootstrap 完成後不該
+# 再用。
+.PHONY: bootstrap-publish
+bootstrap-publish: style sync-templates build-gen
+	@echo "🚀 首次發布 generator 到 npm（bootstrap，只做一次）..."
 	cd generator && pnpm check
+	cd generator && pnpm test
 	cd generator && npm publish
-	@echo "✅ 發布完成"
+	@echo "✅ 已發布。接著到 npmjs.com 開 trusted publisher，往後用 make release"

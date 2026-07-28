@@ -204,10 +204,21 @@ When running `make regen-app` or `npx specstar-web generate`:
 
 ### Publishing Generator
 
+Publishing is tag-driven; CI uploads to npm over OIDC. From `web/`:
+
 ```
-1. make sync-templates   (ensure templates match app)
-2. make publish          (style + sync + build + npm publish)
+1. make sync-templates   (only if app/ changed — commit the result)
+2. bump version in generator/package.json, commit
+3. make release          (tags web-vX.Y.Z + pushes; CI publishes)
 ```
+
+CI refuses to publish when the tag disagrees with `generator/package.json`,
+or when `templates/base` has drifted from `app/` (`make check-templates`) —
+the old local flow synced implicitly at pack time, whereas CI publishes only
+what the tag points at.
+
+`make bootstrap-publish` exists solely for the package's *first* npm release
+(npm cannot publish an initial version over OIDC); don't use it afterwards.
 
 ### Important Gotchas
 

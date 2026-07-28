@@ -27,7 +27,6 @@ help:
 	@echo "  install      安裝專案依賴"
 	@echo "  dev-install  安裝開發依賴"
 	@echo "  build        建置套件"
-	@echo "  publish      發布套件到 PyPI"
 	@echo "  clean        清理所有暫存和構建文件 (clean-dev + clean-docs)"
 	@echo "  clean-dev    清理開發暫存檔案"
 	@echo ""
@@ -36,7 +35,8 @@ help:
 	@echo "  release <step>     bump 版本 + 生成 CHANGELOG + commit"
 	@echo "                     step = alpha|beta|rc|final|patch|minor|major"
 	@echo "                     或 make release VERSION=X.Y.Z"
-	@echo "  release-publish    打 tag + build + 上傳 PyPI（不可逆）"
+	@echo "  release-publish    打 tag + push；上傳由 CI 執行（不可逆）"
+	@echo "                     npm generator 的釋出見 make -C web help"
 	@echo ""
 	@echo "文檔工具："
 	@echo "  docs         構建 MkDocs HTML 文檔"
@@ -207,23 +207,31 @@ release:
 	git commit -m "bump v$$new"; \
 	echo "✅ 已 commit \"bump v$$new\"。接著:make release-publish"
 
-# 釋出第二步:打 tag → build → 上傳 PyPI。
+# 釋出第二步:打 tag → push。**上傳由 CI 執行**。
 # 從 specstar/__init__.py 讀版號,所以一定跟上一步 commit 的內容一致。
 # tag 是 lightweight(與既有 v0.12.x 慣例一致),必須明確 push。
+#
+# push 之後 .github/workflows/release-pypi.yml 會接手:重新驗證 tag 與
+# __version__ 一致 → build → 用 OIDC trusted publishing 上傳 PyPI。本機
+# 不再持有 PyPI token,也不再有第二條上傳路徑 —— 兩條並存的話,tag 守衛
+# 就只是「大部分時候會擋」而已。
+#
+# build + twine check 仍留在本機當 pre-flight:tag 一旦 push 出去就會觸發
+# 不可逆的上傳,metadata 壞掉要在推之前就知道,而不是留下一個懸空的 tag。
 .PHONY: release-publish
 release-publish:
 	@git diff --quiet && git diff --cached --quiet || { \
 		echo "工作區不乾淨,請先 commit 再發佈"; exit 1; }; \
 	v="$$(sed -n 's/^__version__ = "\(.*\)"/\1/p' specstar/__init__.py)"; \
 	[ -n "$$v" ] || { echo "讀不到 __version__"; exit 1; }; \
-	echo "publish → v$$v"; \
+	echo "release → v$$v(上傳由 CI 執行)"; \
 	rm -rf dist; \
 	uv build || exit 1; \
 	uv run twine check dist/* || exit 1; \
 	git rev-parse -q --verify "refs/tags/v$$v" >/dev/null || git tag "v$$v"; \
 	git push origin "v$$v"; \
-	uv run twine upload dist/*; \
-	echo "✅ v$$v 已發佈"
+	echo "✅ 已 push tag v$$v"; \
+	echo "   追蹤:https://github.com/HYChou0515/specstar/actions/workflows/release-pypi.yml"
 
 # 清理所有暫存和構建文件
 .PHONY: clean
@@ -263,11 +271,10 @@ build-all: build build-shim
 	@echo "兩個 wheel 都建置完成："
 	@ls -1 dist/*.whl autocrud-shim/dist/*.whl
 
-# 發布套件到 PyPI
-.PHONY: publish
-publish: build
-	@echo "發布套件到 PyPI..."
-	uv run python scripts/publish.py
+# 上傳 PyPI 的唯一路徑是 `make release-publish` 推 tag → CI(見
+# .github/workflows/release-pypi.yml)。這裡曾經有一個 `publish` target 跑
+# scripts/publish.py 直接 twine upload;它繞過 tag 與 __version__ 的一致性
+# 檢查,留著就等於那個檢查隨時可以被繞過。已隨腳本一起移除。
 
 # === 複合指令 ===
 
