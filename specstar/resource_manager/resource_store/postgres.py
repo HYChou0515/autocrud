@@ -299,6 +299,49 @@ class PostgresResourceStore(IResourceStore):
                 )
             return self._info_serializer.decode(bytes(row[0])), bytes(row[1])
 
+    def dump_all_revisions(
+        self,
+        *,
+        resource_ids: "frozenset[str] | None" = None,
+        max_workers: int = 10,
+    ) -> "dict[str, list[tuple[RevisionInfo, bytes]]] | None":
+        """Every revision of every requested resource, in one statement.
+
+        `dump` already prefers a bulk path and falls back to reading each
+        resource in turn when the store returns None — which Postgres did, so an
+        export cost statements proportional to the number of resources (measured:
+        322 for 40). The per-resource query is a join on the same two tables, so
+        the whole export is that join without the per-resource `WHERE`.
+
+        `max_workers` is part of the interface for stores that fetch payloads
+        over a network (S3); a single SQL statement has nothing to parallelise.
+        """
+        del max_workers
+        with self._read() as cur:
+            if resource_ids is None:
+                cur.execute(
+                    f"SELECT i.resource_id, d.info, d.data "
+                    f'FROM "{self._data_table}" d '
+                    f'JOIN "{self._index_table}" i ON d.uid = i.uid'
+                )
+            else:
+                if not resource_ids:
+                    return {}
+                cur.execute(
+                    f"SELECT i.resource_id, d.info, d.data "
+                    f'FROM "{self._data_table}" d '
+                    f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                    f"WHERE i.resource_id = ANY(%s)",
+                    (list(resource_ids),),
+                )
+            rows = cur.fetchall()
+        out: dict[str, list[tuple[RevisionInfo, bytes]]] = {}
+        for resource_id, info, data in rows:
+            out.setdefault(resource_id, []).append(
+                (self._info_serializer.decode(bytes(info)), bytes(data))
+            )
+        return out
+
     def get_revision_bundles(
         self,
         keys: "Sequence[tuple[str, str, str | None]]",
