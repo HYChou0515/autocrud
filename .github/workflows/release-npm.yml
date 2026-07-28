@@ -70,23 +70,34 @@ jobs:
         with:
           version: 10
 
-      # NO `registry-url:` here, deliberately. Setting it makes setup-node
-      # write `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` into an
-      # .npmrc and default NODE_AUTH_TOKEN to the literal placeholder
-      # `XXXXX-XXXXX-XXXXX-XXXXX`. npm then authenticates with that junk
-      # bearer token instead of performing the OIDC exchange, and the
-      # registry answers an unauthorized PUT with 404 — which reads as "no
-      # such package" and sends you hunting for a publishing permission
-      # problem that isn't there. actions/setup-node#1551.
-      #
-      # registry.npmjs.org is npm's default registry anyway, so dropping the
-      # input costs nothing and leaves auth unconfigured, which is exactly
-      # what trusted publishing needs.
+      # `registry-url` is kept (npm's own trusted-publishing example sets it,
+      # and it is what pins the registry npm authenticates against) — but the
+      # .npmrc it generates has to be repaired before publishing, see below.
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
           cache: pnpm
           cache-dependency-path: web/generator/pnpm-lock.yaml
+
+      # setup-node writes `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`
+      # and defaults NODE_AUTH_TOKEN to the literal placeholder
+      # `XXXXX-XXXXX-XXXXX-XXXXX`. npm then authenticates with that junk bearer
+      # token instead of exchanging its OIDC token, and the registry answers the
+      # unauthorized PUT with a bare 404 — which reads as "no such package" and
+      # sends you hunting for a permission problem that does not exist. That is
+      # exactly how web-v0.3.5 failed. actions/setup-node#1551.
+      #
+      # Strip the line rather than dropping `registry-url`: this is the
+      # workaround the issue thread settled on, and it keeps the registry
+      # explicitly configured.
+      - name: Remove the placeholder auth line setup-node writes
+        run: |
+          for f in "$NPM_CONFIG_USERCONFIG" "$HOME/.npmrc"; do
+            [ -n "$f" ] && [ -f "$f" ] || continue
+            sed -i '/_authToken/d' "$f"
+            echo "cleaned $f"
+          done
 
       # Belt and braces: if anything else in the toolchain (a future
       # setup-node, pnpm, a cached runner image) leaves an auth line behind,
@@ -105,7 +116,7 @@ jobs:
             fi
           done
           if [ -n "$found" ]; then
-            echo "::error::stored npm credentials will pre-empt trusted publishing (found in:$found) — remove registry-url/NODE_AUTH_TOKEN so OIDC is used"
+            echo "::error::stored npm credentials will pre-empt trusted publishing (found in:$found) — the sed step above should have removed them"
             exit 1
           fi
           echo "no stored npm credentials — OIDC will be used"
@@ -117,6 +128,24 @@ jobs:
         run: |
           npm install -g npm@^11.5.1
           npm --version
+
+      # npm reports every trusted-publishing failure as ENEEDAUTH or 404
+      # (npm/cli#9088), which cannot distinguish "GitHub issued us no OIDC
+      # token" from "npm never asked for one" from "npm asked and npmjs.com
+      # has no matching trusted publisher". Print the one fact that splits
+      # those apart. Booleans only — never the token itself.
+      - name: OIDC preconditions
+        run: |
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "id-token permission: GRANTED (runner can mint an OIDC token)"
+          else
+            echo "::error::id-token permission MISSING — the job needs permissions.id-token: write"
+            exit 1
+          fi
+          echo "repository:  ${{ github.repository }}"
+          echo "workflow:    $(basename "${{ github.workflow_ref }}" | cut -d@ -f1)"
+          echo "environment: npm"
+          echo "These three must match the trusted publisher on npmjs.com exactly."
 
       - name: Install dependencies
         working-directory: web/generator
