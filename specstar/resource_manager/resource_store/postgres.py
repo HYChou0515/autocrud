@@ -536,17 +536,18 @@ class PostgresResourceStore(IResourceStore):
                 (resource_id,),
             )
 
-            # Remove data rows only if no other index references them
-            for uid in uids:
+            # Remove data rows only if no other index references them. As one
+            # statement: per-uid this was two round-trips each (ask, then maybe
+            # delete), so the cost grew with the revision count — and it raced,
+            # since another writer can add a reference between the ask and the
+            # delete. NOT EXISTS decides and deletes in the same breath.
+            if uids:
                 cur.execute(
-                    f'SELECT 1 FROM "{self._index_table}" WHERE uid = %s LIMIT 1',
-                    (uid,),
+                    f'DELETE FROM "{self._data_table}" d '
+                    f"WHERE d.uid = ANY(%s) AND NOT EXISTS ("
+                    f'SELECT 1 FROM "{self._index_table}" i WHERE i.uid = d.uid)',
+                    (list(uids),),
                 )
-                if cur.fetchone() is None:
-                    cur.execute(
-                        f'DELETE FROM "{self._data_table}" WHERE uid = %s',
-                        (uid,),
-                    )
 
     def delete_revisions(self, resource_id: str, revision_ids: list[str]) -> None:
         """Hard-delete specific revisions, ref-counting shared uids.
@@ -577,17 +578,18 @@ class PostgresResourceStore(IResourceStore):
                 (resource_id, rev_list),
             )
 
-            # Remove data rows only if no other index references them.
-            for uid in uids:
+            # Remove data rows only if no other index references them. As one
+            # statement: per-uid this was two round-trips each (ask, then maybe
+            # delete), so the cost grew with the revision count — and it raced,
+            # since another writer can add a reference between the ask and the
+            # delete. NOT EXISTS decides and deletes in the same breath.
+            if uids:
                 cur.execute(
-                    f'SELECT 1 FROM "{self._index_table}" WHERE uid = %s LIMIT 1',
-                    (uid,),
+                    f'DELETE FROM "{self._data_table}" d '
+                    f"WHERE d.uid = ANY(%s) AND NOT EXISTS ("
+                    f'SELECT 1 FROM "{self._index_table}" i WHERE i.uid = d.uid)',
+                    (list(uids),),
                 )
-                if cur.fetchone() is None:
-                    cur.execute(
-                        f'DELETE FROM "{self._data_table}" WHERE uid = %s',
-                        (uid,),
-                    )
 
     def cleanup(self) -> None:
         """Remove all data (both tables). Useful for test teardown."""
