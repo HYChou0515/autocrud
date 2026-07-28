@@ -1529,12 +1529,23 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                 # Postgres: ``LIMIT NULL`` = no limit (offset still applies).
                 sql += " LIMIT %s OFFSET %s"
                 params = [*params, limit, offset]
-        with self.stream_cursor() as cur:
-            cur.execute(sql, params)
+        # Same rule as `iter_search`, for the same reason. A GROUP BY is not
+        # inherently small — grouping by a high-cardinality key returns a row per
+        # group, which can be a row per resource — so what bounds it is the
+        # caller's LIMIT, not the fact that it aggregates.
+        def _rows(cur):
             return [
                 (row[0], {a.result_name: row[i + 1] for i, a in enumerate(aggregates)})
                 for row in cur
             ]
+
+        if limit is not None and limit <= _STREAM_BATCH_ROWS:
+            with self.row_cursor() as cur:
+                cur.execute(sql, params)
+                return _rows(cur.fetchall())
+        with self.stream_cursor() as cur:
+            cur.execute(sql, params)
+            return _rows(cur)
 
     def _agg_expr(self, a: AggSpec) -> str:
         """SQL for one aggregate's value (not the GROUP BY key). A field-less

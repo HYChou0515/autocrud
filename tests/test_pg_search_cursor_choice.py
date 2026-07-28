@@ -99,3 +99,24 @@ def test_the_unbounded_default_keeps_streaming():
 
     conn = _search(DEFAULT_QUERY_LIMIT)
     assert _named(conn), f"limit={DEFAULT_QUERY_LIMIT} must stream"
+
+
+def test_an_aggregation_streams_unless_its_result_is_bounded():
+    """A GROUP BY is NOT inherently small: grouping by a high-cardinality key
+    returns one row per group, which can be one row per resource. So the rule is
+    the same as for a search — the caller's `limit` is what bounds it, and
+    without one the cursor stays.
+    """
+    from unittest.mock import MagicMock as MM
+
+    from specstar.query_types import ResourceMetaSearchQuery
+
+    by = MM(source="meta", key="n", path=None)
+
+    store, conn = _store_and_conn()
+    store.aggregate_by(ResourceMetaSearchQuery(), by, [], limit=50)
+    assert _named(conn) == [], "a limited aggregation fits in one fetch"
+
+    store2, conn2 = _store_and_conn()
+    store2.aggregate_by(ResourceMetaSearchQuery(), by, [])
+    assert _named(conn2), "an unlimited GROUP BY can return a row per resource"
