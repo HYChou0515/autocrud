@@ -1,0 +1,87 @@
+name: Release (PyPI)
+
+# Pushing a `vX.Y.Z` tag publishes the Python distribution to PyPI.
+#
+# The npm code generator is a separate artefact on a separate version stream
+# and has its own `web-v*` trigger (release-npm.yml). The two are not unified
+# on purpose: PEP 440 spells a pre-release `0.13.0a2` and SemVer spells it
+# `0.13.0-alpha.2`, and this repo already carries the scar from pretending
+# those round-trip (see scripts/next_version.py).
+#
+# `v*` cannot match `web-v0.3.4` — ref globs anchor at the start of the name —
+# so the two streams cannot cross-trigger.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+# Never cancel a run that may be mid-upload: a partially uploaded version
+# still burns the version number, and PyPI does not accept a re-upload.
+concurrency:
+  group: release-pypi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Everything that touches repository code lives here, so the job holding
+  # the OIDC token below runs no project code at all.
+  build:
+    name: verify tag + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - uses: astral-sh/setup-uv@v3
+
+      # First, before anything is built: the tag and specstar/__init__.py
+      # must agree. A tag that outran the source would otherwise publish the
+      # previous version's code under the new number — unrecoverable, since
+      # the version can never be re-uploaded.
+      - name: Verify tag matches specstar/__init__.py
+        run: python scripts/release_tag.py "${{ github.ref }}"
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Configure this environment on PyPI as the trusted publisher's
+    # environment, and add required reviewers here if you want a human gate
+    # in front of an irreversible upload.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/specstar
+    permissions:
+      # The OIDC token PyPI exchanges for a short-lived upload token. Nothing
+      # else in this job needs a credential — there is no checkout, so no
+      # repository code runs while the token is available.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      # Tokenless upload: PyPI validates the owner/repo/workflow/environment
+      # tuple against the Trusted Publisher configured for the project.
+      # https://docs.pypi.org/trusted-publishers/
+      - uses: pypa/gh-action-pypi-publish@release/v1

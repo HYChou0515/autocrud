@@ -1,0 +1,107 @@
+name: Release (npm)
+
+# Pushing a `web-vX.Y.Z` tag publishes web/generator (the
+# `specstar-web-generator` CLI) to npm. The Python distribution is a separate
+# artefact on its own `v*` stream — see release-pypi.yml.
+#
+# ONE-TIME BOOTSTRAP: npm cannot publish a package's *first* version over
+# OIDC. A trusted publisher is configured on the package's settings page,
+# which only exists once the package does (npm/cli#8544). So `0.3.4` has to
+# be published once from a workstation — `make -C web bootstrap-publish` —
+# and the trusted publisher enabled afterwards. Until that is done, this
+# workflow will fail at the publish step with a 404/ENEEDAUTH (npm/cli#9088
+# reports missing trusted-publishing diagnostics as a plain 404).
+on:
+  push:
+    tags:
+      - 'web-v*'
+
+permissions:
+  contents: read
+
+# A half-finished publish still burns the version number; npm does not accept
+# a re-publish of the same version.
+concurrency:
+  group: release-npm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Configure this environment name on npm as part of the trusted
+    # publisher, and add required reviewers here for a human gate.
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/specstar-web-generator
+    permissions:
+      contents: read
+      # The OIDC token npm exchanges for a short-lived publish token.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # Before installing anything: the tag and package.json must agree, or
+      # the wrong version gets published under the tag's number.
+      # `dist_tag` keeps pre-releases off `latest` — see below.
+      - name: Verify tag matches web/generator/package.json
+        id: tag
+        run: python scripts/release_tag.py "${{ github.ref }}" >> "$GITHUB_OUTPUT"
+
+      # The old manual path ran `sync-templates` before packing, so the
+      # shipped templates always matched web/app. CI publishes exactly what
+      # the tag points at and does NOT sync, so without this guard a
+      # forgotten sync becomes a silently stale release. The rule (and its
+      # exclude list) lives in web/Makefile so local `make release` and CI
+      # cannot drift apart.
+      - name: Templates must already match web/app
+        run: make -C web check-templates
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+          cache-dependency-path: web/generator/pnpm-lock.yaml
+
+      # Trusted publishing needs npm >= 11.5.1 (Node 24 already ships an
+      # 11.x, but the floor is what matters and a stale npm fails as an
+      # opaque 404 rather than an auth error).
+      - name: Ensure an npm that can do trusted publishing
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+
+      - name: Install dependencies
+        working-directory: web/generator
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint + format check
+        working-directory: web/generator
+        run: pnpm check
+
+      - name: Tests
+        working-directory: web/generator
+        run: pnpm test
+
+      - name: Build
+        working-directory: web/generator
+        run: pnpm build
+
+      # Tokenless: npm validates the owner/repo/workflow/environment tuple
+      # against the trusted publisher configured for the package, and attaches
+      # provenance automatically. `--tag` parks pre-releases on `next` so a
+      # bare `npm install specstar-web-generator` never resolves to an alpha.
+      # https://docs.npmjs.com/trusted-publishers/
+      - name: Publish
+        working-directory: web/generator
+        run: npm publish --tag "${{ steps.tag.outputs.dist_tag }}"
