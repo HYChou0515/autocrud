@@ -299,6 +299,40 @@ class PostgresResourceStore(IResourceStore):
                 )
             return self._info_serializer.decode(bytes(row[0])), bytes(row[1])
 
+    def get_revision_bundles(
+        self,
+        keys: "Sequence[tuple[str, str, str | None]]",
+    ) -> "dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]]":
+        """A whole page in one statement.
+
+        The per-row query is already a join keyed on the same three columns, so
+        the page is one `IN` over their tuples — the page's cost stops growing
+        with its size.
+        """
+        wanted = [(r, v, self._sv(sv)) for r, v, sv in keys]
+        if not wanted:
+            return {}
+        with self._read() as cur:
+            cur.execute(
+                f"SELECT i.resource_id, i.revision_id, i.schema_version, d.info, d.data "
+                f'FROM "{self._data_table}" d '
+                f'JOIN "{self._index_table}" i ON d.uid = i.uid '
+                f"WHERE (i.resource_id, i.revision_id, i.schema_version) IN %s",
+                (tuple(wanted),),
+            )
+            rows = cur.fetchall()
+        by_normalised = {
+            (r, v, sv): (self._info_serializer.decode(bytes(info)), bytes(data))
+            for r, v, sv, info, data in rows
+        }
+        # Hand back the caller's own key shape, not the normalised one.
+        out: dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]] = {}
+        for key in keys:
+            hit = by_normalised.get((key[0], key[1], self._sv(key[2])))
+            if hit is not None:
+                out[key] = hit
+        return out
+
     def get_revision_info(
         self,
         resource_id: str,

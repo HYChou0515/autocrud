@@ -364,6 +364,13 @@ class SimpleStorage(IStorage):
             resource_id, revision_id, schema_version
         )
 
+    def get_revision_bundles(
+        self,
+        keys: "Sequence[tuple[str, str, str | None]]",
+    ) -> "dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]]":
+        """A page's worth at once — see `IResourceStore.get_revision_bundles`."""
+        return self._resource_store.get_revision_bundles(keys)
+
     def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
         self._resource_store.save(info, data)
 
@@ -2597,6 +2604,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # 3. Classify partial fields
         spec = classify_partial_fields(partial, default_category="data")
 
+        # 3b. Fetch the whole page's rows in one go. Per-item reads made a
+        # listing cost grow with its length — the same query repeated once per
+        # row, each on its own pooled connection. Only the full-data path
+        # qualifies: a partial read projects columns per item, and a listing
+        # that wants no data has nothing to prefetch. Backends without a bulk
+        # read fall back to the same per-row loop inside `get_revision_bundles`,
+        # so this is a speed-up where it exists and a no-op where it does not.
+        prefetched: dict[tuple[str, str, str | None], tuple[RevisionInfo, bytes]] = {}
+        if "data" in returns and not spec.data_fields:
+            prefetched = self.storage.get_revision_bundles(
+                [
+                    (m.resource_id, m.current_revision_id, m.schema_version)
+                    for m in metas
+                ]
+            )
+
         # 4. Define per-item fetch function
         def _fetch_one(meta: ResourceMeta) -> SearchedResource[T] | None:
             try:
@@ -2614,10 +2637,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     else:
                         # low-level read (no policy) — list applies the
                         # on_decode_error policy itself in the except below.
-                        resource = self.get_resource_revision(
-                            meta.resource_id,
-                            meta.current_revision_id,
-                            schema_version=meta.schema_version,
+                        pre = prefetched.get(
+                            (
+                                meta.resource_id,
+                                meta.current_revision_id,
+                                meta.schema_version,
+                            )
+                        )
+                        resource = (
+                            self._resource_from_bundle(*pre)
+                            if pre is not None
+                            else self.get_resource_revision(
+                                meta.resource_id,
+                                meta.current_revision_id,
+                                schema_version=meta.schema_version,
+                            )
                         )
                         data = resource.data
                         if "info" in returns:
@@ -3503,6 +3537,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         info, raw = self.storage.get_revision_bundle(
             resource_id, revision_id, schema_version
         )
+        return self._resource_from_bundle(info, raw)
+
+    def _resource_from_bundle(self, info: RevisionInfo, raw: bytes) -> Resource[T]:
+        """Turn a fetched row into a `Resource` — decode, lazy migration, and the
+        warning that goes with it.
+
+        Split out so a caller that already holds the row (a listing that fetched
+        its whole page in one query) reuses this instead of restating it beside a
+        loop. It is not a parameter on `get_resource_revision` because that method
+        is wrapped by the event machinery, which validates its keyword arguments.
+        """
         if self._migration is not None and info.schema_version != self._schema_version:
             # Lazy read-time migration: the row is stored at an older version,
             # so apply the registered migration to present it as the current
