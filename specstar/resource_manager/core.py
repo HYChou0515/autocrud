@@ -1460,7 +1460,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             if actual_sv is UNSET:
                 raise RevisionIDNotFoundError(resource_id, target_rev)
 
-        info = self.storage.get_resource_revision_info(
+        # Info and payload are two columns of the same joined row, and a
+        # migration that proceeds needs both. Fetching them separately cost an
+        # extra query and an extra connection checkout PER RESOURCE — and a
+        # migration runs once per resource in the store.
+        info, raw = self.storage.get_revision_bundle(
             resource_id, target_rev, schema_version=actual_sv
         )
 
@@ -1469,10 +1473,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return meta
 
         # 執行數據遷移
-        with self.storage.get_data_bytes(
-            resource_id, target_rev, schema_version=actual_sv
-        ) as data_io:
-            migrated_data = self._migration.migrate(data_io, info.schema_version)
+        migrated_data = self._migration.migrate(io.BytesIO(raw), info.schema_version)
 
         # 更新 resource info 的 schema_version
         info.parent_schema_version = info.schema_version
