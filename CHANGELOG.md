@@ -6,6 +6,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
+## [0.13.0a3] — 2026-07-28
+
+
+### Added
+
+- Release alpha|beta|rc|final, and repair the broken bumps
+- P1 resolve app branding from rc, OpenAPI title, then defaults
+- P2 emit resolved branding into the generated app
+- P3 give the app a real logo and its own name
+
+
+### Documentation
+
+- P3 — the union name-length limit and its add_model(name=...) fix
+- P5 document how an app gets its own name and logo
+
+
+### Fixed
+
+- P1 — shorten schema names past PyYAML's 1024-char key limit
+- P2 — refuse an over-long derived resource name; pass add_model(name=...)
+- P4 size the logo where it is actually legible
+
+
+### Performance
+
+- Stop paying for a transaction and a cursor a bounded read cannot use
+- Read a revision's info and data in one round-trip
+- Fetch a listing's page in one query instead of once per row
+- Stop an update doing work nothing consumes
+- Ask whether a resource exists once, not twice
+- A page-sized search does not need a server-side cursor
+- Export every resource in one statement, not one per resource
+- A limited aggregation does not need a server-side cursor
+- Drop orphaned data rows in one statement, not one ask per uid
+- Read every revision's info at once when pruning
+- Dump one resource in one read too
+- Read the row once when migrating it
+
 ## [0.13.0a2] — 2026-07-21
 
 
