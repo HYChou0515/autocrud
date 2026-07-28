@@ -97,8 +97,13 @@ class PostgresResourceStore(IResourceStore):
                 time.sleep(min(0.5 * (attempt + 1), 3))
                 continue
 
-            conn.autocommit = False
+            # Health-check OUTSIDE a transaction. With autocommit off the
+            # probe's own `SELECT 1` opens one, and psycopg2 then refuses
+            # any later `autocommit` change on this connection — which is
+            # what a read-only caller needs to do to skip BEGIN/COMMIT.
+            conn.autocommit = True
             if self._test_query(conn):
+                conn.autocommit = False  # writers are the default
                 return conn
 
             try:
@@ -135,6 +140,25 @@ class PostgresResourceStore(IResourceStore):
             conn.rollback()
             raise
         finally:
+            self._put_conn(conn)
+
+    @contextmanager
+    def _read(self) -> Generator[Any, None, None]:
+        """A read that runs outside a transaction.
+
+        `BEGIN` and `COMMIT` are two round-trips, and a single-statement SELECT
+        has nothing to make atomic. `_get_conn` turns autocommit off because most
+        callers write; a read turns it back on for its own duration and restores
+        it before the connection returns to the pool.
+        """
+        conn = self._get_conn()
+        previous = conn.autocommit
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                yield cur
+        finally:
+            conn.autocommit = previous
             self._put_conn(conn)
 
     # ------------------------------------------------------------------
@@ -184,13 +208,13 @@ class PostgresResourceStore(IResourceStore):
     # ------------------------------------------------------------------
 
     def list_resources(self) -> Generator[str]:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(f'SELECT DISTINCT resource_id FROM "{self._index_table}"')
             for row in cur.fetchall():
                 yield row[0]
 
     def list_revisions(self, resource_id: str) -> Generator[str]:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT DISTINCT revision_id FROM "{self._index_table}" '
                 f"WHERE resource_id = %s",
@@ -202,7 +226,7 @@ class PostgresResourceStore(IResourceStore):
     def list_schema_versions(
         self, resource_id: str, revision_id: str
     ) -> Generator[str | None]:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT schema_version FROM "{self._index_table}" '
                 f"WHERE resource_id = %s AND revision_id = %s",
@@ -217,7 +241,7 @@ class PostgresResourceStore(IResourceStore):
         revision_id: str,
         schema_version: str | None,
     ) -> bool:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT 1 FROM "{self._index_table}" '
                 f"WHERE resource_id = %s AND revision_id = %s "
@@ -233,7 +257,7 @@ class PostgresResourceStore(IResourceStore):
         revision_id: str,
         schema_version: str | None,
     ) -> Generator[IO[bytes], None, None]:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT d.data FROM "{self._data_table}" d '
                 f'JOIN "{self._index_table}" i ON d.uid = i.uid '
@@ -254,7 +278,7 @@ class PostgresResourceStore(IResourceStore):
         revision_id: str,
         schema_version: str | None,
     ) -> RevisionInfo:
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f'SELECT d.info FROM "{self._data_table}" d '
                 f'JOIN "{self._index_table}" i ON d.uid = i.uid '
@@ -318,7 +342,7 @@ class PostgresResourceStore(IResourceStore):
         if not items:
             return []
         keys = self._key_tuples(items)
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f"SELECT i.resource_id, i.revision_id, i.schema_version, "
                 f"octet_length(d.data) "
@@ -337,7 +361,7 @@ class PostgresResourceStore(IResourceStore):
         if not items:
             return {}
         keys = self._key_tuples(items)
-        with self._transaction() as cur:
+        with self._read() as cur:
             cur.execute(
                 f"SELECT i.resource_id, d.data "
                 f'FROM "{self._data_table}" d '
@@ -391,7 +415,7 @@ class PostgresResourceStore(IResourceStore):
 
     def purge_resource(self, resource_id: str) -> None:
         """Hard-delete all revision data for a resource."""
-        with self._transaction() as cur:
+        with self._read() as cur:
             # Collect UIDs that belong exclusively to this resource
             # (in case of UID deduplication across resources we must not
             # remove data rows still referenced by other resources)
@@ -431,7 +455,7 @@ class PostgresResourceStore(IResourceStore):
         if not revision_ids:
             return
         rev_list = list(revision_ids)
-        with self._transaction() as cur:
+        with self._read() as cur:
             # UIDs referenced by the revisions we're about to drop.
             cur.execute(
                 f'SELECT DISTINCT uid FROM "{self._index_table}" '

@@ -811,8 +811,13 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
                 time.sleep(min(0.5 * (attempt + 1), 3))
                 continue
 
-            conn.autocommit = False
+            # Health-check OUTSIDE a transaction. With autocommit off the
+            # probe's own `SELECT 1` opens one, and psycopg2 then refuses any
+            # later `autocommit` change on this connection — which is what a
+            # read-only caller needs to do to skip BEGIN/COMMIT.
+            conn.autocommit = True
             if self.test_query(conn):
+                conn.autocommit = False  # writers are the default
                 return conn
 
             # test_query 失敗：歸還壞連線並標記關閉，避免洩漏
@@ -853,6 +858,14 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
     @contextmanager
     def stream_cursor(self):
+        """A server-side (named) cursor, for reads whose result set is unbounded.
+
+        Naming the cursor is what lets postgres stream instead of materialising
+        the whole answer, and it costs `DECLARE` / `FETCH` / `CLOSE` — three
+        round-trips where an ordinary cursor needs one. Worth it per table scan;
+        pure loss per row. A caller that has already bounded its result (a point
+        read, a COUNT, a fixed set of keys) wants `row_cursor` instead.
+        """
         conn = self.get_conn()
         try:
             # 建立 server-side cursor (named cursor)
@@ -866,6 +879,27 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
             conn.rollback()
             raise
         finally:
+            self.put_conn(conn)
+
+    @contextmanager
+    def row_cursor(self):
+        """An ordinary client-side cursor with dict rows, outside a transaction.
+
+        `stream_cursor` without the `DECLARE`/`FETCH`/`CLOSE` a bounded read
+        cannot use, and without the `BEGIN`/`COMMIT` it has nothing to make
+        atomic either. `get_conn` turns autocommit off because most callers
+        write; a single-statement read turns it back on for its own duration and
+        restores it before the connection returns to the pool, so a writer that
+        checks the same connection out next is unaffected.
+        """
+        conn = self.get_conn()
+        previous = conn.autocommit
+        conn.autocommit = True
+        try:
+            with conn.cursor(cursor_factory=DictCursor) as cur:
+                yield cur
+        finally:
+            conn.autocommit = previous
             self.put_conn(conn)
 
     def _init_postgres_table(self):
@@ -1121,14 +1155,14 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
     def values(self):
         """Streaming bulk read — single ``SELECT data`` instead of N+1 queries."""
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(f'SELECT data FROM "{self.table_name}"')
             for row in cur:
                 yield self._serializer.decode(row["data"])
 
     def __getitem__(self, pk: str) -> ResourceMeta:
         # 直接從 PostgreSQL 查詢
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(
                 f'SELECT data FROM "{self.table_name}" WHERE resource_id = %s', (pk,)
             )
@@ -1147,7 +1181,7 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         pk_list = list(pks)
         if not pk_list:
             return {}
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(
                 f'SELECT resource_id, data FROM "{self.table_name}" '
                 f"WHERE resource_id = ANY(%s)",
@@ -1176,14 +1210,14 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
 
     def __iter__(self) -> Generator[str]:
         # 從 PostgreSQL 查询所有 resource_id
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(f'SELECT resource_id FROM "{self.table_name}"')
             for row in cur:
                 yield row["resource_id"]
 
     def __len__(self) -> int:
         # 從 PostgreSQL 计算总数
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(f'SELECT COUNT(*) FROM "{self.table_name}"')
             return cur.fetchone()[0]
 
@@ -1408,7 +1442,7 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         params.append(query.limit)
         params.append(query.offset)
 
-        with self.stream_cursor() as cur:
+        with self.row_cursor() as cur:
             cur.execute(sql, params)
             row = cur.fetchone()
             return int(row["n"])
