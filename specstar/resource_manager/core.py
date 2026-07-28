@@ -284,8 +284,11 @@ class SimpleStorage(IStorage):
         return resource_id in self._meta_store
 
     def revision_exists(self, resource_id: str, revision_id: str) -> bool:
+        # `get_meta` raises for an unknown id, so reaching the next line already
+        # proves the resource exists — the `exists()` that used to guard it asked
+        # the meta store the same question a second time, over its own connection.
         meta = self.get_meta(resource_id)
-        return self.exists(resource_id) and self._resource_store.exists(
+        return self._resource_store.exists(
             resource_id,
             revision_id,
             meta.schema_version,
