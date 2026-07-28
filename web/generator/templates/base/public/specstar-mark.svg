@@ -1,0 +1,35 @@
+<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      svg { color: #0F172A; }
+      @media (prefers-color-scheme: dark) {
+        svg { color: #F1F5F9; }
+      }
+    </style>
+  </defs>
+  <!-- 4 thin rays from star inner notches to corner nodes -->
+  <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <line x1="113" y1="113" x2="60" y2="60"/>
+    <line x1="127" y1="113" x2="180" y2="60"/>
+    <line x1="113" y1="127" x2="60" y2="180"/>
+    <line x1="127" y1="127" x2="180" y2="180"/>
+  </g>
+  <!-- Tiny waypoints on each ray (Option C: data flow stations) -->
+  <g fill="currentColor">
+    <circle cx="86" cy="86" r="2.4"/>
+    <circle cx="154" cy="86" r="2.4"/>
+    <circle cx="86" cy="154" r="2.4"/>
+    <circle cx="154" cy="154" r="2.4"/>
+  </g>
+  <!-- 4 generated-output nodes -->
+  <g fill="currentColor">
+    <rect x="44" y="44" width="12" height="12" rx="2"/>
+    <rect x="184" y="44" width="12" height="12" rx="2"/>
+    <rect x="44" y="184" width="12" height="12" rx="2"/>
+    <rect x="184" y="184" width="12" height="12" rx="2"/>
+  </g>
+  <!-- Central 4-point north star -->
+  <g transform="translate(70, 70)">
+    <path d="M 50,0 L 57,43 L 100,50 L 57,57 L 50,100 L 43,57 L 0,50 L 43,43 Z" fill="currentColor"/>
+  </g>
+</svg>

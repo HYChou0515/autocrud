@@ -18,6 +18,8 @@ import { IRBuilder, preScanSpec } from '../ir-builder.js';
 import { CodeGenerator } from '../codegen/index.js';
 import { runOrvalGenerate, discoverOrvalZodSchemas } from '../orval-runner.js';
 import { hasRefMembers } from '../types.js';
+import { type Branding, resolveBranding, renderBrandingModule, patchIndexHtml } from '../branding.js';
+import { readRc } from '../mantineVersion.js';
 
 // Re-export for backward compatibility (used by CLI and tests)
 export { IRBuilder, preScanSpec } from '../ir-builder.js';
@@ -125,7 +127,12 @@ export async function generateCode(apiUrl: string, outputRoot: string, options: 
   );
   codeGen.run();
 
-  // ── Step 7: Write .env file with proxy config ────────────────────────────
+  // ── Step 7: Resolve + emit app branding ──────────────────────────────────
+  const branding = resolveBranding({ rc: await readRc(ROOT), specTitle: rawSpec.info?.title });
+  writeBrandingFiles(ROOT, GEN, branding);
+  console.log(`🎨 Branding: ${branding.title} (${branding.logo})`);
+
+  // ── Step 8: Write .env file with proxy config ────────────────────────────
   const proxyPath = options.proxyPath ?? '/api';
   writeEnvFile(ROOT, apiUrl, proxyPath);
 
@@ -187,6 +194,27 @@ export function detectBasePath(spec: any): string {
     console.warn(`⚠️  Multiple path prefixes detected: ${sorted.join(', ')}. Using common prefix: ${trimmed}`);
   }
   return trimmed;
+}
+
+/**
+ * Emit the resolved branding to the two places that consume it:
+ *
+ * - `src/specstar/generated/branding.ts` — read by the React app
+ * - `index.html` — read by the browser before React boots, so the tab shows the
+ *   right name and favicon immediately instead of flashing a default
+ *
+ * `index.html` is only rewritten when it already exists: `integrate` targets a
+ * project that may keep its entry HTML somewhere else entirely.
+ */
+export function writeBrandingFiles(rootDir: string, genDir: string, branding: Branding): void {
+  fs.mkdirSync(genDir, { recursive: true });
+  fs.writeFileSync(path.join(genDir, 'branding.ts'), renderBrandingModule(branding), 'utf-8');
+
+  const indexHtmlPath = path.join(rootDir, 'index.html');
+  if (fs.existsSync(indexHtmlPath)) {
+    const html = fs.readFileSync(indexHtmlPath, 'utf-8');
+    fs.writeFileSync(indexHtmlPath, patchIndexHtml(html, branding), 'utf-8');
+  }
 }
 
 /**

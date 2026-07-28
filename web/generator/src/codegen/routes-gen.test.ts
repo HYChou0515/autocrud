@@ -289,6 +289,20 @@ describe('genRootIndex / genDashboard', () => {
     expect(code).toContain("createFileRoute('/')");
   });
 
+  // The landing page is the first thing a developer sees, so it must show
+  // *their* app's name — not SpecStar's — and a real logo rather than a
+  // stand-in database glyph.
+  it('takes its name and logo from the generated branding module', () => {
+    const code = genRootIndex();
+    expect(code).toContain("from '@/specstar/generated/branding'");
+    expect(code).toContain('{APP_TITLE}');
+    expect(code).toContain('src={APP_LOGO}');
+    // No hardcoded product name rendered as UI text (the file header comment
+    // legitimately still names the generator).
+    expect(code).not.toContain('>SpecStar Web<');
+    expect(code).not.toContain('IconDatabase');
+  });
+
   it('generates dashboard page', () => {
     const code = genDashboard();
     expect(code).toContain("createFileRoute('/specstar-admin/')");

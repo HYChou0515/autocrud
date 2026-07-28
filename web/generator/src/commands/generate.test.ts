@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { detectBasePath, writeEnvFile } from './generate.js';
+import { detectBasePath, writeEnvFile, writeBrandingFiles } from './generate.js';
 
 // ============================================================================
 // detectBasePath
@@ -286,5 +286,62 @@ describe('writeEnvFile', () => {
     writeEnvFile(tmpDir, 'http://localhost:8000');
     const content = fs.readFileSync(path.join(tmpDir, '.env'), 'utf-8');
     expect(content).toContain('VITE_API_URL=/api');
+  });
+});
+
+// ============================================================================
+// writeBrandingFiles
+// ============================================================================
+describe('writeBrandingFiles', () => {
+  let tmpDir: string;
+  let genDir: string;
+
+  const INDEX_HTML = [
+    '<!DOCTYPE html>',
+    '<html lang="en">',
+    '  <head>',
+    '    <link rel="icon" type="image/svg+xml" href="/vite.svg" />',
+    '    <title>SpecStar Admin</title>',
+    '  </head>',
+    '</html>',
+  ].join('\n');
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'specstar-branding-'));
+    genDir = path.join(tmpDir, 'src', 'specstar', 'generated');
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writes the generated branding module', () => {
+    writeBrandingFiles(tmpDir, genDir, { title: 'RPG Game API', logo: '/specstar-mark.svg' });
+    const content = fs.readFileSync(path.join(genDir, 'branding.ts'), 'utf-8');
+    expect(content).toContain("export const APP_TITLE = 'RPG Game API';");
+    expect(content).toContain("export const APP_LOGO = '/specstar-mark.svg';");
+  });
+
+  it('stamps the title and favicon into index.html', () => {
+    fs.writeFileSync(path.join(tmpDir, 'index.html'), INDEX_HTML);
+    writeBrandingFiles(tmpDir, genDir, { title: 'RPG Game API', logo: '/specstar-mark.svg' });
+    const html = fs.readFileSync(path.join(tmpDir, 'index.html'), 'utf-8');
+    expect(html).toContain('<title>RPG Game API</title>');
+    expect(html).toContain('href="/specstar-mark.svg"');
+    expect(html).not.toContain('/vite.svg');
+  });
+
+  // `integrate` targets a project that may keep its entry HTML elsewhere.
+  it('does not create index.html when the project has none', () => {
+    writeBrandingFiles(tmpDir, genDir, { title: 'X', logo: '/l.svg' });
+    expect(fs.existsSync(path.join(tmpDir, 'index.html'))).toBe(false);
+  });
+
+  it('leaves the rest of index.html untouched', () => {
+    fs.writeFileSync(path.join(tmpDir, 'index.html'), INDEX_HTML);
+    writeBrandingFiles(tmpDir, genDir, { title: 'X', logo: '/l.svg' });
+    const html = fs.readFileSync(path.join(tmpDir, 'index.html'), 'utf-8');
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain('<!DOCTYPE html>');
   });
 });

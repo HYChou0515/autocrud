@@ -10,6 +10,7 @@ import {
   patchSourceFiles,
   writeVersionConfig,
   readVersionConfig,
+  readRc,
   validateMantineVersion,
 } from './mantineVersion.js';
 
@@ -272,6 +273,58 @@ describe('mantineVersion', () => {
       await fs.writeFile(path.join(tmpDir, '.specstarrc.json'), '{"mantineVersion": "6"}');
       const version = await readVersionConfig(tmpDir);
       expect(version).toBe('7');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // readRc — the whole config, not just the Mantine version
+  // ---------------------------------------------------------------------------
+
+  describe('readRc', () => {
+    it('returns an empty config when the file does not exist', async () => {
+      expect(await readRc(tmpDir)).toEqual({});
+    });
+
+    it('returns an empty config when the file is invalid JSON', async () => {
+      await fs.writeFile(path.join(tmpDir, '.specstarrc.json'), 'not json');
+      expect(await readRc(tmpDir)).toEqual({});
+    });
+
+    it('returns an empty config when the file is not an object', async () => {
+      await fs.writeFile(path.join(tmpDir, '.specstarrc.json'), '"a string"');
+      expect(await readRc(tmpDir)).toEqual({});
+    });
+
+    it('reads the branding overrides', async () => {
+      await fs.writeFile(path.join(tmpDir, '.specstarrc.json'), '{"title": "My Console", "logo": "/acme.svg"}');
+      const rc = await readRc(tmpDir);
+      expect(rc.title).toBe('My Console');
+      expect(rc.logo).toBe('/acme.svg');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // writeVersionConfig — must not clobber unrelated config
+  // ---------------------------------------------------------------------------
+
+  describe('writeVersionConfig preserves unrelated config', () => {
+    // `integrate` runs against an existing project, so a whole-file rewrite
+    // would silently drop branding the developer had already configured.
+    it('keeps branding overrides that are already in the file', async () => {
+      await fs.writeFile(path.join(tmpDir, '.specstarrc.json'), '{"title": "My Console", "logo": "/acme.svg"}');
+      await writeVersionConfig(tmpDir, '8');
+      expect(await readRc(tmpDir)).toEqual({ mantineVersion: '8', title: 'My Console', logo: '/acme.svg' });
+    });
+
+    it('still writes a fresh config when no file exists', async () => {
+      await writeVersionConfig(tmpDir, '8');
+      expect(await readRc(tmpDir)).toEqual({ mantineVersion: '8' });
+    });
+
+    it('overwrites a corrupt config rather than failing', async () => {
+      await fs.writeFile(path.join(tmpDir, '.specstarrc.json'), 'not json');
+      await writeVersionConfig(tmpDir, '7');
+      expect(await readRc(tmpDir)).toEqual({ mantineVersion: '7' });
     });
   });
 });

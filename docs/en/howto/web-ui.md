@@ -94,9 +94,10 @@ This keeps the frontend aligned with the latest API schema.
 A typical project contains these important areas:
 
 ```text
+public/              # static assets, including the app logo
 src/
 ├── specstar/
-│   ├── generated/   # generated types, API clients, resource metadata
+│   ├── generated/   # generated types, API clients, resource metadata, branding
 │   └── lib/         # reusable customizable components and customization hooks
 └── routes/          # application routes
 ```
@@ -140,6 +141,36 @@ The generated frontend typically uses a Vite development proxy.
 - in production, set `VITE_API_URL` to the real backend URL
 
 This avoids common CORS issues during local development.
+
+---
+
+## Naming and branding
+
+The generated app is *your* admin console, so it carries your name and logo rather than SpecStar's.
+
+The title shown in the browser tab, on the landing page, and in the admin header is resolved on every `generate`, from the first of these that is set:
+
+1. the `title` field in `.specstarrc.json`
+2. the `info.title` of your backend's OpenAPI spec
+3. `SpecStar Admin`, as a fallback
+
+The logo works the same way, via the `logo` field, defaulting to the SpecStar mark shipped at `public/specstar-mark.svg`.
+
+Both live in `.specstarrc.json` at the project root:
+
+```json
+{
+  "mantineVersion": "8",
+  "title": "Northwind Console",
+  "logo": "/northwind.svg"
+}
+```
+
+A `logo` value is a URL path served from `public/`, so `"/northwind.svg"` means `public/northwind.svg`. Drop your own file in there and point `logo` at it.
+
+Because most backends already set a real `info.title`, you usually get a correctly named console without configuring anything. A backend that never set one reports the stock `FastAPI` title, which is ignored so it cannot become your app's name.
+
+Both values are written into `src/specstar/generated/branding.ts` and stamped into `index.html` — the browser reads the tab name and favicon from the HTML before React starts, so both stay in step. Run `generate` again after editing `.specstarrc.json` to apply a change.
 
 ---
 

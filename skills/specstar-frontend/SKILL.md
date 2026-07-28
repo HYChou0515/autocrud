@@ -68,11 +68,13 @@ Same options as `init` + `generate` combined, plus `--force` to overwrite withou
 ## App Architecture
 
 ```
+app/public/                     ← Static assets (specstar-mark.svg, your own logo)
 app/src/
 ├── specstar/
 │   ├── generated/              ← AUTO-GENERATED (overwritten on each generate)
 │   │   ├── types.ts            ← OpenAPI → TypeScript interfaces
 │   │   ├── resources.ts        ← Resource registry + Zod schemas
+│   │   ├── branding.ts         ← APP_TITLE + APP_LOGO (see Branding below)
 │   │   └── api/                ← Axios clients (one per resource)
 │   ├── lib/                    ← Reusable components (safe to customize)
 │   │   ├── client.ts           ← Axios instance + URL builders
@@ -98,6 +100,39 @@ app/src/
 ```
 
 **Key rule**: Never edit files in `specstar/generated/` — they are overwritten on each `generate`. Customize through `resourceCustomization.ts` and by editing components in `specstar/lib/`.
+
+## Branding
+
+The generated app is the developer's console, not SpecStar's, so its name and logo are configurable. `generate` resolves both and writes them to `specstar/generated/branding.ts`:
+
+```typescript
+import { APP_TITLE, APP_LOGO } from '@/specstar/generated/branding';
+```
+
+Resolution order — first one set wins:
+
+| Source | Notes |
+|--------|-------|
+| `.specstarrc.json` → `title` / `logo` | Explicit per-project override |
+| OpenAPI `info.title` | Whatever the backend already calls itself |
+| `SpecStar Admin` / `/specstar-mark.svg` | Fallback |
+
+```json
+{
+  "mantineVersion": "8",
+  "title": "Northwind Console",
+  "logo": "/northwind.svg"
+}
+```
+
+`logo` is a path served from `public/`, so `/northwind.svg` means `app/public/northwind.svg`.
+
+Two behaviours worth knowing when editing this layer:
+
+- Blank strings count as unset, and the stock `FastAPI` spec title is ignored — a backend that never named itself must not name the app.
+- `generate` also stamps the resolved values into `index.html`, because the browser reads the tab title and favicon before React boots. It only rewrites tags that are already present, so a project that deliberately removed its favicon link keeps that decision.
+
+When rendering the logo, keep it at **32px or larger** — the mark's rays are `stroke-width: 2` on a 240 viewBox and vanish below that.
 
 ## Resource Registry
 
