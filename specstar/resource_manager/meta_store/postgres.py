@@ -174,6 +174,12 @@ except ImportError:  # pragma: no cover
     execute_batch = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
 
 
+# psycopg2 fetches a named cursor in batches of this many rows (its `itersize`
+# default). A result that fits in one batch is materialised whole regardless of
+# which cursor asked for it.
+_STREAM_BATCH_ROWS = 2000
+
+
 class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
     """PostgreSQL-backed metadata store.
 
@@ -1416,6 +1422,23 @@ class PostgresMetaStore(IMetaWithAgg, IMetaWithCount, ISlowMetaStore):
         params.append(query.limit)
         params.append(query.offset)
 
+        # A named cursor is what keeps an unbounded search from pulling the whole
+        # table into memory, and psycopg2 drains one in batches of `itersize`. So
+        # a search whose LIMIT is no larger than a single batch would be
+        # materialised in one FETCH either way: the cursor buys nothing there and
+        # costs DECLARE + a trailing empty FETCH + CLOSE, inside a transaction.
+        #
+        # The threshold is the batch size rather than a number picked to look
+        # safe — above it the cursor is load-bearing. Note the DEFAULT limit is a
+        # sentinel (~4.29e9), not a page size, so the default search still
+        # streams.
+        if query.limit is not UNSET and query.limit <= _STREAM_BATCH_ROWS:
+            with self.row_cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+            for row in rows:
+                yield self._serializer.decode(row["data"])
+            return
         with self.stream_cursor() as cur:
             cur.execute(sql, params)
             for row in cur:
